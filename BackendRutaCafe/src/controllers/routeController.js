@@ -1,0 +1,89 @@
+import { createRoute, getAllRoutes, getRouteById, updateRoute, deleteRoute, }
+    from "../models/routeModel.js";
+
+// Crear nueva ruta
+// Crear nueva ruta
+export const createRouteController = async (req, res) => {
+  try {
+    const { name, description, image_url } = req.body;
+    const createdBy = req.user.id; // 👈 del token
+
+    if (!name || !description) {
+      return res.status(400).json({ message: "Faltan campos obligatorios: name y description" });
+    }
+
+    // Establecer estado "pendiente" por defecto
+    const status = "pendiente";
+
+    const routeId = await createRoute({ 
+      name, 
+      description, 
+      status, // 👈 Estado por defecto
+      image_url, 
+      createdBy 
+    });
+    
+    res.status(201).json({ 
+      message: "Ruta creada con éxito", 
+      routeId,
+      status: "pendiente" // Confirmar el estado
+    });
+  } catch (error) {
+    console.error("Error al crear ruta:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+};
+// Listar todas las rutas
+export const getRoutesController = async (req, res) => {
+    try {
+        const routes = await getAllRoutes();
+        res.json(routes);
+    } catch (error) {
+        console.error("Error al obtener rutas:", error);
+        res.status(500).json({ message: "Error interno del servidor" });
+    }
+};
+
+// Obtener ruta por ID
+export const getRouteByIdController = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const route = await getRouteById(id);
+        if (!route) return res.status(404).json({ message: "Ruta no encontrada" });
+        res.json(route);
+    } catch (error) {
+        console.error("Error al obtener ruta:", error);
+        res.status(500).json({ message: "Error interno del servidor" });
+    }
+};
+
+// Actualizar ruta
+export const updateRouteController = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updates = req.body;
+        const modifiedBy = req.user.id;
+
+        const updated = await updateRoute(id, updates, modifiedBy);
+        if (updated === 0) return res.status(404).json({ message: "Ruta no encontrada" });
+
+        res.json({ message: "Ruta actualizada correctamente" });
+    } catch (error) {
+        console.error("Error al actualizar ruta:", error);
+        res.status(500).json({ message: "Error interno del servidor" });
+    }
+};
+
+// Eliminar ruta
+export const deleteRouteController = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const deleted = await deleteRoute(id);
+        if (deleted === 0) return res.status(404).json({ message: "Ruta no encontrada" });
+
+        res.json({ message: "Ruta eliminada correctamente" });
+    } catch (error) {
+        console.error("Error al eliminar ruta:", error);
+        res.status(500).json({ message: "Error interno del servidor" });
+    }
+};

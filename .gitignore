@@ -1,0 +1,29 @@
+# ───────── FRONTEND (React Native / Expo) ─────────
+AppMovil_RutaDelCafe/node_modules/
+AppMovil_RutaDelCafe/.expo/
+AppMovil_RutaDelCafe/dist/
+AppMovil_RutaDelCafe/web-build/
+AppMovil_RutaDelCafe/expo-env.d.ts
+AppMovil_RutaDelCafe/.ios/
+AppMovil_RutaDelCafe/.android/
+
+# ───────── BACKEND (Node + Express + MySQL) ─────────
+BackendRutaCafe/node_modules/
+BackendRutaCafe/.env
+
+# ───────── GENERALES ─────────
+# Logs & debug
+npm-debug.*  
+yarn-debug.*  
+yarn-error.*  
+*.log  
+
+# macOS
+.DS_Store
+*.pem
+
+# Env (solo ejemplo, no subir los valores reales)
+.env*.local
+
+# TypeScript
+*.tsbuildinfo
