@@ -51,71 +51,56 @@ export default function LoginScreen() {
     setTimeoutId(newTimeoutId as unknown as number);
   };
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      showAlert("error", "Por favor ingresa tu correo y contraseña");
-      return;
-    }
+ const handleLogin = async () => {
+  console.log("🚀 Intentando login con:", email, password);
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      showAlert("error", "Correo electrónico inválido");
-      return;
-    }
+  try {
+    setLoading(true);
+    const url = `${process.env.EXPO_PUBLIC_API_URL}/api/auth/login`;
+    console.log("🌍 URL de login:", url);
 
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    console.log("📡 Status respuesta:", response.status);
+
+    const textResponse = await response.text();
+    console.log("📦 Respuesta cruda:", textResponse);
+
+    let data;
     try {
-      setLoading(true);
-
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/auth/login`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-
-      let data;
-      try {
-        const textResponse = await response.text();
-        data = JSON.parse(textResponse);
-      } catch (jsonError) {
-        throw new Error("Formato de respuesta inesperado del servidor");
-      }
-
-      if (!response.ok) {
-        showAlert("error", data.message || `Error (${response.status})`);
-        return;
-      }
-      
-      if (data.token) {
-        await AsyncStorage.setItem("userToken", data.token);
-        if (data.user) {
-          await AsyncStorage.setItem("userData", JSON.stringify(data.user));
-        }
-      }
-
-      showAlert("success", data.message || "Inicio de sesión exitoso", () => {
-        router.replace("/(tabs)");
-      });
-
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        if (err.message.includes("Network request failed")) {
-          showAlert("error", "No se pudo conectar con el servidor. Verifica tu conexión.");
-        } else if (err.message.includes("JSON")) {
-          showAlert("error", "Error en la respuesta del servidor");
-        } else {
-          showAlert("error", err.message);
-        }
-      } else {
-        showAlert("error", "Ocurrió un error inesperado");
-      }
-    } finally {
-      setLoading(false);
+      data = JSON.parse(textResponse);
+    } catch (e) {
+      console.error("❌ Error parseando JSON:", e);
+      return;
     }
-  };
+
+    if (!response.ok) {
+      console.log("❌ Error en login:", data);
+      showAlert("error", data.message || `Error (${response.status})`);
+      return;
+    }
+
+    console.log("✅ Login exitoso:", data);
+    // guardar en AsyncStorage antes de navegar
+    await AsyncStorage.setItem("userToken", data.token);
+    await AsyncStorage.setItem("userData", JSON.stringify(data.user));
+    showAlert("success", data.message || "Inicio de sesión exitoso", () => {
+      router.replace("/(tabs)/advertisement");
+    });
+
+  } catch (err) {
+    console.error("🔥 Error en login:", err);
+  } finally {
+    setLoading(false);
+  }
+};
 
   React.useEffect(() => {
     return () => {
@@ -273,14 +258,21 @@ export default function LoginScreen() {
             </View>
 
             {/* Botón volver */}
-            <TouchableOpacity
-              onPress={() => router.back()}
-              className="py-3 border border-orange-400 rounded-xl bg-orange-100"
-            >
-              <Text className="text-orange-700 font-medium text-base text-center">
-                Volver
-              </Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace("/(tabs)/advertisement"); // 👈 envía al home
+              }
+            }}
+            className="py-3 border border-orange-400 rounded-xl bg-orange-100"
+          >
+            <Text className="text-orange-700 font-medium text-base text-center">
+              Volver
+            </Text>
+          </TouchableOpacity>
+
           </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>

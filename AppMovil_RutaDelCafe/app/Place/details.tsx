@@ -82,7 +82,7 @@ export default function PlaceDetailsScreen() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/advertisement');
     }
   };
 

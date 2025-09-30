@@ -355,7 +355,7 @@ export default function RegisterScreen() {
           City_id: null,
         });
 
-        setTimeout(() => router.push("/"), 1500);
+        setTimeout(() => router.push("/(tabs)/advertisement"), 1500);
       } else {
         throw new Error("Formato de respuesta inesperado del servidor");
       }
@@ -619,14 +619,22 @@ export default function RegisterScreen() {
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => router.back()}
-              className="p-3.5 rounded-xl items-center bg-amber-50 border border-orange-500"
-            >
-              <Text className="text-orange-500 font-medium text-sm">
-                Volver
-              </Text>
-            </TouchableOpacity>
+           {/* Botón volver */}
+          <TouchableOpacity
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace("/(tabs)/advertisement"); // 👈 envía al home
+              }
+            }}
+            className="py-3 border border-orange-400 rounded-xl bg-orange-100"
+          >
+            <Text className="text-orange-700 font-medium text-base text-center">
+              Volver
+            </Text>
+          </TouchableOpacity>
+
           </View>
         </ScrollView>
       </TouchableWithoutFeedback>

@@ -1,3 +1,4 @@
+// src/routes/placeRoutes.js
 import express from "express";
 import { verifyToken } from "../middlewares/authMiddleware.js";
 import {
@@ -6,43 +7,42 @@ import {
   getPlaceByIdController,
   getPlacesByRouteController,
   updatePlaceController,
-  deletePlaceController
+  deletePlaceController,
 } from "../controllers/placeController.js";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
 
-// Configuración de multer para subida de imágenes
+// 👉 Asegurar carpeta de uploads
+const uploadDir = path.join(process.cwd(), "uploads", "places");
+fs.mkdirSync(uploadDir, { recursive: true });
+
+// Configuración de multer
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/places/');
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (_req, file, cb) => {
+    const ext = file.originalname.split(".").pop();
+    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, `place-${unique}.${ext}`);
   },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'place-' + uniqueSuffix + '.' + file.originalname.split('.').pop());
-  }
 });
 
-const upload = multer({ 
-  storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB límite
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype?.startsWith("image/")) cb(null, true);
+    else cb(new Error("Solo se permiten imágenes"));
   },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Solo se permiten imágenes'), false);
-    }
-  }
 });
 
 const router = express.Router();
 
-// CRUD Lugares
-router.post("/", verifyToken, upload.single('image'), createPlaceController);
+router.post("/", verifyToken, upload.single("image"), createPlaceController);
 router.get("/", verifyToken, getPlacesController);
 router.get("/route/:routeId", verifyToken, getPlacesByRouteController);
 router.get("/:id", verifyToken, getPlaceByIdController);
-router.put("/:id", verifyToken, upload.single('image'), updatePlaceController);
+router.put("/:id", verifyToken, upload.single("image"), updatePlaceController);
 router.delete("/:id", verifyToken, deletePlaceController);
 
 export default router;

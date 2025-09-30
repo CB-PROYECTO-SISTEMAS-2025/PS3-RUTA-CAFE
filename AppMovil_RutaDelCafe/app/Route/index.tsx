@@ -1,3 +1,4 @@
+import { withAuth } from "../../components/ui/withAuth";
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
@@ -30,7 +31,7 @@ interface UserData {
   email: string;
 }
 
-export default function RoutesScreen() {
+function RoutesScreen() {
   const router = useRouter();
   const [routes, setRoutes] = useState<Route[]>([]);
   const [filteredRoutes, setFilteredRoutes] = useState<Route[]>([]);
@@ -44,17 +45,19 @@ export default function RoutesScreen() {
     fetchRoutes();
   }, []);
 
-  useEffect(() => {
-    // Filtrar rutas según el rol del usuario
-    if (userRole === 3) {
-      // Rol 3: solo ver rutas aprobadas
-      const approvedRoutes = routes.filter(route => route.status === 'aprobada');
-      setFilteredRoutes(approvedRoutes);
-    } else {
-      // Rol 2: ver todas las rutas
-      setFilteredRoutes(routes);
-    }
-  }, [routes, userRole]);
+      useEffect(() => {
+      // ✅ Filtrar según rol
+      if (userRole === 3) {
+        // Usuario: solo aprobadas (de cualquiera)
+        setFilteredRoutes(routes.filter(r => r.status === 'aprobada'));
+      } else if (userRole === 2) {
+        // Técnico: SOLO las que él creó (cualquier estado)
+        setFilteredRoutes(routes.filter(r => r.createdBy === userId));
+      } else {
+        // Otros roles (por si acaso)
+        setFilteredRoutes(routes);
+      }
+    }, [routes, userRole, userId]);
 
   const loadUserData = async () => {
     try {
@@ -199,12 +202,19 @@ export default function RoutesScreen() {
       {/* Botón volver */}
       <View className="px-6 mt-4">
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/advertisement"); // 👈 siempre vuelve al Home
+            }
+          }}
           className="bg-orange-100 border border-orange-400 py-3 rounded-xl shadow flex-row items-center justify-center mb-2"
-        >
+          >
           <Ionicons name="arrow-back" size={22} color="#f97316" />
           <Text className="text-orange-700 font-semibold text-base ml-2">Volver</Text>
         </TouchableOpacity>
+
       </View>
 
       {/* Lista de rutas */}
@@ -260,19 +270,39 @@ export default function RoutesScreen() {
                 <Text className="text-orange-500 text-sm">
                   {new Date(route.createdAt).toLocaleDateString()}
                 </Text>
-                
-                {/* Botones de acción (solo para admin) */}
+
+                {/* Acciones */}
                 {isAdmin ? (
+                  // ====== TÉCNICO (rol 2) ======
                   <View className="flex-row space-x-2 gap-2">
+                    {/* Ver sitios */}
                     <TouchableOpacity
-                      onPress={() => router.push({
-                        pathname: '/Route/edit',
-                        params: { id: route.id.toString() }
-                      })}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/Place',
+                          params: { routeId: String(route.id), routeName: route.name },
+                        })
+                      }
+                      className="bg-orange-100 px-3 py-2 rounded-lg flex-row items-center"
+                    >
+                      <Ionicons name="locate-outline" size={18} color="#ea580c" />
+                      <Text className="text-orange-700 font-semibold text-sm ml-1">Ver Sitios</Text>
+                    </TouchableOpacity>
+
+                    {/* Editar */}
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: '/Route/edit',
+                          params: { id: route.id.toString() },
+                        })
+                      }
                       className="bg-orange-200 p-2 rounded-lg"
                     >
                       <Ionicons name="pencil" size={20} color="#ea580c" />
                     </TouchableOpacity>
+
+                    {/* Eliminar */}
                     <TouchableOpacity
                       onPress={() => handleDelete(route.id)}
                       className="bg-orange-300 p-2 rounded-lg"
@@ -281,19 +311,36 @@ export default function RoutesScreen() {
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  // Para usuarios regulares, mostrar botón de ver detalles
-                  <TouchableOpacity
-                    onPress={() => router.push({
-                      pathname: '/Route/details',
-                      params: { id: route.id.toString() }
-                    })}
-                    className="bg-orange-200 px-4 py-2 rounded-lg flex-row items-center"
-                  >
-                    <Ionicons name="eye" size={16} color="#ea580c" />
-                    <Text className="text-orange-700 font-semibold text-sm ml-1">
-                      Ver Detalles
-                    </Text>
-                  </TouchableOpacity>
+                  // ====== USUARIO (rol 3) ======
+                  <View className="flex-row gap-2">
+                    {/* Ver Sitios (SIEMPRE visible) */}
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: '/Place',
+                          params: { routeId: String(route.id), routeName: route.name },
+                        })
+                      }
+                      className="bg-orange-100 px-3 py-2 rounded-lg flex-row items-center"
+                    >
+                      <Ionicons name="locate-outline" size={18} color="#ea580c" />
+                      <Text className="text-orange-700 font-semibold text-sm ml-1">Ver Sitios</Text>
+                    </TouchableOpacity>
+
+                    {/* Ver Detalles (igual que ya tenías) */}
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: '/Route/details',
+                          params: { id: route.id.toString() },
+                        })
+                      }
+                      className="bg-orange-200 px-3 py-2 rounded-lg flex-row items-center"
+                    >
+                      <Ionicons name="eye" size={16} color="#ea580c" />
+                      <Text className="text-orange-700 font-semibold text-sm ml-1">Ver Detalles</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             </View>
@@ -303,3 +350,4 @@ export default function RoutesScreen() {
     </View>
   );
 }
+export default withAuth(RoutesScreen);

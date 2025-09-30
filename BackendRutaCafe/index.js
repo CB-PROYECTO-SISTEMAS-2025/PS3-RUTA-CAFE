@@ -1,6 +1,8 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
+import path from "path";
+
 import authRoutes from "./src/routes/authRoutes.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import routeRoutes from "./src/routes/routeRoutes.js";
@@ -9,18 +11,20 @@ import placeRoutes from "./src/routes/placeRoutes.js";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 
-// Middlewares
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Ruta de prueba
-app.get("/", (req, res) => {
+// 👉 servir archivos subidos
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+app.get("/", (_req, res) => {
   res.send("Servidor BackendRutaCafe funcionando 🚀");
 });
 
-// Rutas
+// Rutas API
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/routes", routeRoutes);
