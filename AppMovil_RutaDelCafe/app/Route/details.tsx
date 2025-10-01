@@ -419,14 +419,6 @@ export default function RouteDetailsScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={handleSaveToFavorites}
-                className="bg-white border border-orange-400 py-4 rounded-2xl flex-row items-center justify-center mb-3"
-              >
-                <Ionicons name="bookmark" size={24} color="#f97316" />
-                <Text className="text-orange-700 font-semibold text-lg ml-2">Guardar en Favoritos</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
                 onPress={handleShare}
                 className="bg-orange-100 border border-orange-300 py-4 rounded-2xl flex-row items-center justify-center mb-3"
               >

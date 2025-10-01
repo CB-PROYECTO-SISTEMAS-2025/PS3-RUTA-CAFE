@@ -1,3 +1,4 @@
+// app/Place/details.tsx
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -25,13 +26,34 @@ interface Place {
   phoneNumber?: string;
   image_url?: string;
   status: string;
+  schedules?: Schedule[];
+  is_favorite?: boolean;
+  favorite_count?: number;
 }
+
+interface Schedule {
+  id: number;
+  dayOfWeek: string;
+  openTime: string;
+  closeTime: string;
+}
+
+const DAYS_OF_WEEK = [
+  { key: 'lunes', label: 'Lunes' },
+  { key: 'martes', label: 'Martes' },
+  { key: 'miércoles', label: 'Miércoles' },
+  { key: 'jueves', label: 'Jueves' },
+  { key: 'viernes', label: 'Viernes' },
+  { key: 'sábado', label: 'Sábado' },
+  { key: 'domingo', label: 'Domingo' },
+];
 
 export default function PlaceDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
   const [place, setPlace] = useState<Place | null>(null);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   const placeId = params.id ? (Array.isArray(params.id) ? params.id[0] : params.id) : null;
 
@@ -52,7 +74,7 @@ export default function PlaceDetailsScreen() {
         return;
       }
 
-     const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${placeId}`, {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${placeId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -62,7 +84,27 @@ export default function PlaceDetailsScreen() {
 
       if (response.ok) {
         const placeData = await response.json();
-        setPlace(placeData);
+        
+        // Verificar si es favorito
+        const favoriteResponse = await fetch(
+          `${process.env.EXPO_PUBLIC_API_URL}/api/favorites/check/${placeId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (favoriteResponse.ok) {
+          const favoriteData = await favoriteResponse.json();
+          setPlace({
+            ...placeData,
+            is_favorite: favoriteData.data.is_favorite,
+            favorite_count: favoriteData.data.favorite_count || 0
+          });
+        } else {
+          setPlace(placeData);
+        }
       } else if (response.status === 401) {
         await AsyncStorage.removeItem('userToken');
         router.replace('/login');
@@ -78,11 +120,66 @@ export default function PlaceDetailsScreen() {
     }
   };
 
+  const toggleFavorite = async () => {
+    if (!place) return;
+    
+    setFavoriteLoading(true);
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        router.replace('/login');
+        return;
+      }
+
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/api/favorites/toggle`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            place_id: place.id,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        // Actualizar estado local
+        setPlace(prev => prev ? {
+          ...prev,
+          is_favorite: result.data.is_favorite,
+          favorite_count: result.data.is_favorite 
+            ? (prev.favorite_count || 0) + 1 
+            : Math.max((prev.favorite_count || 1) - 1, 0)
+        } : null);
+
+        // Mostrar mensaje de éxito
+        Alert.alert(
+          'Éxito', 
+          result.data.is_favorite 
+            ? 'Lugar agregado a favoritos' 
+            : 'Lugar eliminado de favoritos'
+        );
+      } else {
+        throw new Error('Error al actualizar favoritos');
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      Alert.alert('Error', 'No se pudo actualizar favoritos');
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
   const safeGoBack = () => {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/advertisement');
     }
   };
 
@@ -115,6 +212,34 @@ export default function PlaceDetailsScreen() {
         Alert.alert('Error', 'No se pudo abrir la aplicación de mapas');
       });
     }
+  };
+
+  // Función para formatear el horario para mostrar
+  const getScheduleSummary = () => {
+    if (!place?.schedules || place.schedules.length === 0) {
+      return 'Horario no disponible';
+    }
+
+    const openDays = place.schedules;
+    
+    // Verificar si todos los días tienen el mismo horario
+    const firstOpenDay = openDays[0];
+    const allSameSchedule = openDays.every(day => 
+      day.openTime.substring(0, 5) === firstOpenDay.openTime.substring(0, 5) && 
+      day.closeTime.substring(0, 5) === firstOpenDay.closeTime.substring(0, 5)
+    );
+    
+    if (openDays.length === 7 && allSameSchedule) {
+      return `Lun-Dom: ${firstOpenDay.openTime.substring(0, 5)} - ${firstOpenDay.closeTime.substring(0, 5)}`;
+    }
+    
+    return `${openDays.length} días con horario configurado`;
+  };
+
+  // Función para obtener el horario de un día específico
+  const getDaySchedule = (dayKey: string) => {
+    if (!place?.schedules) return null;
+    return place.schedules.find(schedule => schedule.dayOfWeek === dayKey);
   };
 
   const getLeafletMapHTML = () => {
@@ -256,16 +381,16 @@ export default function PlaceDetailsScreen() {
     <View className="flex-1 bg-orange-50">
       {/* Header */}
       <View className="bg-orange-500 px-6 pt-8 pb-4 rounded-b-3xl shadow-lg">
-        <View className="flex-row items-center justify-start">
-          <Text className="text-white text-xl font-bold text-center flex-1 pr-15">
+        <View className="flex-row items-center justify-between">
+          <Text className="text-white text-xl font-bold text-center flex-1">
             Detalles del Lugar
           </Text>
         </View>
       </View>
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        {/* Imagen principal con estilo mejorado */}
-        <View className="px-6 mt-6">
+        {/* Imagen principal con botón de favoritos */}
+        <View className="px-6 mt-6 relative">
           <View className="rounded-3xl overflow-hidden shadow-xl border border-orange-200 bg-white">
             {place.image_url ? (
               <Image
@@ -279,14 +404,42 @@ export default function PlaceDetailsScreen() {
                 <Text className="text-orange-600 mt-2 font-medium">Sin imagen disponible</Text>
               </View>
             )}
+            
+            {/* Botón de favoritos superpuesto */}
+            <TouchableOpacity
+              onPress={toggleFavorite}
+              disabled={favoriteLoading}
+              className="absolute top-4 right-4 bg-white/90 p-3 rounded-full shadow-lg"
+            >
+              {favoriteLoading ? (
+                <ActivityIndicator size="small" color="#ea580c" />
+              ) : (
+                <Ionicons 
+                  name={place.is_favorite ? "heart" : "heart-outline"} 
+                  size={24} 
+                  color={place.is_favorite ? "#ef4444" : "#ea580c"} 
+                />
+              )}
+            </TouchableOpacity>
           </View>
         </View>
 
         {/* Información esencial */}
         <View className="px-6 py-6">
-          {/* Nombre y estado */}
+          {/* Nombre, estado y contador de favoritos */}
           <View className="mb-6">
-            <Text className="text-3xl font-bold text-orange-900 mb-3">{place.name}</Text>
+            <View className="flex-row justify-between items-start mb-3">
+              <Text className="text-3xl font-bold text-orange-900 flex-1 pr-2">{place.name}</Text>
+              
+              {/* Contador de favoritos */}
+              <View className="flex-row items-center bg-orange-100 px-3 py-1 rounded-full">
+                <Ionicons name="heart" size={16} color="#ef4444" />
+                <Text className="text-orange-700 font-semibold ml-1 text-sm">
+                  {place.favorite_count || 0}
+                </Text>
+              </View>
+            </View>
+            
             <View className={`px-4 py-2 rounded-full self-start shadow-sm ${
               place.status === 'aprobada' ? 'bg-green-100 border border-green-300' : 
               place.status === 'pendiente' ? 'bg-yellow-100 border border-yellow-300' : 
@@ -305,6 +458,35 @@ export default function PlaceDetailsScreen() {
           <View className="mb-6 bg-white rounded-2xl p-4 shadow-sm border border-orange-200">
             <Text className="text-lg font-semibold text-orange-800 mb-2">Descripción</Text>
             <Text className="text-orange-700 leading-6">{place.description}</Text>
+          </View>
+
+          {/* Horario de atención */}
+          <View className="mb-6 bg-white rounded-2xl p-4 shadow-sm border border-orange-200">
+            <Text className="text-lg font-semibold text-orange-800 mb-3">Horario de Atención</Text>
+            
+            <View className="mb-3">
+              <Text className="text-orange-700 font-medium">{getScheduleSummary()}</Text>
+            </View>
+
+            {place.schedules && place.schedules.length > 0 && (
+              <View className="space-y-2">
+                {DAYS_OF_WEEK.map((day) => {
+                  const daySchedule = getDaySchedule(day.key);
+                  return (
+                    <View key={day.key} className="flex-row justify-between items-center py-2 border-b border-orange-100">
+                      <Text className="text-orange-700 font-medium flex-1">{day.label}</Text>
+                      {daySchedule ? (
+                        <Text className="text-green-600 font-semibold">
+                          {daySchedule.openTime.substring(0, 5)} - {daySchedule.closeTime.substring(0, 5)}
+                        </Text>
+                      ) : (
+                        <Text className="text-red-500 font-semibold">Cerrado</Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </View>
 
           {/* Mapa Leaflet */}
@@ -331,7 +513,7 @@ export default function PlaceDetailsScreen() {
             </View>
           </View>
 
-          {/* Acciones rápidas - CORREGIDO */}
+          {/* Acciones rápidas */}
           <View className="flex-row justify-between mb-6">
             {place.website ? (
               <TouchableOpacity 
@@ -364,29 +546,35 @@ export default function PlaceDetailsScreen() {
                 </TouchableOpacity>
               </View>
             )}
+
+            <TouchableOpacity 
+              onPress={handleDirectionsPress}
+              className="flex-1 bg-orange-100 mx-1 p-4 rounded-xl items-center border border-orange-300 shadow-sm"
+            >
+              <Ionicons name="navigate-outline" size={24} color="#ea580c" />
+              <Text className="text-orange-700 font-semibold mt-2 text-center">Cómo llegar</Text>
+            </TouchableOpacity>
           </View>
 
-            {/* Información de ubicación */}
-            <View className="bg-white rounded-2xl p-4 shadow-sm border border-orange-200 ">
+          {/* Información de ubicación */}
+          <View className="bg-white rounded-2xl p-4 shadow-sm border border-orange-200">
             <Text className="text-lg font-semibold text-orange-800 mb-3">Coordenadas GPS</Text>
             <View className="flex-row items-center bg-orange-50 rounded-xl p-3">
-                <Ionicons name="location-outline" size={24} color="#ea580c" />
-                <View className="ml-3">
+              <Ionicons name="location-outline" size={24} color="#ea580c" />
+              <View className="ml-3">
                 <Text className="text-orange-700 font-medium">Latitud: {formatCoordinate(place.latitude)}</Text>
                 <Text className="text-orange-700 font-medium">Longitud: {formatCoordinate(place.longitude)}</Text>
-                </View>
+              </View>
             </View>
-            </View>
+          </View>
 
-            <TouchableOpacity
+          <TouchableOpacity
             onPress={safeGoBack}
             className="flex-row items-center justify-center bg-orange-500 px-6 py-3 rounded-xl mt-3 shadow-lg"
-            >
+          >
             <Ionicons name="arrow-back" size={20} color="white" className="mr-2" />
             <Text className="text-white text-center font-bold text-lg">Volver</Text>
-            </TouchableOpacity>
-
-
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
