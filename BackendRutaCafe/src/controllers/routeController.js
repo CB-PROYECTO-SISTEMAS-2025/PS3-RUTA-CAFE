@@ -33,28 +33,39 @@ export const createRouteController = async (req, res) => {
     res.status(500).json({ message: "Error interno del servidor" });
   }
 };
-// Listar todas las rutas
+// GET index (con filtro backend)
 export const getRoutesController = async (req, res) => {
-    try {
-        const routes = await getAllRoutes();
-        res.json(routes);
-    } catch (error) {
-        console.error("Error al obtener rutas:", error);
-        res.status(500).json({ message: "Error interno del servidor" });
-    }
+  try {
+    const viewer = { role: req.user?.role ?? 0, userId: req.user?.id ?? null };
+    const routes = await getAllRoutes(viewer);
+    res.json(routes);
+  } catch (e) {
+    console.error("Error al obtener rutas:", e);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
 };
 
 // Obtener ruta por ID
 export const getRouteByIdController = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const route = await getRouteById(id);
-        if (!route) return res.status(404).json({ message: "Ruta no encontrada" });
-        res.json(route);
-    } catch (error) {
-        console.error("Error al obtener ruta:", error);
-        res.status(500).json({ message: "Error interno del servidor" });
+  try {
+    const route = await getRouteById(req.params.id);
+    if (!route) return res.status(404).json({ message: "Ruta no encontrada" });
+
+    const role = req.user?.role ?? 0;
+    const uid  = req.user?.id ?? null;
+
+    if ((role === 0 || role === 3) && route.status !== "aprobada") {
+      return res.status(403).json({ message: "No autorizado" });
     }
+    if (role === 2 && uid && route.createdBy !== uid) {
+      return res.status(403).json({ message: "No autorizado" });
+    }
+
+    res.json(route);
+  } catch (e) {
+    console.error("Error al obtener ruta:", e);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
 };
 
 // Actualizar ruta

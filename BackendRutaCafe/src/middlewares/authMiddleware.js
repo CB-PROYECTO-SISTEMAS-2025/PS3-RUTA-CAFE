@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const verifyToken = (req, res, next) => {
+  console.log("[verifyToken] HIT", req.method, req.path);
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1]; // Bearer token
 

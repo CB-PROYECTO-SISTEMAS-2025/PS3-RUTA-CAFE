@@ -103,7 +103,13 @@ export const createPlaceController = async (req, res) => {
 
 export const getPlacesController = async (req, res) => {
   try {
-    const places = await getAllPlaces();
+    // 👇 Obtener userId del token si existe, sino null
+    const userId = req.user?.id || null;
+    console.log("➡️ getPlacesController user=", req.user);
+
+    console.log(`📊 Cargando lugares para usuario: ${userId || 'visitante'}`);
+    
+    const places = await getAllPlaces(req.user || { id: null, role: 0 });
     
     // Obtener horarios para cada lugar
     const placesWithSchedules = await Promise.all(
@@ -127,7 +133,12 @@ export const getPlacesController = async (req, res) => {
 export const getPlacesByRouteController = async (req, res) => {
   try {
     const { routeId } = req.params;
-    const places = await getPlacesByRoute(routeId);
+    // 👇 Obtener userId del token si existe, sino null
+    const userId = req.user?.id || null;
+    
+    console.log(`📊 Cargando lugares de ruta ${routeId} para usuario: ${userId || 'visitante'}`);
+    
+    const places = await getPlacesByRoute(routeId, req.user || { id: null, role: 0 });
     
     // Obtener horarios para cada lugar
     const placesWithSchedules = await Promise.all(
@@ -151,7 +162,14 @@ export const getPlacesByRouteController = async (req, res) => {
 export const getPlaceByIdController = async (req, res) => {
   try {
     const { id } = req.params;
-    const place = await getPlaceById(id);
+    // 👇 Obtener userId del token si existe, sino null
+    const userId = req.user?.id || null;
+    console.log("➡️ getPlacesController user=", req.user);
+
+    
+    console.log(`📊 Cargando lugar ${id} para usuario: ${userId || 'visitante'}`);
+    
+    const place = await getPlaceById(id, userId);
     if (!place) return res.status(404).json({ message: "Lugar no encontrado" });
     
     // Obtener horarios del lugar

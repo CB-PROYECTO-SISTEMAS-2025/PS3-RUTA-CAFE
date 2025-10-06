@@ -11,9 +11,24 @@ export const createRoute = async ({ name, description, status, image_url, create
   return result.insertId;
 };
 
-// Obtener todas las rutas
-export const getAllRoutes = async () => {
-  const [rows] = await pool.query(`SELECT * FROM \`${SCHEMA}\`.route ORDER BY createdAt DESC`);
+// Ajuste: acepta filtro del viewer
+export const getAllRoutes = async (viewer = { role: 0, userId: null }) => {
+  let where = "";
+  const params = [];
+
+  if (viewer.role === 2 && viewer.userId) {
+    // Técnico: solo sus rutas (cualquier estado)
+    where = "WHERE createdBy = ?";
+    params.push(viewer.userId);
+  } else if (viewer.role === 3 || viewer.role === 0 || !viewer.role) {
+    // Usuario logueado normal o visitante: solo aprobadas
+    where = "WHERE status = 'aprobada'";
+  }
+
+  const [rows] = await pool.query(
+    `SELECT * FROM \`${SCHEMA}\`.route ${where} ORDER BY createdAt DESC`,
+    params
+  );
   return rows;
 };
 

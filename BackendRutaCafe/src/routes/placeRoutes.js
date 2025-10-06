@@ -1,5 +1,6 @@
 // src/routes/placeRoutes.js
 import express from "express";
+import { maybeAuth } from "../middlewares/maybeAuth.js";
 import { verifyToken } from "../middlewares/authMiddleware.js";
 import {
   createPlaceController,
@@ -13,11 +14,9 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 
-// 👉 Asegurar carpeta de uploads
 const uploadDir = path.join(process.cwd(), "uploads", "places");
 fs.mkdirSync(uploadDir, { recursive: true });
 
-// Configuración de multer
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (_req, file, cb) => {
@@ -38,11 +37,15 @@ const upload = multer({
 
 const router = express.Router();
 
+// 🟢 GET públicos (visitante o logueado)
+router.get("/", maybeAuth, getPlacesController);
+router.get("/route/:routeId", maybeAuth, getPlacesByRouteController);
+router.get("/:id", maybeAuth, getPlaceByIdController);
+
+// 🔒 Mutaciones privadas
 router.post("/", verifyToken, upload.single("image"), createPlaceController);
-router.get("/", verifyToken, getPlacesController);
-router.get("/route/:routeId", verifyToken, getPlacesByRouteController);
-router.get("/:id", verifyToken, getPlaceByIdController);
 router.put("/:id", verifyToken, upload.single("image"), updatePlaceController);
 router.delete("/:id", verifyToken, deletePlaceController);
 
+console.log("✅ placeRoutes: GET públicos con maybeAuth, POST/PUT/DELETE con verifyToken");
 export default router;

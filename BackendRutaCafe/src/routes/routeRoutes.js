@@ -1,5 +1,7 @@
+// src/routes/routeRoutes.js (tu archivo actual de rutas de "route")
 import express from "express";
 import { verifyToken } from "../middlewares/authMiddleware.js";
+import { maybeAuth } from "../middlewares/maybeAuth.js";
 import {
   createRouteController,
   getRoutesController,
@@ -10,11 +12,11 @@ import {
 
 const router = express.Router();
 
-// CRUD Rutas
-router.post("/", verifyToken,createRouteController); // Crear ruta
-router.get("/", verifyToken, getRoutesController);    // Listar todas
-router.get("/:id", verifyToken, getRouteByIdController); // Obtener una
-router.put("/:id", verifyToken, updateRouteController);  // Actualizar
-router.delete("/:id", verifyToken, deleteRouteController); // Eliminar
+// CRUD
+router.post("/", verifyToken, createRouteController);
+router.get("/", maybeAuth, getRoutesController);        // público con contexto de rol
+router.get("/:id", maybeAuth, getRouteByIdController);  // público con contexto de rol
+router.put("/:id", verifyToken, updateRouteController);
+router.delete("/:id", verifyToken, deleteRouteController);
 
 export default router;
