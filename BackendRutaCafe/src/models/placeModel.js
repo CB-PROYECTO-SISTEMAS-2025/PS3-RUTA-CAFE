@@ -62,187 +62,118 @@ export const deletePlaceSchedules = async (placeId) => {
   return result.affectedRows;
 };
 
-<<<<<<< HEAD
 // src/models/placeModel.js
-export const getAllPlaces = async (user) => {
-  const { id: userId, role } = user || { id: null, role: 0 };
-  const params = [];
-  let where = "1=1";
+export const getAllPlaces = async (user = null) => {
+  // Soporta user como objeto { id, role } o como userId directo
+  let userId = null;
+  let role = 0;
 
-  if (role === 2) {
-    where = "p.createdBy = ?";
-    params.push(userId);
+  if (user && typeof user === 'object') {
+    userId = user.id ?? null;
+    role = user.role ?? 0;
+  } else if (typeof user === 'number' || typeof user === 'string') {
+    userId = Number(user) || null;
+  }
+
+  // WHERE dinámico
+  let where = '1=1';
+  const whereParams = [];
+
+  if (role === 2 && userId) {
+    // Técnico / creador: ve solo lo suyo
+    where = 'p.createdBy = ?';
+    whereParams.push(userId);
   } else {
+    // Público / otros roles: solo aprobadas
     where = "p.status = 'aprobada'";
   }
 
-  const [rows] = await pool.query(
-    `
-    SELECT p.*, r.name AS route_name,
-           COUNT(DISTINCT l.id) AS likes_count,
-           COUNT(DISTINCT c.id) AS comments_count,
-           ${userId ? `
-             EXISTS(SELECT 1 FROM \`${SCHEMA}\`.likes l2 WHERE l2.place_id = p.id AND l2.user_id = ?) AS user_liked
-           ` : `FALSE AS user_liked`}
-=======
-// Leer lugares con counts de likes y comentarios
-export const getAllPlaces = async (userId = null) => {
-  let query = `
+  // SELECT con user_liked opcional
+  const query = `
     SELECT 
-      p.*, 
+      p.*,
       r.name AS route_name,
-      COUNT(DISTINCT l.id) as likes_count,
-      COUNT(DISTINCT c.id) as comments_count
-  `;
-
-  // Agregar user_liked solo si se proporciona userId
-  if (userId) {
-    query += `,
-      EXISTS(
-        SELECT 1 FROM \`${SCHEMA}\`.likes l2 
-        WHERE l2.place_id = p.id AND l2.user_id = ?
-      ) as user_liked
-    `;
-  } else {
-    query += `,
-      FALSE as user_liked
-    `;
-  }
-
-  query += `
->>>>>>> origin/feature/garcia
+      COUNT(DISTINCT l.id) AS likes_count,
+      COUNT(DISTINCT c.id) AS comments_count,
+      ${
+        userId
+          ? `EXISTS(
+               SELECT 1 FROM \`${SCHEMA}\`.likes l2 
+               WHERE l2.place_id = p.id AND l2.user_id = ?
+             ) AS user_liked`
+          : `FALSE AS user_liked`
+      }
     FROM \`${SCHEMA}\`.place p
     LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
     LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
     LEFT JOIN \`${SCHEMA}\`.comment c ON p.id = c.place_id
-<<<<<<< HEAD
     WHERE ${where}
-    GROUP BY p.id
-    ORDER BY p.createdAt DESC
-    `,
-    userId ? [userId, ...params] : params
-  );
-  return rows;
-};
-
-export const getPlacesByRoute = async (routeId, user) => {
-  const { id: userId, role } = user || { id: null, role: 0 };
-  const params = [routeId];
-  let extraWhere = "";
-
-  if (role === 2) {
-    extraWhere = "AND p.createdBy = ?";
-    params.push(userId);
-  } else {
-    extraWhere = "AND p.status = 'aprobada'";
-  }
-
-  const [rows] = await pool.query(
-    `
-    SELECT p.*, r.name AS route_name,
-           COUNT(DISTINCT l.id) AS likes_count,
-           COUNT(DISTINCT c.id) AS comments_count,
-           ${userId ? `
-             EXISTS(SELECT 1 FROM \`${SCHEMA}\`.likes l2 WHERE l2.place_id = p.id AND l2.user_id = ?) AS user_liked
-           ` : `FALSE AS user_liked`}
-=======
     GROUP BY p.id
     ORDER BY p.createdAt DESC
   `;
 
-  const params = userId ? [userId] : [];
+  // Orden de parámetros: primero el de user_liked (si aplica), luego los del WHERE
+  const params = userId ? [userId, ...whereParams] : whereParams;
+
   const [rows] = await pool.query(query, params);
   return rows;
 };
 
-export const getPlacesByRoute = async (routeId, userId = null) => {
-  let query = `
-    SELECT 
-      p.*, 
-      r.name AS route_name,
-      COUNT(DISTINCT l.id) as likes_count,
-      COUNT(DISTINCT c.id) as comments_count
-  `;
+// src/models/placeModel.js
+export const getPlacesByRoute = async (routeId, user = null) => {
+  // Permite user como objeto { id, role } o como userId directo
+  let userId = null;
+  let role = 0;
 
-  // Agregar user_liked solo si se proporciona userId
-  if (userId) {
-    query += `,
-      EXISTS(
-        SELECT 1 FROM \`${SCHEMA}\`.likes l2 
-        WHERE l2.place_id = p.id AND l2.user_id = ?
-      ) as user_liked
-    `;
-  } else {
-    query += `,
-      FALSE as user_liked
-    `;
+  if (user && typeof user === 'object') {
+    userId = user.id ?? null;
+    role = user.role ?? 0;
+  } else if (typeof user === 'number' || typeof user === 'string') {
+    userId = Number(user) || null;
   }
 
-  query += `
->>>>>>> origin/feature/garcia
+  // WHERE dinámico
+  let extraWhere = '';
+  const whereParams = [routeId];
+
+  if (role === 2 && userId) {
+    extraWhere = 'AND p.createdBy = ?';
+    whereParams.push(userId);
+  } else {
+    extraWhere = "AND p.status = 'aprobada'";
+  }
+
+  const query = `
+    SELECT 
+      p.*,
+      r.name AS route_name,
+      COUNT(DISTINCT l.id) AS likes_count,
+      COUNT(DISTINCT c.id) AS comments_count,
+      ${
+        userId
+          ? `EXISTS(
+               SELECT 1 FROM \`${SCHEMA}\`.likes l2 
+               WHERE l2.place_id = p.id AND l2.user_id = ?
+             ) AS user_liked`
+          : `FALSE AS user_liked`
+      }
     FROM \`${SCHEMA}\`.place p
     LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
     LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
     LEFT JOIN \`${SCHEMA}\`.comment c ON p.id = c.place_id
     WHERE p.route_id = ?
-<<<<<<< HEAD
       ${extraWhere}
     GROUP BY p.id
     ORDER BY p.createdAt DESC
-    `,
-    userId ? [userId, ...params] : params
-  );
-  return rows;
-};
-
-
-=======
-    GROUP BY p.id
-    ORDER BY p.createdAt DESC
   `;
 
-  const params = userId ? [userId, routeId] : [routeId];
+  // Importante: si hay userId, primero va para el EXISTS y luego los del WHERE
+  const params = userId ? [userId, ...whereParams] : whereParams;
+
   const [rows] = await pool.query(query, params);
   return rows;
 };
 
->>>>>>> origin/feature/garcia
-export const getPlaceById = async (id, userId = null) => {
-  let query = `
-    SELECT 
-      p.*, 
-      r.name AS route_name,
-      COUNT(DISTINCT l.id) as likes_count,
-      COUNT(DISTINCT c.id) as comments_count
-  `;
-
-  // Agregar user_liked solo si se proporciona userId
-  if (userId) {
-    query += `,
-      EXISTS(
-        SELECT 1 FROM \`${SCHEMA}\`.likes l2 
-        WHERE l2.place_id = p.id AND l2.user_id = ?
-      ) as user_liked
-    `;
-  } else {
-    query += `,
-      FALSE as user_liked
-    `;
-  }
-
-  query += `
-    FROM \`${SCHEMA}\`.place p
-    LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
-    LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
-    LEFT JOIN \`${SCHEMA}\`.comment c ON p.id = c.place_id
-    WHERE p.id = ?
-    GROUP BY p.id
-  `;
-
-  const params = userId ? [userId, id] : [id];
-  const [rows] = await pool.query(query, params);
-  return rows[0];
-};
 
 // Obtener lugares con filtro por usuario (para admin)
 export const getPlacesByUser = async (userId) => {
@@ -327,8 +258,6 @@ export const deletePlace = async (id) => {
     [id]
   );
   return result.affectedRows;
-<<<<<<< HEAD
-=======
 };
 // Obtener lugares por ID de ciudad (a través del usuario creador)
 export const findPlacesByCityId = async (cityId) => {
@@ -403,5 +332,4 @@ export const findAllPendingPlaces = async () => {
   );
 
   return placesWithSchedules;
->>>>>>> origin/feature/garcia
 };

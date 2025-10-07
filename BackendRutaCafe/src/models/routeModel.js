@@ -11,8 +11,7 @@ export const createRoute = async ({ name, description, status, image_url, create
   return result.insertId;
 };
 
-<<<<<<< HEAD
-// Ajuste: acepta filtro del viewer
+// Obtener todas las rutas
 export const getAllRoutes = async (viewer = { role: 0, userId: null }) => {
   let where = "";
   const params = [];
@@ -25,14 +24,7 @@ export const getAllRoutes = async (viewer = { role: 0, userId: null }) => {
     // Usuario logueado normal o visitante: solo aprobadas
     where = "WHERE status = 'aprobada'";
   }
-
-  const [rows] = await pool.query(
-    `SELECT * FROM \`${SCHEMA}\`.route ${where} ORDER BY createdAt DESC`,
-    params
-=======
-// Obtener todas las rutas
-export const getAllRoutes = async () => {
-  const [rows] = await pool.query(`SELECT * FROM \`${SCHEMA}\`.route ORDER BY createdAt DESC`);
+  const [rows] = await pool.query(`SELECT * FROM \`${SCHEMA}\`.route ${where} ORDER BY createdAt DESC`, params);
   return rows;
 };
 
@@ -50,16 +42,12 @@ export const getAllRoutesPending = async () => {
      LEFT JOIN city c ON u.City_id = c.id
      WHERE r.status = 'pendiente'
      ORDER BY r.createdAt DESC`
->>>>>>> origin/feature/garcia
   );
   return rows;
 };
 
 // Obtener ruta por ID
 export const getRouteById = async (id) => {
-<<<<<<< HEAD
-  const [rows] = await pool.query(`SELECT * FROM \`${SCHEMA}\`.route WHERE id = ?`, [id]);
-=======
   const [rows] = await pool.query(
     `SELECT 
       r.*,
@@ -73,7 +61,6 @@ export const getRouteById = async (id) => {
      WHERE r.id = ?`,
     [id]
   );
->>>>>>> origin/feature/garcia
   return rows[0];
 };
 
@@ -94,8 +81,6 @@ export const deleteRoute = async (id) => {
   const [result] = await pool.query(`DELETE FROM \`${SCHEMA}\`.route WHERE id = ?`, [id]);
   return result.affectedRows;
 };
-<<<<<<< HEAD
-=======
 // Obtener rutas por ID de ciudad (a través del usuario)
 export const findRoutesByCityId = async (cityId) => {
   const [rows] = await pool.query(
@@ -132,4 +117,4 @@ export const findAllPendingRoutes = async () => {
   );
   return rows;
 };
->>>>>>> origin/feature/garcia
+

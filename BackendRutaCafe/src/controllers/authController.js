@@ -16,9 +16,6 @@ export const login = async (req, res) => {
     // Buscar usuario
     const user = await findUserByEmail(email);
     if (!user) return res.status(400).json({ message: "Usuario no encontrado" });
-<<<<<<< HEAD
-
-=======
 // Validar que el usuario tenga rol 2 o 3
     if (user.role === 1) {
       console.log("los administradores no pueden ingresar a la app");
@@ -27,7 +24,6 @@ export const login = async (req, res) => {
         
       });
     }
->>>>>>> origin/feature/garcia
     // Validar contraseña
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) return res.status(400).json({ message: "Contraseña incorrecta" });
@@ -72,9 +68,7 @@ export const login = async (req, res) => {
     res.status(500).json({ message: "Error en el servidor" });
   }
 };
-<<<<<<< HEAD
 
-=======
 // 🔐 Login para administradores (rol 1)
 export const adminLogin = async (req, res) => {
   try {
@@ -134,7 +128,7 @@ export const adminLogin = async (req, res) => {
     res.status(500).json({ message: "Error en el servidor" });
   }
 };
->>>>>>> origin/feature/garcia
+
 // 📝 Registro (se mantiene igual)
 export const register = async (req, res) => {
   try {

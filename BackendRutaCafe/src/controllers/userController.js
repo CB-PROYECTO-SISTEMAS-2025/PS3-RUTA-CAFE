@@ -1,8 +1,5 @@
-<<<<<<< HEAD
-import { findUserById, updateUser, deleteUser } from "../models/userModel.js";
-=======
+
 import { findUserById, updateUser, deleteUser,findUsersByCityId,findUserWithCity,updateUserRoleModel, getAllCities, findAllUsers, findUsersBySpecificCity} from "../models/userModel.js";
->>>>>>> origin/feature/garcia
 
 export const getProfile = async (req, res) => {
   try {
@@ -36,8 +33,6 @@ export const deleteProfile = async (req, res) => {
     res.status(500).json({ message: "Error al eliminar cuenta" });
   }
 };
-<<<<<<< HEAD
-=======
 
 export const getUsersByAdminCity = async (req, res) => {
   try {
@@ -188,4 +183,4 @@ export const getCities = async (req, res) => {
     });
   }
 };
->>>>>>> origin/feature/garcia
+
