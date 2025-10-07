@@ -16,7 +16,18 @@ export const login = async (req, res) => {
     // Buscar usuario
     const user = await findUserByEmail(email);
     if (!user) return res.status(400).json({ message: "Usuario no encontrado" });
+<<<<<<< HEAD
 
+=======
+// Validar que el usuario tenga rol 2 o 3
+    if (user.role === 1) {
+      console.log("los administradores no pueden ingresar a la app");
+      return res.status(403).json({ 
+        message: "Acceso denegado. Use el endpoint de administradores."
+        
+      });
+    }
+>>>>>>> origin/feature/garcia
     // Validar contraseña
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) return res.status(400).json({ message: "Contraseña incorrecta" });
@@ -61,7 +72,69 @@ export const login = async (req, res) => {
     res.status(500).json({ message: "Error en el servidor" });
   }
 };
+<<<<<<< HEAD
 
+=======
+// 🔐 Login para administradores (rol 1)
+export const adminLogin = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    console.log("🔐 Login de administrador - Email recibido:", email);
+
+    // Buscar usuario
+    const user = await findUserByEmail(email);
+    if (!user) return res.status(400).json({ message: "Usuario no encontrado" });
+
+    // Validar que el usuario sea administrador (rol 1)
+    if (user.role !== 1) {
+      return res.status(403).json({ 
+        message: "Acceso denegado. Solo administradores pueden acceder aquí." 
+      });
+    }
+
+    // Validar contraseña
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) return res.status(400).json({ message: "Contraseña incorrecta" });
+
+    console.log("👨‍💼 Admin user:", {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role
+    });
+
+    // Generar token
+    let token;
+    try {
+      token = generateToken(user);
+      console.log("✅ Token de administrador generado exitosamente");
+    } catch (tokenError) {
+      console.error("❌ Error generando token:", tokenError.message);
+      return res.status(500).json({ 
+        message: "Error interno del servidor",
+        error: process.env.NODE_ENV === 'development' ? tokenError.message : undefined
+      });
+    }
+
+    return res.json({
+      message: `Bienvenido administrador ${user.name} ${user.lastName}`,
+      token,
+      user: {
+        id: user.id,
+        fullName: `${user.name} ${user.lastName} ${user.secondLastName || ""}`,
+        email: user.email,
+        role: user.role,
+        phone: user.phone,
+        isAdmin: true
+      },
+    });
+
+  } catch (error) {
+    console.error("Error en adminLogin:", error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+};
+>>>>>>> origin/feature/garcia
 // 📝 Registro (se mantiene igual)
 export const register = async (req, res) => {
   try {

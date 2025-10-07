@@ -1,4 +1,3 @@
-// app.js
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -22,11 +21,12 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-app.get("/", (_req, res) => {
+// Ruta de prueba
+app.get("/", (req, res) => {
   res.send("Servidor BackendRutaCafe funcionando 🚀");
 });
 
-// 🔓 públicas + opcional con maybeAuth adentro
+// Rutas de autenticación
 app.use("/api/auth", authRoutes);
 app.use("/api/routes", routeRoutes);
 app.use("/api/places", placeRoutes);

@@ -11,6 +11,7 @@ export const createRoute = async ({ name, description, status, image_url, create
   return result.insertId;
 };
 
+<<<<<<< HEAD
 // Ajuste: acepta filtro del viewer
 export const getAllRoutes = async (viewer = { role: 0, userId: null }) => {
   let where = "";
@@ -28,13 +29,51 @@ export const getAllRoutes = async (viewer = { role: 0, userId: null }) => {
   const [rows] = await pool.query(
     `SELECT * FROM \`${SCHEMA}\`.route ${where} ORDER BY createdAt DESC`,
     params
+=======
+// Obtener todas las rutas
+export const getAllRoutes = async () => {
+  const [rows] = await pool.query(`SELECT * FROM \`${SCHEMA}\`.route ORDER BY createdAt DESC`);
+  return rows;
+};
+
+// Obtener todas las rutas PENDIENTES
+export const getAllRoutesPending = async () => {
+  const [rows] = await pool.query(
+    `SELECT 
+      r.*,
+      u.name as creatorName,
+      u.lastName as creatorLastName,
+      u.City_id,
+      c.name as cityName
+     FROM route r
+     JOIN users u ON r.createdBy = u.id
+     LEFT JOIN city c ON u.City_id = c.id
+     WHERE r.status = 'pendiente'
+     ORDER BY r.createdAt DESC`
+>>>>>>> origin/feature/garcia
   );
   return rows;
 };
 
 // Obtener ruta por ID
 export const getRouteById = async (id) => {
+<<<<<<< HEAD
   const [rows] = await pool.query(`SELECT * FROM \`${SCHEMA}\`.route WHERE id = ?`, [id]);
+=======
+  const [rows] = await pool.query(
+    `SELECT 
+      r.*,
+      u.name as creatorName,
+      u.lastName as creatorLastName,
+      u.City_id,
+      c.name as cityName
+     FROM route r
+     JOIN users u ON r.createdBy = u.id
+     LEFT JOIN city c ON u.City_id = c.id
+     WHERE r.id = ?`,
+    [id]
+  );
+>>>>>>> origin/feature/garcia
   return rows[0];
 };
 
@@ -55,3 +94,42 @@ export const deleteRoute = async (id) => {
   const [result] = await pool.query(`DELETE FROM \`${SCHEMA}\`.route WHERE id = ?`, [id]);
   return result.affectedRows;
 };
+<<<<<<< HEAD
+=======
+// Obtener rutas por ID de ciudad (a través del usuario)
+export const findRoutesByCityId = async (cityId) => {
+  const [rows] = await pool.query(
+    `SELECT 
+      r.*,
+      u.name as creatorName,
+      u.lastName as creatorLastName,
+      u.City_id,
+      c.name as cityName
+     FROM route r
+     JOIN users u ON r.createdBy = u.id
+     LEFT JOIN city c ON u.City_id = c.id
+     WHERE u.City_id = ? AND r.status = 'pendiente'
+     ORDER BY r.createdAt DESC`,
+    [cityId]
+  );
+  return rows;
+};
+
+// Obtener todas las rutas pendientes (para filtro "todas las ciudades")
+export const findAllPendingRoutes = async () => {
+  const [rows] = await pool.query(
+    `SELECT 
+      r.*,
+      u.name as creatorName,
+      u.lastName as creatorLastName,
+      u.City_id,
+      c.name as cityName
+     FROM route r
+     JOIN users u ON r.createdBy = u.id
+     LEFT JOIN city c ON u.City_id = c.id
+     WHERE r.status = 'pendiente'
+     ORDER BY r.createdAt DESC`
+  );
+  return rows;
+};
+>>>>>>> origin/feature/garcia

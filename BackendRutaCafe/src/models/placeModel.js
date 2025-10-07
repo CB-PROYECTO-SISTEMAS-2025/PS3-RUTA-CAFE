@@ -62,6 +62,7 @@ export const deletePlaceSchedules = async (placeId) => {
   return result.affectedRows;
 };
 
+<<<<<<< HEAD
 // src/models/placeModel.js
 export const getAllPlaces = async (user) => {
   const { id: userId, role } = user || { id: null, role: 0 };
@@ -83,10 +84,38 @@ export const getAllPlaces = async (user) => {
            ${userId ? `
              EXISTS(SELECT 1 FROM \`${SCHEMA}\`.likes l2 WHERE l2.place_id = p.id AND l2.user_id = ?) AS user_liked
            ` : `FALSE AS user_liked`}
+=======
+// Leer lugares con counts de likes y comentarios
+export const getAllPlaces = async (userId = null) => {
+  let query = `
+    SELECT 
+      p.*, 
+      r.name AS route_name,
+      COUNT(DISTINCT l.id) as likes_count,
+      COUNT(DISTINCT c.id) as comments_count
+  `;
+
+  // Agregar user_liked solo si se proporciona userId
+  if (userId) {
+    query += `,
+      EXISTS(
+        SELECT 1 FROM \`${SCHEMA}\`.likes l2 
+        WHERE l2.place_id = p.id AND l2.user_id = ?
+      ) as user_liked
+    `;
+  } else {
+    query += `,
+      FALSE as user_liked
+    `;
+  }
+
+  query += `
+>>>>>>> origin/feature/garcia
     FROM \`${SCHEMA}\`.place p
     LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
     LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
     LEFT JOIN \`${SCHEMA}\`.comment c ON p.id = c.place_id
+<<<<<<< HEAD
     WHERE ${where}
     GROUP BY p.id
     ORDER BY p.createdAt DESC
@@ -116,11 +145,47 @@ export const getPlacesByRoute = async (routeId, user) => {
            ${userId ? `
              EXISTS(SELECT 1 FROM \`${SCHEMA}\`.likes l2 WHERE l2.place_id = p.id AND l2.user_id = ?) AS user_liked
            ` : `FALSE AS user_liked`}
+=======
+    GROUP BY p.id
+    ORDER BY p.createdAt DESC
+  `;
+
+  const params = userId ? [userId] : [];
+  const [rows] = await pool.query(query, params);
+  return rows;
+};
+
+export const getPlacesByRoute = async (routeId, userId = null) => {
+  let query = `
+    SELECT 
+      p.*, 
+      r.name AS route_name,
+      COUNT(DISTINCT l.id) as likes_count,
+      COUNT(DISTINCT c.id) as comments_count
+  `;
+
+  // Agregar user_liked solo si se proporciona userId
+  if (userId) {
+    query += `,
+      EXISTS(
+        SELECT 1 FROM \`${SCHEMA}\`.likes l2 
+        WHERE l2.place_id = p.id AND l2.user_id = ?
+      ) as user_liked
+    `;
+  } else {
+    query += `,
+      FALSE as user_liked
+    `;
+  }
+
+  query += `
+>>>>>>> origin/feature/garcia
     FROM \`${SCHEMA}\`.place p
     LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
     LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
     LEFT JOIN \`${SCHEMA}\`.comment c ON p.id = c.place_id
     WHERE p.route_id = ?
+<<<<<<< HEAD
       ${extraWhere}
     GROUP BY p.id
     ORDER BY p.createdAt DESC
@@ -131,6 +196,17 @@ export const getPlacesByRoute = async (routeId, user) => {
 };
 
 
+=======
+    GROUP BY p.id
+    ORDER BY p.createdAt DESC
+  `;
+
+  const params = userId ? [userId, routeId] : [routeId];
+  const [rows] = await pool.query(query, params);
+  return rows;
+};
+
+>>>>>>> origin/feature/garcia
 export const getPlaceById = async (id, userId = null) => {
   let query = `
     SELECT 
@@ -251,4 +327,81 @@ export const deletePlace = async (id) => {
     [id]
   );
   return result.affectedRows;
+<<<<<<< HEAD
+=======
+};
+// Obtener lugares por ID de ciudad (a través del usuario creador)
+export const findPlacesByCityId = async (cityId) => {
+  const [rows] = await pool.query(
+    `SELECT 
+      p.*, 
+      r.name AS route_name,
+      u.name as creatorName,
+      u.lastName as creatorLastName,
+      u.City_id,
+      c.name as cityName,
+      COUNT(DISTINCT l.id) as likes_count,
+      COUNT(DISTINCT cm.id) as comments_count
+    FROM \`${SCHEMA}\`.place p
+    LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
+    LEFT JOIN \`${SCHEMA}\`.users u ON p.createdBy = u.id
+    LEFT JOIN \`${SCHEMA}\`.city c ON u.City_id = c.id
+    LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
+    LEFT JOIN \`${SCHEMA}\`.comment cm ON p.id = cm.place_id
+    WHERE u.City_id = ? AND p.status = 'pendiente'
+    GROUP BY p.id
+    ORDER BY p.createdAt DESC`,
+    [cityId]
+  );
+
+  // Obtener horarios para cada lugar
+  const placesWithSchedules = await Promise.all(
+    rows.map(async (place) => {
+      const schedules = await getSchedulesByPlaceId(place.id);
+      return {
+        ...place,
+        schedules
+      };
+    })
+  );
+
+  return placesWithSchedules;
+};
+
+// Obtener todos los lugares pendientes
+export const findAllPendingPlaces = async () => {
+  const [rows] = await pool.query(
+    `SELECT 
+      p.*, 
+      r.name AS route_name,
+      u.name as creatorName,
+      u.lastName as creatorLastName,
+      u.City_id,
+      c.name as cityName,
+      COUNT(DISTINCT l.id) as likes_count,
+      COUNT(DISTINCT cm.id) as comments_count
+    FROM \`${SCHEMA}\`.place p
+    LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
+    LEFT JOIN \`${SCHEMA}\`.users u ON p.createdBy = u.id
+    LEFT JOIN \`${SCHEMA}\`.city c ON u.City_id = c.id
+    LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
+    LEFT JOIN \`${SCHEMA}\`.comment cm ON p.id = cm.place_id
+    WHERE p.status = 'pendiente'
+    GROUP BY p.id
+    ORDER BY p.createdAt DESC`
+  );
+
+  // Obtener horarios para cada lugar
+  const placesWithSchedules = await Promise.all(
+    rows.map(async (place) => {
+      const schedules = await getSchedulesByPlaceId(place.id);
+      return {
+        ...place,
+        schedules
+      };
+    })
+  );
+
+  return placesWithSchedules;
+>>>>>>> origin/feature/garcia
 };
