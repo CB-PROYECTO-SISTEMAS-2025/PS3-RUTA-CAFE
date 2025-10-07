@@ -62,81 +62,120 @@ export const deletePlaceSchedules = async (placeId) => {
   return result.affectedRows;
 };
 
-// Leer lugares con counts de likes y comentarios
-export const getAllPlaces = async (userId = null) => {
-  let query = `
-    SELECT 
-      p.*, 
-      r.name AS route_name,
-      COUNT(DISTINCT l.id) as likes_count,
-      COUNT(DISTINCT c.id) as comments_count
-  `;
+// src/models/placeModel.js
+export const getAllPlaces = async (user = null) => {
+  // Soporta user como objeto { id, role } o como userId directo
+  let userId = null;
+  let role = 0;
 
-  // Agregar user_liked solo si se proporciona userId
-  if (userId) {
-    query += `,
-      EXISTS(
-        SELECT 1 FROM \`${SCHEMA}\`.likes l2 
-        WHERE l2.place_id = p.id AND l2.user_id = ?
-      ) as user_liked
-    `;
-  } else {
-    query += `,
-      FALSE as user_liked
-    `;
+  if (user && typeof user === 'object') {
+    userId = user.id ?? null;
+    role = user.role ?? 0;
+  } else if (typeof user === 'number' || typeof user === 'string') {
+    userId = Number(user) || null;
   }
 
-  query += `
+  // WHERE dinámico
+  let where = '1=1';
+  const whereParams = [];
+
+  if (role === 2 && userId) {
+    // Técnico / creador: ve solo lo suyo
+    where = 'p.createdBy = ?';
+    whereParams.push(userId);
+  } else {
+    // Público / otros roles: solo aprobadas
+    where = "p.status = 'aprobada'";
+  }
+
+  // SELECT con user_liked opcional
+  const query = `
+    SELECT 
+      p.*,
+      r.name AS route_name,
+      COUNT(DISTINCT l.id) AS likes_count,
+      COUNT(DISTINCT c.id) AS comments_count,
+      ${
+        userId
+          ? `EXISTS(
+               SELECT 1 FROM \`${SCHEMA}\`.likes l2 
+               WHERE l2.place_id = p.id AND l2.user_id = ?
+             ) AS user_liked`
+          : `FALSE AS user_liked`
+      }
     FROM \`${SCHEMA}\`.place p
     LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
     LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
     LEFT JOIN \`${SCHEMA}\`.comment c ON p.id = c.place_id
+    WHERE ${where}
     GROUP BY p.id
     ORDER BY p.createdAt DESC
   `;
 
-  const params = userId ? [userId] : [];
+  // Orden de parámetros: primero el de user_liked (si aplica), luego los del WHERE
+  const params = userId ? [userId, ...whereParams] : whereParams;
+
   const [rows] = await pool.query(query, params);
   return rows;
 };
 
-export const getPlacesByRoute = async (routeId, userId = null) => {
-  let query = `
-    SELECT 
-      p.*, 
-      r.name AS route_name,
-      COUNT(DISTINCT l.id) as likes_count,
-      COUNT(DISTINCT c.id) as comments_count
-  `;
+// src/models/placeModel.js
+export const getPlacesByRoute = async (routeId, user = null) => {
+  // user puede ser { id, role } o un userId directo
+  let userId = null;
+  let role = 0;
 
-  // Agregar user_liked solo si se proporciona userId
-  if (userId) {
-    query += `,
-      EXISTS(
-        SELECT 1 FROM \`${SCHEMA}\`.likes l2 
-        WHERE l2.place_id = p.id AND l2.user_id = ?
-      ) as user_liked
-    `;
-  } else {
-    query += `,
-      FALSE as user_liked
-    `;
+  if (user && typeof user === 'object') {
+    userId = user.id ?? null;
+    role = user.role ?? 0;
+  } else if (typeof user === 'number' || typeof user === 'string') {
+    userId = Number(user) || null;
   }
 
-  query += `
+  // WHERE dinámico
+  let extraWhere = '';
+  const whereParams = [routeId];
+
+  if (role === 2 && userId) {
+    // técnico/creador: solo lo suyo
+    extraWhere = 'AND p.createdBy = ?';
+    whereParams.push(userId);
+  } else {
+    // público u otros roles: solo aprobadas
+    extraWhere = "AND p.status = 'aprobada'";
+  }
+
+  const query = `
+    SELECT 
+      p.*,
+      r.name AS route_name,
+      COUNT(DISTINCT l.id) AS likes_count,
+      COUNT(DISTINCT c.id) AS comments_count,
+      ${
+        userId
+          ? `EXISTS(
+               SELECT 1 FROM \`${SCHEMA}\`.likes l2
+               WHERE l2.place_id = p.id AND l2.user_id = ?
+             ) AS user_liked`
+          : `FALSE AS user_liked`
+      }
     FROM \`${SCHEMA}\`.place p
     LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
     LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
     LEFT JOIN \`${SCHEMA}\`.comment c ON p.id = c.place_id
     WHERE p.route_id = ?
+      ${extraWhere}
     GROUP BY p.id
     ORDER BY p.createdAt DESC
   `;
 
-  const params = userId ? [userId, routeId] : [routeId];
+  // Si hay userId: primero para EXISTS, luego routeId y posible createdBy
+  const params = userId ? [userId, ...whereParams] : whereParams;
+
   const [rows] = await pool.query(query, params);
   return rows;
 };
+
 
 export const getPlaceById = async (id, userId = null) => {
   let query = `
@@ -258,4 +297,78 @@ export const deletePlace = async (id) => {
     [id]
   );
   return result.affectedRows;
+};
+// Obtener lugares por ID de ciudad (a través del usuario creador)
+export const findPlacesByCityId = async (cityId) => {
+  const [rows] = await pool.query(
+    `SELECT 
+      p.*, 
+      r.name AS route_name,
+      u.name as creatorName,
+      u.lastName as creatorLastName,
+      u.City_id,
+      c.name as cityName,
+      COUNT(DISTINCT l.id) as likes_count,
+      COUNT(DISTINCT cm.id) as comments_count
+    FROM \`${SCHEMA}\`.place p
+    LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
+    LEFT JOIN \`${SCHEMA}\`.users u ON p.createdBy = u.id
+    LEFT JOIN \`${SCHEMA}\`.city c ON u.City_id = c.id
+    LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
+    LEFT JOIN \`${SCHEMA}\`.comment cm ON p.id = cm.place_id
+    WHERE u.City_id = ? AND p.status = 'pendiente'
+    GROUP BY p.id
+    ORDER BY p.createdAt DESC`,
+    [cityId]
+  );
+
+  // Obtener horarios para cada lugar
+  const placesWithSchedules = await Promise.all(
+    rows.map(async (place) => {
+      const schedules = await getSchedulesByPlaceId(place.id);
+      return {
+        ...place,
+        schedules
+      };
+    })
+  );
+
+  return placesWithSchedules;
+};
+
+// Obtener todos los lugares pendientes
+export const findAllPendingPlaces = async () => {
+  const [rows] = await pool.query(
+    `SELECT 
+      p.*, 
+      r.name AS route_name,
+      u.name as creatorName,
+      u.lastName as creatorLastName,
+      u.City_id,
+      c.name as cityName,
+      COUNT(DISTINCT l.id) as likes_count,
+      COUNT(DISTINCT cm.id) as comments_count
+    FROM \`${SCHEMA}\`.place p
+    LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
+    LEFT JOIN \`${SCHEMA}\`.users u ON p.createdBy = u.id
+    LEFT JOIN \`${SCHEMA}\`.city c ON u.City_id = c.id
+    LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
+    LEFT JOIN \`${SCHEMA}\`.comment cm ON p.id = cm.place_id
+    WHERE p.status = 'pendiente'
+    GROUP BY p.id
+    ORDER BY p.createdAt DESC`
+  );
+
+  // Obtener horarios para cada lugar
+  const placesWithSchedules = await Promise.all(
+    rows.map(async (place) => {
+      const schedules = await getSchedulesByPlaceId(place.id);
+      return {
+        ...place,
+        schedules
+      };
+    })
+  );
+
+  return placesWithSchedules;
 };

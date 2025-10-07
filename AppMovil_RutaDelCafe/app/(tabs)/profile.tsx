@@ -1,27 +1,27 @@
 // app/(tabs)/profile.tsx
-import { withAuth } from "../../components/ui/withAuth";
-import { useRouter } from "expo-router";
-import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
-  TextInput,
-  Modal,
-  Keyboard,
-  TouchableWithoutFeedback,
-  KeyboardAvoidingView,
-  Platform,
-  Image,
-} from "react-native";
-import * as Animatable from "react-native-animatable";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Picker } from "@react-native-picker/picker";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+} from "react-native";
+import * as Animatable from "react-native-animatable";
+import { withAuth } from "../../components/ui/withAuth";
 
 // Banderas locales
 const LaPazFlag = require("../images/Banderas/LaPaz.jpg");
@@ -100,6 +100,7 @@ function ProfileScreen() {
   const [alertType, setAlertType] = useState<"success" | "error">("success");
   const [showCityPicker, setShowCityPicker] = useState(false);
   const [showPhoneCodePicker, setShowPhoneCodePicker] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(true); // 🔥 NUEVO: control de autenticación
 
   const [editedData, setEditedData] = useState<EditedData>({
     name: "",
@@ -164,6 +165,8 @@ function ProfileScreen() {
     try {
       const token = await AsyncStorage.getItem("userToken");
       if (!token) {
+        // 🔥 NUEVO: Si no hay token, redirigir inmediatamente
+        setIsAuthenticated(false);
         router.replace("/(tabs)/advertisement");
         return;
       }
@@ -196,6 +199,12 @@ function ProfileScreen() {
       });
     } catch {
       showAlert("error", "Error al cargar los datos del perfil");
+      // 🔥 NUEVO: En caso de error, verificar autenticación
+      const token = await AsyncStorage.getItem("userToken");
+      if (!token) {
+        setIsAuthenticated(false);
+        router.replace("/(tabs)/advertisement");
+      }
     } finally {
       setLoading(false);
     }
@@ -318,6 +327,8 @@ function ProfileScreen() {
             showAlert("success", "Cuenta eliminada correctamente");
             await AsyncStorage.removeItem("userToken");
             await AsyncStorage.removeItem("userData");
+            setIsAuthenticated(false); // 🔥 NUEVO: Actualizar estado
+            router.replace("/(tabs)/advertisement");
           } catch {
             showAlert("error", "Error al eliminar la cuenta");
           }
@@ -335,6 +346,7 @@ function ProfileScreen() {
         onPress: async () => {
           await AsyncStorage.removeItem("userToken");
           await AsyncStorage.removeItem("userData");
+          setIsAuthenticated(false); // 🔥 NUEVO: Actualizar estado
           router.replace("/(tabs)/advertisement");
         },
       },
@@ -355,6 +367,16 @@ function ProfileScreen() {
   const dismissKeyboard = () => Keyboard.dismiss();
   const getSelectedCityLabel = () => cityItems.find((i) => i.value === editedData.City_id)?.label || "Selecciona una ciudad";
   const handleGoHome = () => router.replace("/(tabs)/advertisement");
+
+  // 🔥 NUEVO: Si no está autenticado, mostrar loading o redirigir
+  if (!isAuthenticated) {
+    return (
+      <View className="flex-1 justify-center items-center bg-orange-50">
+        <ActivityIndicator size="large" color="#f97316" />
+        <Text className="mt-4 text-gray-600">Redirigiendo...</Text>
+      </View>
+    );
+  }
 
   if (loading) {
     return (

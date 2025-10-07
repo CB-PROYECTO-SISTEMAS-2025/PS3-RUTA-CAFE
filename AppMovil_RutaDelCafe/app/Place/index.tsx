@@ -1,4 +1,5 @@
 // app/Place/index.tsx
+import { requireAuth } from '../utils/requireAuth';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -115,7 +116,7 @@ export default function PlacesMapScreen() {
   const [places, setPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [userRole, setUserRole] = useState<number>(3);
+  const [userRole, setUserRole] = useState<number>(0); // 0 = visitante
   const [userId, setUserId] = useState<number>(0);
   const [mapKey, setMapKey] = useState(0);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -144,70 +145,91 @@ export default function PlacesMapScreen() {
     }
   }, [places]);
 
-  const loadUser = async () => {
-    try {
-      const raw = await AsyncStorage.getItem('userData');
-      if (raw) {
-        const user: UserData = JSON.parse(raw);
-        setUserRole(user.role || 3);
-        setUserId(user.id || 0);
-      }
-    } catch {
-      setUserRole(3);
+  // 🔹 Cargar datos del usuario (si hay sesión)
+const loadUser = async () => {
+  try {
+    const userData = await AsyncStorage.getItem('userData');
+    if (userData) {
+      const user: UserData = JSON.parse(userData);
+      setUserRole(user.role || 3);
+      setUserId(user.id || 0);
+    } else {
+      // 🌐 Visitante sin login
+      setUserRole(0);
       setUserId(0);
     }
-  };
+  } catch (error) {
+    console.error('Error loading user data:', error);
+    setUserRole(0);
+  }
+};
 
-  const fetchPlaces = async () => {
-    setLoading(true);
-    setMapLoaded(false);
-    setMapError(false);
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        router.replace('/login');
-        return;
-      }
+// 🔹 Obtener lugares desde backend (permite visitante)
+const fetchPlaces = async () => {
+  setLoading(true);
+  setMapLoaded(false);
+  setMapError(false);
 
-      const base = process.env.EXPO_PUBLIC_API_URL;
-      const url = numericRouteId
-        ? `${base}/api/places/route/${numericRouteId}`
-        : `${base}/api/places`;
-
-      const res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!res.ok) throw new Error('Error al cargar los lugares');
-
-      const data: Place[] = await res.json();
-
-      // Normaliza coords y descarta inválidas
-      const normalized = data
-        .map(p => ({
-          ...p,
-          latitude: typeof p.latitude === 'string' ? parseFloat(p.latitude) : p.latitude,
-          longitude: typeof p.longitude === 'string' ? parseFloat(p.longitude) : p.longitude,
-        }))
-        .filter(
-          p =>
-            typeof p.latitude === 'number' &&
-            typeof p.longitude === 'number' &&
-            !isNaN(p.latitude) &&
-            !isNaN(p.longitude)
-        );
-
-      setPlaces(normalized);
-    } catch (e) {
-      Alert.alert('Error', 'No se pudieron cargar los lugares');
-      console.error(e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    const headers: any = { 
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+    
+    // 👇 Token opcional para visitantes
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
-  };
+
+    let url = `${process.env.EXPO_PUBLIC_API_URL}/api/places`;
+    if (numericRouteId) {
+      url = `${process.env.EXPO_PUBLIC_API_URL}/api/places/route/${numericRouteId}`;
+    }
+
+    console.log('🌐 Fetching places from:', url);
+    console.log('🔐 Token present:', !!token);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Server response:', response.status, errorText);
+      throw new Error(`Error ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Places loaded:', data.length);
+
+    // 🔹 Normalizar coordenadas
+    const normalized = data
+      .map((p: any) => ({
+        ...p,
+        latitude: typeof p.latitude === 'string' ? parseFloat(p.latitude) : p.latitude,
+        longitude: typeof p.longitude === 'string' ? parseFloat(p.longitude) : p.longitude,
+      }))
+      .filter(
+        (p: any) =>
+          typeof p.latitude === 'number' &&
+          typeof p.longitude === 'number' &&
+          !isNaN(p.latitude) &&
+          !isNaN(p.longitude)
+      );
+
+    setPlaces(normalized);
+  } catch (error) {
+    console.error('❌ Error cargando lugares:', error);
+    Alert.alert('Error', 'No se pudieron cargar los lugares: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+};
+
+
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -308,12 +330,15 @@ export default function PlacesMapScreen() {
   };
 
   // === FILTRO SEGÚN ROL ===
-  const visiblePlaces = useMemo(() => {
-    if (isAdmin) {
-      return places.filter(p => p.createdBy === userId);
-    }
+const visiblePlaces = useMemo(() => {
+  if (isAdmin) {
+    // Técnico: ve solo sus lugares (todos los estados)
+    return places.filter(p => p.createdBy === userId);
+  } else {
+    // Usuario logueado o visitante: ve solo lugares aprobados
     return places.filter(p => p.status === 'aprobada');
-  }, [isAdmin, places, userId]);
+  }
+}, [isAdmin, places, userId]);
 
   const resolvedRouteName =
     routeName ||
@@ -801,31 +826,34 @@ export default function PlacesMapScreen() {
                     </>
                   )}
 
-                  {isUser && (
-                    <>
-                      <TouchableOpacity
-                        onPress={() => toggleLike(place.id)}
-                        className="flex-1 bg-pink-100 py-2 rounded-xl border border-pink-300 flex-row items-center justify-center"
-                      >
-                        <Ionicons 
-                          name={place.user_liked ? "heart" : "heart-outline"} 
-                          size={18} 
-                          color="#ec4899" 
-                        />
-                        <Text className="text-pink-700 font-semibold ml-2">
-                          {place.user_liked ? 'Quitar' : 'Like'}
-                        </Text>
-                      </TouchableOpacity>
+                   {isUser ? (
+    <>
+      <TouchableOpacity
+        onPress={() => toggleLike(place.id)}
+        className="flex-1 bg-pink-100 py-2 rounded-xl border border-pink-300 flex-row items-center justify-center"
+      >
+        <Ionicons name={place.user_liked ? "heart" : "heart-outline"} size={18} color="#ec4899" />
+        <Text className="text-pink-700 font-semibold ml-2">
+          {place.user_liked ? 'Quitar' : 'Like'}
+        </Text>
+      </TouchableOpacity>
 
-                      <TouchableOpacity
-                        onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
-                        className="flex-1 bg-green-100 py-2 rounded-xl border border-green-300 flex-row items-center justify-center"
-                      >
-                        
-                        <Text className="text-green-700 font-semibold ml-2">Comentarios</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
+      <TouchableOpacity
+        onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
+        className="flex-1 bg-green-100 py-2 rounded-xl border border-green-300 flex-row items-center justify-center"
+      >
+        <Text className="text-green-700 font-semibold ml-2">Comentarios</Text>
+      </TouchableOpacity>
+    </>
+  ) : (
+    // Visitante: solo ver comentarios
+    <TouchableOpacity
+      onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
+      className="flex-1 bg-green-100 py-2 rounded-xl border border-green-300 flex-row items-center justify-center"
+    >
+      <Text className="text-green-700 font-semibold ml-2">Comentarios</Text>
+    </TouchableOpacity>
+  )}
                 </View>
               </View>
             ))

@@ -3,27 +3,36 @@ import { useEffect, useState } from "react";
 import { Redirect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+/**
+ * 🔹 ExploreTab
+ * Este componente determina a dónde redirigir cuando se toca la pestaña "Rutas".
+ * - Si hay sesión, redirige a /Route
+ * - Si no hay sesión (visitante), también redirige a /Route (modo público)
+ */
 export default function ExploreTab() {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+  const [isReady, setIsReady] = useState(false);
+  const [hasSession, setHasSession] = useState(false);
 
   useEffect(() => {
-    const checkLoginStatus = async () => {
-      const token = await AsyncStorage.getItem("userToken");
-      setIsLoggedIn(!!token);
+    const checkSession = async () => {
+      try {
+        const token = await AsyncStorage.getItem("userToken");
+        setHasSession(!!token); // true si hay token
+      } catch (error) {
+        console.error("Error verificando sesión:", error);
+      } finally {
+        setIsReady(true);
+      }
     };
-    checkLoginStatus();
+    checkSession();
   }, []);
 
-  if (isLoggedIn === null) {
-    // todavía cargando
+  if (!isReady) {
+    // 🔸 Espera hasta cargar el estado del token
     return null;
   }
 
-  if (!isLoggedIn) {
-    // si no está logueado, lo manda a login
-    return <Redirect href="/login" />;
-  }
-
-  // si está logueado, lo manda a Route
+  // ✅ En ambos casos (con o sin login) redirige a /Route
+  // El acceso a rutas es público desde el backend
   return <Redirect href="/Route" />;
 }

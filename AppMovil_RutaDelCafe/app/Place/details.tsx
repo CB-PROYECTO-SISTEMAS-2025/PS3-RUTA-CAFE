@@ -66,26 +66,29 @@ export default function PlaceDetailsScreen() {
     }
   }, [placeId]);
 
-  const fetchPlace = async () => {
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        router.replace('/login');
-        return;
-      }
+ const fetchPlace = async () => {
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    const headers: any = { 
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+    
+    // 👇 Token opcional para visitantes
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${placeId}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${placeId}`, {
+      method: 'GET',
+      headers,
+    });
 
-      if (response.ok) {
-        const placeData = await response.json();
-        
-        // Verificar si es favorito
+    if (response.ok) {
+      const placeData = await response.json();
+      
+      // Solo verificar favoritos si hay token
+      if (token) {
         const favoriteResponse = await fetch(
           `${process.env.EXPO_PUBLIC_API_URL}/api/favorites/check/${placeId}`,
           {
@@ -102,23 +105,23 @@ export default function PlaceDetailsScreen() {
             is_favorite: favoriteData.data.is_favorite,
             favorite_count: favoriteData.data.favorite_count || 0
           });
-        } else {
-          setPlace(placeData);
+          return;
         }
-      } else if (response.status === 401) {
-        await AsyncStorage.removeItem('userToken');
-        router.replace('/login');
-      } else {
-        throw new Error('Error al cargar el lugar');
       }
-    } catch (error) {
-      console.error('Error fetching place:', error);
-      Alert.alert('Error', 'No se pudo cargar la información del lugar');
-      safeGoBack();
-    } finally {
-      setLoading(false);
+      
+      // Si no hay token o falla la verificación de favoritos
+      setPlace(placeData);
+    } else {
+      throw new Error('Error al cargar el lugar');
     }
-  };
+  } catch (error) {
+    console.error('Error fetching place:', error);
+    Alert.alert('Error', 'No se pudo cargar la información del lugar');
+    safeGoBack();
+  } finally {
+    setLoading(false);
+  }
+};
 
   const toggleFavorite = async () => {
     if (!place) return;

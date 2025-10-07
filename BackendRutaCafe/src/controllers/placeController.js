@@ -8,10 +8,13 @@ import {
   deletePlace,
   createPlaceSchedules,
   getSchedulesByPlaceId,
-  deletePlaceSchedules
+  deletePlaceSchedules,
+  findPlacesByCityId,
+  findAllPendingPlaces
 } from "../models/placeModel.js";
 import pool, { SCHEMA } from "../config/db.js";
 import path from "path";
+import { findUserWithCity, getAllCities } from "../models/userModel.js";
 
 // genera URL pública absoluta si viene relativa
 const toPublicUrl = (req, maybeRelative) => {
@@ -103,7 +106,13 @@ export const createPlaceController = async (req, res) => {
 
 export const getPlacesController = async (req, res) => {
   try {
-    const places = await getAllPlaces();
+    // 👇 Obtener userId del token si existe, sino null
+    const userId = req.user?.id || null;
+    console.log("➡️ getPlacesController user=", req.user);
+
+    console.log(`📊 Cargando lugares para usuario: ${userId || 'visitante'}`);
+    
+    const places = await getAllPlaces(req.user || { id: null, role: 0 });
     
     // Obtener horarios para cada lugar
     const placesWithSchedules = await Promise.all(
@@ -126,9 +135,13 @@ export const getPlacesController = async (req, res) => {
 
 export const getPlacesByRouteController = async (req, res) => {
   try {
-    const { routeId } = req.params;
-    const places = await getPlacesByRoute(routeId);
+   const { routeId } = req.params;
+    // 👇 Obtener userId del token si existe, sino null
+    const userId = req.user?.id || null;
     
+    console.log(`📊 Cargando lugares de ruta ${routeId} para usuario: ${userId || 'visitante'}`);
+    
+    const places = await getPlacesByRoute(routeId, req.user || { id: null, role: 0 });
     // Obtener horarios para cada lugar
     const placesWithSchedules = await Promise.all(
       places.map(async (place) => {
@@ -151,7 +164,14 @@ export const getPlacesByRouteController = async (req, res) => {
 export const getPlaceByIdController = async (req, res) => {
   try {
     const { id } = req.params;
-    const place = await getPlaceById(id);
+    // 👇 Obtener userId del token si existe, sino null
+    const userId = req.user?.id || null;
+    console.log("➡️ getPlacesController user=", req.user);
+
+    
+    console.log(`📊 Cargando lugar ${id} para usuario: ${userId || 'visitante'}`);
+    
+    const place = await getPlaceById(id, userId);
     if (!place) return res.status(404).json({ message: "Lugar no encontrado" });
     
     // Obtener horarios del lugar
@@ -244,6 +264,133 @@ export const deletePlaceController = async (req, res) => {
     res.json({ message: "Lugar eliminado permanentemente" });
   } catch (error) {
     console.error("Error al eliminar lugar:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+};
+// Obtener lugares pendientes de la ciudad del admin
+export const getPlacesByAdminCity = async (req, res) => {
+  try {
+    const adminId = req.user.id;
+    
+    const admin = await findUserWithCity(adminId);
+    if (!admin) {
+      return res.status(404).json({ message: "Administrador no encontrado" });
+    }
+
+    if (!admin.City_id) {
+      return res.status(400).json({ message: "El administrador no tiene ciudad asignada" });
+    }
+
+    // Obtener lugares pendientes de usuarios de la misma ciudad
+    const places = await findPlacesByCityId(admin.City_id);
+    // Convertir URLs de imágenes
+    const placesWithPublicUrls = places.map(place => ({
+      ...place,
+      image_url: place.image_url ? toPublicUrl(req, place.image_url) : ""
+    }));
+
+    res.json({
+      message: "Lugares obtenidos correctamente",
+      places,
+      adminCity: {
+        id: admin.City_id,
+        name: admin.cityName || 'Ciudad no especificada'
+      }
+    });
+
+  } catch (error) {
+    console.error("Error en getPlacesByAdminCity:", error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+};
+// Obtener lugares por ciudad específica
+export const getPlacesBySpecificCity = async (req, res) => {
+  try {
+    const { cityId } = req.params;
+    
+    if (!cityId) {
+      return res.status(400).json({ message: "ID de ciudad no proporcionado" });
+    }
+
+    const places = await findPlacesByCityId(cityId);
+    const cities = await getAllCities();
+    const selectedCity = cities.find(city => city.id == cityId);
+        // Convertir URLs de imágenes
+    const placesWithPublicUrls = places.map(place => ({
+      ...place,
+      image_url: place.image_url ? toPublicUrl(req, place.image_url) : ""
+    }));
+
+    res.json({
+      message: `Lugares de ${selectedCity?.name || 'ciudad seleccionada'} obtenidos correctamente`,
+      places,
+      selectedCity: selectedCity || { id: cityId, name: 'Ciudad no encontrada' }
+    });
+
+  } catch (error) {
+    console.error("Error en getPlacesBySpecificCity:", error);
+    res.status(500).json({ 
+      message: "Error en el servidor",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Obtener todos los lugares pendientes
+export const getPendingPlacesController = async (req, res) => {
+  try {
+    const places = await findAllPendingPlaces();
+     // Convertir URLs de imágenes
+    const placesWithPublicUrls = places.map(place => ({
+      ...place,
+      image_url: place.image_url ? toPublicUrl(req, place.image_url) : ""
+    }));
+    res.json({
+      message: "Lugares pendientes obtenidos correctamente",
+      places,
+      filter: 'all'
+    });
+  } catch (error) {
+    console.error("Error al obtener lugares pendientes:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+};
+
+// Aprobar o rechazar lugar
+export const approveRejectPlace = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, rejectionComment } = req.body;
+    const modifiedBy = req.user.id;
+
+    if (!['aprobada', 'rechazada'].includes(status)) {
+      return res.status(400).json({ 
+        message: "Estado inválido. Debe ser 'aprobada' o 'rechazada'" 
+      });
+    }
+
+    if (status === 'rechazada' && !rejectionComment) {
+      return res.status(400).json({ 
+        message: "Se requiere un comentario de rechazo" 
+      });
+    }
+
+    const updates = { 
+      status,
+      ...(status === 'rechazada' && { rejectionComment })
+    };
+
+    const updated = await updatePlace(id, updates, modifiedBy);
+    if (updated === 0) return res.status(404).json({ message: "Lugar no encontrado" });
+
+    res.json({ 
+      message: `Lugar ${status} correctamente`,
+      status,
+      rejectionComment: status === 'rechazada' ? rejectionComment : null
+    });
+
+  } catch (error) {
+    console.error("Error al aprobar/rechazar lugar:", error);
     res.status(500).json({ message: "Error interno del servidor" });
   }
 };

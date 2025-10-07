@@ -27,6 +27,14 @@ app.get("/", (_req, res) => {
   res.send("Servidor BackendRutaCafe funcionando 🚀");
 });
 
+// Log simple para cada request y si trae Authorization
+app.use((req, _res, next) => {
+  console.log(
+    `[REQ] ${req.method} ${req.path}  auth=${req.headers.authorization ? 'YES' : 'NO'}`
+  );
+  next();
+});
+
 // Rutas API
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);

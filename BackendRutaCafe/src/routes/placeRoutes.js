@@ -1,6 +1,7 @@
 // src/routes/placeRoutes.js
 import express from "express";
-import { verifyToken } from "../middlewares/authMiddleware.js";
+import { maybeAuth } from "../middlewares/maybeAuth.js";
+import { verifyToken,verifyAdmin } from "../middlewares/authMiddleware.js";
 import {
   createPlaceController,
   getPlacesController,
@@ -8,6 +9,10 @@ import {
   getPlacesByRouteController,
   updatePlaceController,
   deletePlaceController,
+  getPlacesByAdminCity,
+  getPlacesBySpecificCity,
+  getPendingPlacesController,
+  approveRejectPlace
 } from "../controllers/placeController.js";
 import multer from "multer";
 import fs from "fs";
@@ -39,10 +44,18 @@ const upload = multer({
 const router = express.Router();
 
 router.post("/", verifyToken, upload.single("image"), createPlaceController);
-router.get("/", verifyToken, getPlacesController);
-router.get("/route/:routeId", verifyToken, getPlacesByRouteController);
-router.get("/:id", verifyToken, getPlaceByIdController);
+// 🟢 GET públicos (visitante o logueado)
+router.get("/", maybeAuth, getPlacesController);
+router.get("/route/:routeId", maybeAuth, getPlacesByRouteController);
+router.get("/:id", maybeAuth, getPlaceByIdController);
 router.put("/:id", verifyToken, upload.single("image"), updatePlaceController);
 router.delete("/:id", verifyToken, deletePlaceController);
 
+// Rutas de administración para lugares pendientes
+router.get("/admin/pending", verifyAdmin, getPendingPlacesController);
+router.get("/admin/city", verifyAdmin, getPlacesByAdminCity);
+router.get("/admin/city/:cityId", verifyAdmin, getPlacesBySpecificCity);
+router.put("/admin/:id/status", verifyAdmin, approveRejectPlace);
+
+console.log("✅ placeRoutes: GET públicos con maybeAuth, POST/PUT/DELETE con verifyToken");
 export default router;

@@ -34,7 +34,8 @@ export default function RouteDetailsScreen() {
   
   const [route, setRoute] = useState<Route | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState<number>(0);
+  const [userRole, setUserRole] = useState<number>(0); // 0 visitante
+  const [userId, setUserId] = useState<number>(0);
 
   useEffect(() => {
     if (id) {
@@ -43,41 +44,42 @@ export default function RouteDetailsScreen() {
     }
   }, [id]);
 
+  // 🔸 Cargar datos del usuario
   const loadUserData = async () => {
     try {
       const userData = await AsyncStorage.getItem('userData');
       if (userData) {
         const user = JSON.parse(userData);
         setUserRole(user.role || 3);
+        setUserId(user.id || 0);
+      } else {
+        setUserRole(0);
+        setUserId(0);
       }
     } catch (error) {
       console.error('Error loading user data:', error);
+      setUserRole(0);
+      setUserId(0);
     }
   };
 
+  // 🔸 Obtener detalles (sin token)
   const fetchRouteDetails = async () => {
     try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        router.replace('/login');
-        return;
-      }
-
-     const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes/${id}`, {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes/${id}`, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
 
-      if (response.ok) {
+      if (!response.ok) {
+        if (response.status === 404) {
+          Alert.alert('Error', 'Ruta no encontrada');
+        } else {
+          throw new Error('Error al cargar los detalles de la ruta');
+        }
+      } else {
         const routeData = await response.json();
         setRoute(routeData);
-      } else if (response.status === 404) {
-        Alert.alert('Error', 'Ruta no encontrada');
-      } else {
-        throw new Error('Error al cargar los detalles de la ruta');
       }
     } catch (error) {
       console.error('Error fetching route details:', error);
@@ -87,6 +89,7 @@ export default function RouteDetailsScreen() {
     }
   };
 
+  // 🔸 Eliminar ruta (solo admin)
   const handleDelete = async () => {
     if (!route) return;
 
@@ -101,11 +104,14 @@ export default function RouteDetailsScreen() {
           onPress: async () => {
             try {
               const token = await AsyncStorage.getItem('userToken');
+              if (!token) {
+                Alert.alert('Error', 'No tienes permisos para eliminar rutas');
+                return;
+              }
+
               const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes/${route.id}`, {
                 method: 'DELETE',
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                },
+                headers: { 'Authorization': `Bearer ${token}` },
               });
 
               if (response.ok) {
@@ -116,6 +122,7 @@ export default function RouteDetailsScreen() {
               }
             } catch (error) {
               Alert.alert('Error', 'No se pudo eliminar la ruta');
+              console.error('Error deleting route:', error);
             }
           },
         },
@@ -123,36 +130,25 @@ export default function RouteDetailsScreen() {
     );
   };
 
+  // 🔸 Compartir ruta
   const handleShare = async () => {
     if (!route) return;
 
     try {
       const shareMessage = `¡Descubre esta increíble ruta gastronómica! 🍽️\n\n**${route.name}**\n\n${route.description}\n\n¡Ven y disfruta de esta experiencia única! ☕`;
 
-      const result = await Share.share({
+      await Share.share({
         message: shareMessage,
         title: `Compartir: ${route.name}`,
         url: route.image_url && route.image_url !== '19' ? route.image_url : undefined,
       });
-
-      if (result.action === Share.sharedAction) {
-        if (result.activityType) {
-          // Compartido con una app específica
-          console.log('Compartido con:', result.activityType);
-        } else {
-          // Compartido exitosamente
-          console.log('Compartido exitosamente');
-        }
-      } else if (result.action === Share.dismissedAction) {
-        // El usuario canceló el compartir
-        console.log('Compartir cancelado');
-      }
     } catch (error) {
       Alert.alert('Error', 'No se pudo compartir la ruta');
       console.error('Error sharing:', error);
     }
   };
 
+  // 🔸 Comenzar ruta
   const handleStartRoute = () => {
     if (!route) return;
 
@@ -164,58 +160,56 @@ export default function RouteDetailsScreen() {
         {
           text: '¡Vamos!',
           onPress: () => {
-            // Aquí podrías navegar a un mapa o vista de navegación
-            Alert.alert(
-              '¡Excelente!',
-              'La ruta ha comenzado. ¡Disfruta tu experiencia gastronómica!',
-              [
-                {
-                  text: 'Abrir en Maps',
-                  onPress: () => {
-                    // Abrir Google Maps con una ubicación genérica o específica
-                    const mapsUrl = 'https://www.google.com/maps';
-                    Linking.openURL(mapsUrl).catch(() => {
-                      Alert.alert('Error', 'No se pudo abrir la aplicación de mapas');
-                    });
-                  }
-                },
-                { text: 'Continuar', style: 'default' }
-              ]
-            );
+            const mapsUrl = 'https://www.google.com/maps';
+            Linking.openURL(mapsUrl).catch(() => {
+              Alert.alert('Error', 'No se pudo abrir la aplicación de mapas');
+            });
           },
         },
       ]
     );
   };
 
+  // 🔸 Guardar en favoritos — ahora revisa si está logueado
   const handleSaveToFavorites = async () => {
     if (!route) return;
 
     try {
-      // Guardar en AsyncStorage
+      const token = await AsyncStorage.getItem('userToken');
+
+      // 🚨 Si no hay sesión, redirige al login
+      if (!token) {
+        Alert.alert(
+          'Inicia sesión',
+          'Debes iniciar sesión para guardar rutas en favoritos.',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Iniciar sesión', onPress: () => router.push('/login') },
+          ]
+        );
+        return;
+      }
+
+      // Guardar en AsyncStorage local (si está logueado)
       const favoritesKey = 'userFavorites';
       const existingFavorites = await AsyncStorage.getItem(favoritesKey);
       let favorites = existingFavorites ? JSON.parse(existingFavorites) : [];
 
-      // Verificar si ya está en favoritos
       const isAlreadyFavorite = favorites.some((fav: any) => fav.id === route.id);
-      
       if (isAlreadyFavorite) {
         Alert.alert('Información', 'Esta ruta ya está en tus favoritos');
         return;
       }
 
-      // Agregar a favoritos
       favorites.push({
         id: route.id,
         name: route.name,
         description: route.description,
         image_url: route.image_url,
-        addedAt: new Date().toISOString()
+        addedAt: new Date().toISOString(),
       });
 
       await AsyncStorage.setItem(favoritesKey, JSON.stringify(favorites));
-      
       Alert.alert('¡Éxito!', 'Ruta guardada en tus favoritos ❤️');
     } catch (error) {
       Alert.alert('Error', 'No se pudo guardar en favoritos');
@@ -223,6 +217,7 @@ export default function RouteDetailsScreen() {
     }
   };
 
+  // 🔸 Helpers de UI
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'aprobada': return 'bg-green-100 border-green-500 text-green-700';
@@ -275,18 +270,20 @@ export default function RouteDetailsScreen() {
 
   return (
     <View className="flex-1 bg-orange-50">
-      {/* Header con botón volver */}
+      {/* Header */}
       <View className="bg-orange-500 px-6 py-4 rounded-b-3xl shadow-lg">
         <View className="flex-row items-center justify-between">
-          <Text className="text-white text-xl font-bold text-center flex-1 mx-4">
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={26} color="white" />
+          </TouchableOpacity>
+          <Text className="text-white text-xl font-bold flex-1 text-center">
             Detalles de la Ruta
           </Text>
-          <View className="w-8" />
+          <View className="w-6" />
         </View>
       </View>
 
       <ScrollView className="flex-1 px-6 mt-6">
-        {/* Imagen de la ruta */}
         {route.image_url && route.image_url !== '19' ? (
           <Image
             source={{ uri: route.image_url }}
@@ -300,142 +297,89 @@ export default function RouteDetailsScreen() {
           </View>
         )}
 
-        {/* Tarjeta de información */}
+        {/* Info */}
         <View className="bg-white rounded-2xl p-6 shadow-md border border-orange-200">
-          {/* Nombre y estado */}
           <View className="flex-row justify-between items-start mb-4">
             <Text className="text-orange-900 font-bold text-2xl flex-1 mr-4">
               {route.name}
             </Text>
             <View className={`px-4 py-2 rounded-full border flex-row items-center ${getStatusColor(route.status)}`}>
-              <Ionicons 
-                name={getStatusIcon(route.status)} 
-                size={16} 
-                color={route.status === 'aprobada' ? '#16a34a' : route.status === 'rechazada' ? '#dc2626' : '#ea580c'} 
+              <Ionicons
+                name={getStatusIcon(route.status)}
+                size={16}
+                color={route.status === 'aprobada' ? '#16a34a' : route.status === 'rechazada' ? '#dc2626' : '#ea580c'}
               />
-              <Text className="text-sm font-bold ml-2">
-                {getStatusText(route.status)}
-              </Text>
+              <Text className="text-sm font-bold ml-2">{getStatusText(route.status)}</Text>
             </View>
           </View>
 
-          {/* Descripción - Información fundamental para todos */}
-          <View className="mb-4">
-            <Text className="text-orange-800 font-semibold text-lg mb-3">Sobre esta ruta</Text>
-            <Text className="text-orange-700 text-base leading-6">
-              {route.description}
-            </Text>
-          </View>
+          <Text className="text-orange-700 leading-6 mb-4">{route.description}</Text>
 
-          {/* Información adicional - SOLO para administradores */}
           {isAdmin && (
             <View className="border-t border-orange-200 pt-4">
-              <Text className="text-orange-800 font-semibold text-lg mb-3">Información Administrativa</Text>
-              
-              <View className="flex-row items-center mb-3">
-                <Ionicons name="calendar" size={20} color="#f97316" />
-                <Text className="text-orange-700 ml-3 flex-1">
-                  <Text className="font-semibold">Fecha de creación:</Text>{' '}
-                  {new Date(route.createdAt).toLocaleDateString('es-ES', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </Text>
-              </View>
-
-              <View className="flex-row items-center mb-3">
-                <Ionicons name="time" size={20} color="#f97316" />
-                <Text className="text-orange-700 ml-3 flex-1">
-                  <Text className="font-semibold">Hora de creación:</Text>{' '}
-                  {new Date(route.createdAt).toLocaleTimeString('es-ES', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </Text>
-              </View>
-
+              <Text className="text-orange-800 font-semibold text-lg mb-3">
+                Información Administrativa
+              </Text>
+              <Text className="text-orange-700 mb-2">
+                <Text className="font-semibold">Fecha de creación: </Text>
+                {new Date(route.createdAt).toLocaleDateString('es-ES')}
+              </Text>
               {route.modifiedAt && (
-                <View className="flex-row items-center mb-3">
-                  <Ionicons name="create" size={20} color="#f97316" />
-                  <Text className="text-orange-700 ml-3 flex-1">
-                    <Text className="font-semibold">Última modificación:</Text>{' '}
-                    {new Date(route.modifiedAt).toLocaleDateString('es-ES')}
-                  </Text>
-                </View>
-              )}
-
-              <View className="flex-row items-center">
-                <Ionicons name="id-card" size={20} color="#f97316" />
-                <Text className="text-orange-700 ml-3">
-                  <Text className="font-semibold">ID de la ruta:</Text> {route.id}
+                <Text className="text-orange-700">
+                  <Text className="font-semibold">Última modificación: </Text>
+                  {new Date(route.modifiedAt).toLocaleDateString('es-ES')}
                 </Text>
-              </View>
+              )}
             </View>
           )}
         </View>
 
-        {/* Botones de acción */}
-        <View className="mt-6 mb-8">
-          {isAdmin ? (
-            // Botones para administrador
-            <>
-              <TouchableOpacity
-                onPress={() => router.push({
-                  pathname: '/Route/edit',
-                  params: { id: route.id.toString() }
-                })}
-                className="bg-orange-500 py-4 rounded-2xl shadow-lg flex-row items-center justify-center mb-3"
-              >
-                <Ionicons name="pencil" size={24} color="white" />
-                <Text className="text-white font-bold text-lg ml-2">Editar Ruta</Text>
-              </TouchableOpacity>
+{/* Botones */}
+<View className="mt-6 mb-8">
+  {!isAdmin && (
+    <>
+      <TouchableOpacity
+        onPress={handleStartRoute}
+        className="bg-orange-500 py-5 rounded-2xl shadow-lg flex-row items-center justify-center mb-4"
+      >
+        <Ionicons name="cafe" size={28} color="white" />
+        <Text className="text-white font-bold text-xl ml-3">Comenzar Ruta</Text>
+      </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={handleDelete}
-                className="bg-red-500 py-4 rounded-2xl shadow-lg flex-row items-center justify-center mb-3"
-              >
-                <Ionicons name="trash" size={24} color="white" />
-                <Text className="text-white font-bold text-lg ml-2">Eliminar Ruta</Text>
-              </TouchableOpacity>
+      {/* ❌ ELIMINADO: botón de favoritos de rutas */}
+      {/* 
+      <TouchableOpacity
+        onPress={handleSaveToFavorites}
+        className="bg-orange-100 border border-orange-300 py-4 rounded-2xl flex-row items-center justify-center mb-3"
+      >
+        <Ionicons name="heart" size={24} color="#f97316" />
+        <Text className="text-orange-700 font-semibold text-lg ml-2">
+          Agregar a Favoritos
+        </Text>
+      </TouchableOpacity>
+      */}
 
-              <TouchableOpacity
-                onPress={() => router.back()}
-                className="bg-orange-100 border border-orange-400 py-4 rounded-2xl flex-row items-center justify-center"
-              >
-                <Ionicons name="arrow-back" size={24} color="#f97316" />
-                <Text className="text-orange-700 font-semibold text-lg ml-2">Volver a Rutas</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            // Botones para usuario regular - CON FUNCIONALIDAD REAL
-            <>
-              <TouchableOpacity
-                onPress={handleStartRoute}
-                className="bg-orange-500 py-5 rounded-2xl shadow-lg flex-row items-center justify-center mb-4"
-              >
-                <Ionicons name="cafe" size={28} color="white" />
-                <Text className="text-white font-bold text-xl ml-3">Comenzar Ruta</Text>
-              </TouchableOpacity>
+      <TouchableOpacity
+        onPress={handleShare}
+        className="bg-orange-100 border border-orange-300 py-4 rounded-2xl flex-row items-center justify-center mb-3"
+      >
+        <Ionicons name="share-social" size={24} color="#f97316" />
+        <Text className="text-orange-700 font-semibold text-lg ml-2">
+          Compartir Ruta
+        </Text>
+      </TouchableOpacity>
+    </>
+  )}
 
-              <TouchableOpacity
-                onPress={handleShare}
-                className="bg-orange-100 border border-orange-300 py-4 rounded-2xl flex-row items-center justify-center mb-3"
-              >
-                <Ionicons name="share-social" size={24} color="#f97316" />
-                <Text className="text-orange-700 font-semibold text-lg ml-2">Compartir Ruta</Text>
-              </TouchableOpacity>
+  <TouchableOpacity
+    onPress={() => router.back()}
+    className="bg-gray-100 border border-gray-300 py-3 rounded-xl flex-row items-center justify-center"
+  >
+    <Ionicons name="arrow-back" size={20} color="#6b7280" />
+    <Text className="text-gray-600 font-medium text-base ml-2">Volver a Rutas</Text>
+  </TouchableOpacity>
+</View>
 
-              <TouchableOpacity
-                onPress={() => router.back()}
-                className="bg-gray-100 border border-gray-300 py-3 rounded-xl flex-row items-center justify-center"
-              >
-                <Ionicons name="arrow-back" size={20} color="#6b7280" />
-                <Text className="text-gray-600 font-medium text-base ml-2">Volver a Rutas</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
       </ScrollView>
     </View>
   );
