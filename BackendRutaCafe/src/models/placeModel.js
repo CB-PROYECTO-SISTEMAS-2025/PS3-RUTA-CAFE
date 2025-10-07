@@ -121,7 +121,7 @@ export const getAllPlaces = async (user = null) => {
 
 // src/models/placeModel.js
 export const getPlacesByRoute = async (routeId, user = null) => {
-  // Permite user como objeto { id, role } o como userId directo
+  // user puede ser { id, role } o un userId directo
   let userId = null;
   let role = 0;
 
@@ -137,9 +137,11 @@ export const getPlacesByRoute = async (routeId, user = null) => {
   const whereParams = [routeId];
 
   if (role === 2 && userId) {
+    // técnico/creador: solo lo suyo
     extraWhere = 'AND p.createdBy = ?';
     whereParams.push(userId);
   } else {
+    // público u otros roles: solo aprobadas
     extraWhere = "AND p.status = 'aprobada'";
   }
 
@@ -152,7 +154,7 @@ export const getPlacesByRoute = async (routeId, user = null) => {
       ${
         userId
           ? `EXISTS(
-               SELECT 1 FROM \`${SCHEMA}\`.likes l2 
+               SELECT 1 FROM \`${SCHEMA}\`.likes l2
                WHERE l2.place_id = p.id AND l2.user_id = ?
              ) AS user_liked`
           : `FALSE AS user_liked`
@@ -167,13 +169,50 @@ export const getPlacesByRoute = async (routeId, user = null) => {
     ORDER BY p.createdAt DESC
   `;
 
-  // Importante: si hay userId, primero va para el EXISTS y luego los del WHERE
+  // Si hay userId: primero para EXISTS, luego routeId y posible createdBy
   const params = userId ? [userId, ...whereParams] : whereParams;
 
   const [rows] = await pool.query(query, params);
   return rows;
 };
 
+
+export const getPlaceById = async (id, userId = null) => {
+  let query = `
+    SELECT 
+      p.*, 
+      r.name AS route_name,
+      COUNT(DISTINCT l.id) as likes_count,
+      COUNT(DISTINCT c.id) as comments_count
+  `;
+
+  // Agregar user_liked solo si se proporciona userId
+  if (userId) {
+    query += `,
+      EXISTS(
+        SELECT 1 FROM \`${SCHEMA}\`.likes l2 
+        WHERE l2.place_id = p.id AND l2.user_id = ?
+      ) as user_liked
+    `;
+  } else {
+    query += `,
+      FALSE as user_liked
+    `;
+  }
+
+  query += `
+    FROM \`${SCHEMA}\`.place p
+    LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
+    LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
+    LEFT JOIN \`${SCHEMA}\`.comment c ON p.id = c.place_id
+    WHERE p.id = ?
+    GROUP BY p.id
+  `;
+
+  const params = userId ? [userId, id] : [id];
+  const [rows] = await pool.query(query, params);
+  return rows[0];
+};
 
 // Obtener lugares con filtro por usuario (para admin)
 export const getPlacesByUser = async (userId) => {
