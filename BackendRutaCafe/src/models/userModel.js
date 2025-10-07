@@ -65,8 +65,7 @@ export const updateUser = async (id, updates) => {
 export const deleteUser = async (id) => {
   const [result] = await pool.query("DELETE FROM users WHERE id = ?", [id]);
   return result;
-<<<<<<< HEAD
-=======
+
 };
 export const findUsersByCityId = async (cityId) => {
   const [rows] = await pool.query(
@@ -268,5 +267,5 @@ export const getDashboardStats = async () => {
     console.error("❌ Error en getDashboardStats:", error);
     throw error;
   }
->>>>>>> origin/feature/garcia
+
 };
