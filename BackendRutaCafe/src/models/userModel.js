@@ -1,30 +1,146 @@
 import pool from "../config/db.js";
+import crypto from 'crypto';
 
 export const findUserByEmail = async (email) => {
-  const [rows] = await pool.query("SELECT * FROM users WHERE email = ?", [email]);
-  return rows[0];
+  try {
+    const [rows] = await pool.query("SELECT * FROM users WHERE email = ?", [email]);
+    return rows[0];
+  } catch (error) {
+    console.error("Error en findUserByEmail:", error);
+    throw error;
+  }
 };
 
 export const findUserById = async (id) => {
-  const [rows] = await pool.query("SELECT * FROM users WHERE id = ?", [id]);
-  return rows[0];
+  try {
+    const [rows] = await pool.query("SELECT * FROM users WHERE id = ?", [id]);
+    return rows[0];
+  } catch (error) {
+    console.error("Error en findUserById:", error);
+    throw error;
+  }
+};
+
+export const findUserByFingerprint = async (fingerprintId) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT * FROM users WHERE fingerprint_data = ? AND has_fingerprint = TRUE", 
+      [fingerprintId]
+    );
+    return rows[0];
+  } catch (error) {
+    console.error("Error en findUserByFingerprint:", error);
+    throw error;
+  }
+};
+
+// 🔑 Función para generar un fingerprint ID único y persistente
+export const generatePersistentFingerprintId = (userId, email) => {
+  // Crear un hash único basado en userId + email + una clave secreta
+  const secret = 'ruta_del_sabor_app_2024';
+  const data = `${userId}_${email}_${secret}`;
+  const hash = crypto.createHash('sha256').update(data).digest('hex');
+  return `fp_${hash.substring(0, 20)}`;
 };
 
 export const createUser = async (userData) => {
-  const { name, lastName, secondLastName, email, password, phone, City_id, role } = userData;
-  
-  // Verificar que todos los campos requeridos estén presentes
-  if (!name || !lastName || !email || !password || !phone) {
-    throw new Error("Faltan campos obligatorios");
+  try {
+    const { name, lastName, secondLastName, email, password, phone, City_id, role, fingerprint_data } = userData;
+    
+    if (!name || !lastName || !email || !password || !phone) {
+      throw new Error("Faltan campos obligatorios");
+    }
+    
+    const has_fingerprint = !!fingerprint_data;
+    
+    const [result] = await pool.query(
+      "INSERT INTO users (name, lastName, secondLastName, email, password, phone, City_id, role, fingerprint_data, has_fingerprint, createdAt, modifiedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NULL)",
+      [name, lastName, secondLastName || null, email, password, phone, City_id || null, role || 3, fingerprint_data || null, has_fingerprint]
+    );
+    
+    console.log("✅ Usuario creado con ID:", result.insertId);
+    return result.insertId;
+  } catch (error) {
+    console.error("Error en createUser:", error);
+    throw error;
   }
-  
-  console.log("Datos recibidos para crear usuario:", userData); // Para debugging
-  
-  const [result] = await pool.query(
-    "INSERT INTO users (name, lastName, secondLastName, email, password, phone, City_id, role, createdAt, modifiedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NULL)",
-    [name, lastName, secondLastName || null, email, password, phone, City_id || null, role || 3]
-  );
-  return result.insertId;
+};
+
+export const updateUserFingerprint = async (id, fingerprintData) => {
+  try {
+    // Validar que el fingerprintData no esté vacío
+    if (!fingerprintData || fingerprintData.trim() === '') {
+      throw new Error("Los datos de huella no pueden estar vacíos");
+    }
+
+    const [result] = await pool.query(
+      "UPDATE users SET fingerprint_data = ?, has_fingerprint = TRUE, modifiedAt = NOW() WHERE id = ?",
+      [fingerprintData, id]
+    );
+    
+    if (result.affectedRows === 0) {
+      console.log("❌ Usuario no encontrado para actualizar huella:", id);
+      return {
+        success: false,
+        message: "Usuario no encontrado"
+      };
+    }
+
+    console.log("✅ Huella actualizada para usuario:", id);
+    return {
+      success: true,
+      affectedRows: result.affectedRows,
+      message: "Huella actualizada correctamente"
+    };
+  } catch (error) {
+    console.error("Error en updateUserFingerprint:", error);
+    throw error;
+  }
+};
+
+export const removeUserFingerprint = async (id) => {
+  try {
+    const [result] = await pool.query(
+      "UPDATE users SET fingerprint_data = NULL, has_fingerprint = FALSE, modifiedAt = NOW() WHERE id = ?",
+      [id]
+    );
+    
+    if (result.affectedRows === 0) {
+      console.log("❌ Usuario no encontrado para eliminar huella:", id);
+      return {
+        success: false,
+        message: "Usuario no encontrado"
+      };
+    }
+
+    console.log("✅ Huella eliminada para usuario:", id);
+    return {
+      success: true,
+      affectedRows: result.affectedRows,
+      message: "Huella eliminada correctamente"
+    };
+  } catch (error) {
+    console.error("Error en removeUserFingerprint:", error);
+    throw error;
+  }
+};
+
+export const validateFingerprintUniqueness = async (fingerprintId, excludeUserId = null) => {
+  try {
+    let query = "SELECT id, email FROM users WHERE fingerprint_data = ? AND has_fingerprint = TRUE";
+    const params = [fingerprintId];
+    
+    if (excludeUserId) {
+      query += " AND id != ?";
+      params.push(excludeUserId);
+    }
+    
+    const [rows] = await pool.query(query, params);
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    console.error("Error en validateFingerprintUniqueness:", error);
+    throw error;
+  }
 };
 
 export const updateUser = async (id, updates) => {
@@ -33,20 +149,14 @@ export const updateUser = async (id, updates) => {
       throw new Error("ID y campos de actualización son requeridos");
     }
     
-    // Crear placeholders seguros para evitar inyección SQL
     const fields = Object.keys(updates).map(key => `${key} = ?`).join(", ");
     const values = Object.values(updates);
-    
-    // Agregar el ID al final de los valores
     values.push(id);
     
-    // Query con placeholder seguro para updatedAt
     const query = `UPDATE users SET ${fields}, modifiedAt = NOW() WHERE id = ?`;
     
-    // Ejecutar la consulta
     const [result] = await pool.query(query, values);
     
-    // Verificar si se actualizó algún registro
     if (result.affectedRows === 0) {
       throw new Error("Usuario no encontrado o sin cambios");
     }
@@ -58,48 +168,62 @@ export const updateUser = async (id, updates) => {
     };
   } catch (error) {
     console.error("Error en updateUser:", error);
-    throw error; // Relanzar el error para manejarlo en el controlador
+    throw error;
   }
 };
 
 export const deleteUser = async (id) => {
-  const [result] = await pool.query("DELETE FROM users WHERE id = ?", [id]);
-  return result;
-
+  try {
+    const [result] = await pool.query("DELETE FROM users WHERE id = ?", [id]);
+    return result;
+  } catch (error) {
+    console.error("Error en deleteUser:", error);
+    throw error;
+  }
 };
+
 export const findUsersByCityId = async (cityId) => {
-  const [rows] = await pool.query(
-     `SELECT 
-      u.id, 
-      u.name, 
-      u.lastName, 
-      u.secondLastName, 
-      u.email, 
-      u.phone, 
-      u.role,
-      u.City_id,
-      u.createdAt,
-      c.name as cityName  
-     FROM users u 
-     LEFT JOIN city c ON u.City_id = c.id  
-     WHERE u.City_id = ? 
-     ORDER BY u.createdAt DESC`,
-    [cityId]
-  );
-  return rows;
+  try {
+    const [rows] = await pool.query(
+      `SELECT 
+        u.id, 
+        u.name, 
+        u.lastName, 
+        u.secondLastName, 
+        u.email, 
+        u.phone, 
+        u.role,
+        u.City_id,
+        u.createdAt,
+        c.name as cityName  
+       FROM users u 
+       LEFT JOIN city c ON u.City_id = c.id  
+       WHERE u.City_id = ? 
+       ORDER BY u.createdAt DESC`,
+      [cityId]
+    );
+    return rows;
+  } catch (error) {
+    console.error("Error en findUsersByCityId:", error);
+    throw error;
+  }
 };
 
 export const findUserWithCity = async (id) => {
-  const [rows] = await pool.query(
-    "SELECT u.*, c.name as cityName FROM users u LEFT JOIN city c ON u.City_id = c.id WHERE u.id = ?",
-    [id]
-  );
-  return rows[0];
+  try {
+    const [rows] = await pool.query(
+      "SELECT u.*, c.name as cityName FROM users u LEFT JOIN city c ON u.City_id = c.id WHERE u.id = ?",
+      [id]
+    );
+    return rows[0];
+  } catch (error) {
+    console.error("Error en findUserWithCity:", error);
+    throw error;
+  }
 };
 
 export const updateUserRoleModel = async (id, newRole) => {
   try {
-    // Validar que el rol sea válido (1, 2, o 3)
     if (![1, 2, 3].includes(newRole)) {
       throw new Error("Rol inválido. Debe ser 1 (Admin), 2 (Técnico) o 3 (Usuario)");
     }
@@ -124,84 +248,102 @@ export const updateUserRoleModel = async (id, newRole) => {
   }
 };
 
-// En userModel.js - agregar estas funciones
 export const findAllUsers = async () => {
-  const [rows] = await pool.query(
-    `SELECT 
-      u.id, 
-      u.name, 
-      u.lastName, 
-      u.secondLastName, 
-      u.email, 
-      u.phone, 
-      u.role,
-      u.City_id,
-      u.createdAt,
-      c.name as cityName
-     FROM users u 
-     LEFT JOIN city c ON u.City_id = c.id
-     ORDER BY u.createdAt DESC`
-  );
-  return rows;
+  try {
+    const [rows] = await pool.query(
+      `SELECT 
+        u.id, 
+        u.name, 
+        u.lastName, 
+        u.secondLastName, 
+        u.email, 
+        u.phone, 
+        u.role,
+        u.City_id,
+        u.createdAt,
+        c.name as cityName
+       FROM users u 
+       LEFT JOIN city c ON u.City_id = c.id
+       ORDER BY u.createdAt DESC`
+    );
+    return rows;
+  } catch (error) {
+    console.error("Error en findAllUsers:", error);
+    throw error;
+  }
 };
 
 export const findUsersBySpecificCity = async (cityId) => {
-  const [rows] = await pool.query(
-    `SELECT 
-      u.id, 
-      u.name, 
-      u.lastName, 
-      u.secondLastName, 
-      u.email, 
-      u.phone, 
-      u.role,
-      u.City_id,
-      u.createdAt,
-      c.name as cityName
-     FROM users u 
-     LEFT JOIN city c ON u.City_id = c.id
-     WHERE u.City_id = ?
-     ORDER BY u.createdAt DESC`,
-    [cityId]
-  );
-  return rows;
+  try {
+    const [rows] = await pool.query(
+      `SELECT 
+        u.id, 
+        u.name, 
+        u.lastName, 
+        u.secondLastName, 
+        u.email, 
+        u.phone, 
+        u.role,
+        u.City_id,
+        u.createdAt,
+        c.name as cityName
+       FROM users u 
+       LEFT JOIN city c ON u.City_id = c.id
+       WHERE u.City_id = ?
+       ORDER BY u.createdAt DESC`,
+      [cityId]
+    );
+    return rows;
+  } catch (error) {
+    console.error("Error en findUsersBySpecificCity:", error);
+    throw error;
+  }
 };
 
 export const getAllCities = async () => {
-  const [rows] = await pool.query("SELECT id, name FROM city ORDER BY name");
-  return rows;
+  try {
+    const [rows] = await pool.query("SELECT id, name FROM city ORDER BY name");
+    return rows;
+  } catch (error) {
+    console.error("Error en getAllCities:", error);
+    throw error;
+  }
 };
 
 export const findUsersWithCityByCityId = async (cityId) => {
-  const [rows] = await pool.query(
-    `SELECT 
-      u.id, 
-      u.name, 
-      u.lastName, 
-      u.secondLastName, 
-      u.email, 
-      u.phone, 
-      u.role,
-      u.City_id,
-      u.createdAt,
-      c.name as cityName
-     FROM users u 
-     LEFT JOIN city c ON u.City_id = c.id
-     WHERE u.City_id = ?
-     ORDER BY u.createdAt DESC`,
-    [cityId]
-  );
-  return rows;
+  try {
+    const [rows] = await pool.query(
+      `SELECT 
+        u.id, 
+        u.name, 
+        u.lastName, 
+        u.secondLastName, 
+        u.email, 
+        u.phone, 
+        u.role,
+        u.City_id,
+        u.createdAt,
+        c.name as cityName
+       FROM users u 
+       LEFT JOIN city c ON u.City_id = c.id
+       WHERE u.City_id = ?
+       ORDER BY u.createdAt DESC`,
+      [cityId]
+    );
+    return rows;
+  } catch (error) {
+    console.error("Error en findUsersWithCityByCityId:", error);
+    throw error;
+  }
 };
+
 export const getDashboardStats = async () => {
   try {
     console.log("📊 Obteniendo estadísticas del dashboard...");
     
-    // Total de usuarios
     const [totalUsers] = await pool.query("SELECT COUNT(*) as count FROM users");
     console.log("👥 Total usuarios:", totalUsers[0].count);
     
-    // Usuarios por rol
     const [usersByRole] = await pool.query(`
       SELECT role, COUNT(*) as count 
       FROM users 
@@ -213,7 +355,6 @@ export const getDashboardStats = async () => {
     let routesByDepartment = [];
 
     try {
-      // Rutas aprobadas - usando la tabla 'route' con status 'aprobada'
       const [approvedRoutesResult] = await pool.query(`
         SELECT COUNT(*) as count 
         FROM route 
@@ -222,7 +363,6 @@ export const getDashboardStats = async () => {
       approvedRoutes = approvedRoutesResult[0]?.count || 0;
       console.log("✅ Rutas aprobadas:", approvedRoutes);
       
-      // Rutas por departamento
       const [routesDept] = await pool.query(`
         SELECT c.name as department, COUNT(r.id) as count
         FROM route r
@@ -235,12 +375,10 @@ export const getDashboardStats = async () => {
       
     } catch (routeError) {
       console.log("⚠️ Error al obtener datos de rutas:", routeError.message);
-      // Si hay error con rutas, continuamos con los datos de usuarios
       approvedRoutes = 0;
       routesByDepartment = [];
     }
     
-    // Usuarios por departamento
     const [usersByDepartment] = await pool.query(`
       SELECT c.name as department, COUNT(u.id) as count
       FROM users u
@@ -267,5 +405,4 @@ export const getDashboardStats = async () => {
     console.error("❌ Error en getDashboardStats:", error);
     throw error;
   }
-
 };

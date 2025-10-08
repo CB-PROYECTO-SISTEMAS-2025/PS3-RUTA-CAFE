@@ -6,6 +6,7 @@ const Sidebar = ({ user, activeSection, setActiveSection, isSidebarOpen, setIsSi
     { id: 'users', label: 'Usuarios', icon: '👥', color: 'text-green-600' },
     { id: 'routes', label: 'Rutas', icon: '🗺️', color: 'text-purple-600' },
     { id: 'places', label: 'Lugares', icon: '📍', color: 'text-orange-600' },
+    { id: 'advertising', label: 'Publicidades', icon: '🖼️', color: 'text-pink-600' },
     { id: 'profile', label: 'Mi Perfil', icon: '👤', color: 'text-gray-600' },
   ];
 

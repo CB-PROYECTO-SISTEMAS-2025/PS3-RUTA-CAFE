@@ -24,7 +24,13 @@ export const getAllRoutes = async (viewer = { role: 0, userId: null }) => {
     // Usuario logueado normal o visitante: solo aprobadas
     where = "WHERE status = 'aprobada'";
   }
-  const [rows] = await pool.query(`SELECT * FROM \`${SCHEMA}\`.route ${where} ORDER BY createdAt DESC`, params);
+  
+  const [rows] = await pool.query(
+    `SELECT 
+      id, name, description, status, rejectionComment, image_url, createdBy, createdAt, modifiedAt, modifiedBy 
+     FROM \`${SCHEMA}\`.route ${where} ORDER BY createdAt DESC`, 
+    params
+  );
   return rows;
 };
 
@@ -81,6 +87,7 @@ export const deleteRoute = async (id) => {
   const [result] = await pool.query(`DELETE FROM \`${SCHEMA}\`.route WHERE id = ?`, [id]);
   return result.affectedRows;
 };
+
 // Obtener rutas por ID de ciudad (a través del usuario)
 export const findRoutesByCityId = async (cityId) => {
   const [rows] = await pool.query(
@@ -117,4 +124,3 @@ export const findAllPendingRoutes = async () => {
   );
   return rows;
 };
-

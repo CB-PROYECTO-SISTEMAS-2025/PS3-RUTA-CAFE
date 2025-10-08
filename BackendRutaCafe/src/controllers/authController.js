@@ -1,55 +1,179 @@
 import bcrypt from "bcryptjs";
-import { findUserByEmail, updateUser, createUser } from "../models/userModel.js";
+import { 
+  findUserByEmail, 
+  updateUser, 
+  createUser, 
+  findUserByFingerprint, 
+  updateUserFingerprint,
+  validateFingerprintUniqueness,
+  generatePersistentFingerprintId
+} from "../models/userModel.js";
 import { generateToken } from "../utils/token.js";
 import dotenv from "dotenv";
 
-// ✅ Configurar dotenv para que JWT_SECRET esté disponible
 dotenv.config();
 
-// 🔐 Login
+// 🔐 Validaciones comunes
+const validateEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+const validatePassword = (password) => {
+  return password && password.length >= 6;
+};
+
+// 🔐 Login normal (con soporte para huella + email)
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    console.log("📧 Email recibido:", email);
-    console.log("🔑 JWT_SECRET disponible:", !!process.env.JWT_SECRET);
+    const { email, password, fingerprint_id } = req.body;
+    console.log("🔐 Iniciando proceso de login");
+    console.log("📧 Datos recibidos:", { email, hasPassword: !!password, hasFingerprint: !!fingerprint_id });
 
-    // Buscar usuario
-    const user = await findUserByEmail(email);
-    if (!user) return res.status(400).json({ message: "Usuario no encontrado" });
-// Validar que el usuario tenga rol 2 o 3
-    if (user.role === 1) {
-      console.log("los administradores no pueden ingresar a la app");
-      return res.status(403).json({ 
-        message: "Acceso denegado. Use el endpoint de administradores."
-        
+    // Si se proporciona huella dactilar Y email, intentar login con huella + email
+    if (fingerprint_id && email) {
+      console.log("🔑 Intentando login con huella dactilar + email");
+      
+      // Buscar usuario por email primero para obtener el ID persistente
+      const userByEmail = await findUserByEmail(email.trim().toLowerCase());
+      
+      if (!userByEmail) {
+        console.log("❌ Usuario no encontrado por email:", email);
+        return res.status(400).json({ 
+          message: "Usuario no encontrado" 
+        });
+      }
+
+      // Generar el fingerprint ID persistente que debería estar registrado
+      const expectedFingerprintId = generatePersistentFingerprintId(userByEmail.id, userByEmail.email);
+      console.log("🆔 Fingerprint ID esperado:", expectedFingerprintId);
+      console.log("🆔 Fingerprint ID recibido:", fingerprint_id);
+
+      // Buscar usuario por el fingerprint ID esperado
+      const userByFingerprint = await findUserByFingerprint(expectedFingerprintId);
+      
+      if (!userByFingerprint) {
+        console.log("❌ Huella no registrada para este usuario");
+        return res.status(400).json({ 
+          message: "Huella dactilar no registrada para este usuario" 
+        });
+      }
+
+      // Verificar que el usuario de la huella coincida con el del email
+      if (userByFingerprint.id !== userByEmail.id) {
+        console.log("❌ Inconsistencia: huella pertenece a otro usuario");
+        return res.status(400).json({ 
+          message: "Error de autenticación" 
+        });
+      }
+
+      // Validar que el usuario tenga rol 2 o 3
+      if (userByFingerprint.role === 1) {
+        console.log("❌ Intento de login con huella para administrador:", userByFingerprint.email);
+        return res.status(403).json({ 
+          message: "Acceso denegado. Los administradores deben usar el login tradicional."
+        });
+      }
+
+      console.log("✅ Login con huella + email exitoso para:", userByFingerprint.email);
+
+      const token = generateToken(userByFingerprint);
+
+      return res.json({
+        message: `Bienvenido ${userByFingerprint.name} ${userByFingerprint.lastName}`,
+        token,
+        user: {
+          id: userByFingerprint.id,
+          fullName: `${userByFingerprint.name} ${userByFingerprint.lastName} ${userByFingerprint.secondLastName || ""}`,
+          email: userByFingerprint.email,
+          role: userByFingerprint.role,
+          phone: userByFingerprint.phone,
+          hasFingerprint: userByFingerprint.has_fingerprint,
+          fingerprintId: userByFingerprint.fingerprint_data
+        },
       });
     }
+
+    // Si solo se proporciona huella (sin email) - BUSCAR DIRECTAMENTE POR FINGERPRINT
+    if (fingerprint_id && !email) {
+      console.log("🔑 Intentando login solo con huella dactilar");
+      
+      // Buscar usuario directamente por el fingerprint ID
+      const user = await findUserByFingerprint(fingerprint_id);
+      
+      if (!user) {
+        console.log("❌ Huella no encontrada:", fingerprint_id);
+        return res.status(400).json({ 
+          message: "Huella dactilar no registrada" 
+        });
+      }
+
+      // Validar que el usuario tenga rol 2 o 3
+      if (user.role === 1) {
+        console.log("❌ Intento de login con huella para administrador:", user.email);
+        return res.status(403).json({ 
+          message: "Acceso denegado. Los administradores deben usar el login tradicional."
+        });
+      }
+
+      console.log("✅ Login solo con huella exitoso para:", user.email);
+
+      const token = generateToken(user);
+
+      return res.json({
+        message: `Bienvenido ${user.name} ${user.lastName}`,
+        token,
+        user: {
+          id: user.id,
+          fullName: `${user.name} ${user.lastName} ${user.secondLastName || ""}`,
+          email: user.email,
+          role: user.role,
+          phone: user.phone,
+          hasFingerprint: user.has_fingerprint,
+          fingerprintId: user.fingerprint_data
+        },
+      });
+    }
+
+    // Validaciones para login tradicional
+    if (!email || !password) {
+      return res.status(400).json({ 
+        message: "Email y contraseña son requeridos" 
+      });
+    }
+
+    if (!validateEmail(email)) {
+      return res.status(400).json({ 
+        message: "Formato de email inválido" 
+      });
+    }
+
+    // Login tradicional con email y contraseña
+    console.log("📧 Login tradicional con email:", email);
+    const user = await findUserByEmail(email);
+    
+    if (!user) {
+      console.log("❌ Usuario no encontrado:", email);
+      return res.status(400).json({ message: "Usuario no encontrado" });
+    }
+
+    // Validar que el usuario tenga rol 2 o 3
+    if (user.role === 1) {
+      console.log("❌ Intento de login de administrador en app móvil:", email);
+      return res.status(403).json({ 
+        message: "Acceso denegado. Use el panel de administración."
+      });
+    }
+
     // Validar contraseña
     const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) return res.status(400).json({ message: "Contraseña incorrecta" });
-
-    // DEBUG: Verificar estructura del usuario
-    console.log("👤 User object:", {
-      id: user.id,
-      name: user.name,
-      lastName: user.lastName,
-      secondLastName: user.secondLastName,
-      email: user.email,
-      role: user.role
-    });
-
-    // Generar token con manejo de errores
-    let token;
-    try {
-      token = generateToken(user);
-      console.log("✅ Token generado exitosamente");
-    } catch (tokenError) {
-      console.error("❌ Error generando token:", tokenError.message);
-      return res.status(500).json({ 
-        message: "Error interno del servidor",
-        error: process.env.NODE_ENV === 'development' ? tokenError.message : undefined
-      });
+    if (!validPassword) {
+      console.log("❌ Contraseña incorrecta para:", email);
+      return res.status(400).json({ message: "Contraseña incorrecta" });
     }
+
+    console.log("✅ Login exitoso para:", user.email);
+    const token = generateToken(user);
 
     return res.json({
       message: `Bienvenido ${user.name} ${user.lastName}`,
@@ -59,56 +183,191 @@ export const login = async (req, res) => {
         fullName: `${user.name} ${user.lastName} ${user.secondLastName || ""}`,
         email: user.email,
         role: user.role,
-        phone: user.phone
+        phone: user.phone,
+        hasFingerprint: user.has_fingerprint,
+        fingerprintId: user.fingerprint_data
       },
     });
 
   } catch (error) {
-    console.error("Error en login:", error);
-    res.status(500).json({ message: "Error en el servidor" });
+    console.error("❌ Error en login:", error);
+    res.status(500).json({ 
+      message: "Error interno del servidor",
+      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+    });
   }
 };
 
-// 🔐 Login para administradores (rol 1)
+// 👆 Registrar huella dactilar durante el login - CORREGIDO
+export const registerFingerprint = async (req, res) => {
+  try {
+    const { email, password } = req.body; // ❌ fingerprint_id ya no se requiere
+    
+    console.log("📝 Iniciando registro de huella para:", email);
+
+    // ✅ CORREGIDO: Solo requerir email y password
+    if (!email || !password) {
+      return res.status(400).json({ 
+        message: "Email y contraseña son requeridos" 
+      });
+    }
+
+    if (!validateEmail(email)) {
+      return res.status(400).json({ 
+        message: "Formato de email inválido" 
+      });
+    }
+
+    // Primero verificar credenciales del usuario
+    const user = await findUserByEmail(email);
+    if (!user) {
+      console.log("❌ Usuario no encontrado para registro de huella:", email);
+      return res.status(400).json({ message: "Usuario no encontrado" });
+    }
+
+    // Verificar si el usuario ya tiene huella registrada
+    if (user.has_fingerprint) {
+      console.log("ℹ️ Usuario ya tiene huella registrada:", email);
+      return res.status(400).json({ 
+        message: "Ya tienes una huella dactilar registrada" 
+      });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      console.log("❌ Contraseña incorrecta para registro de huella:", email);
+      return res.status(400).json({ message: "Contraseña incorrecta" });
+    }
+
+    // ✅ CORREGIDO: Generar fingerprint ID persistente automáticamente
+    const persistentFingerprintId = generatePersistentFingerprintId(user.id, user.email);
+    console.log("🆔 Fingerprint ID persistente generado:", persistentFingerprintId);
+
+    // Verificar si la huella ya está registrada por otro usuario
+    const existingUser = await validateFingerprintUniqueness(persistentFingerprintId, user.id);
+    if (existingUser) {
+      console.log("❌ Huella ya registrada por otro usuario:", existingUser.email);
+      return res.status(400).json({ 
+        message: "Esta huella dactilar ya está registrada por otro usuario" 
+      });
+    }
+
+    // Actualizar huella del usuario con el ID persistente
+    const result = await updateUserFingerprint(user.id, persistentFingerprintId);
+
+    if (!result.success) {
+      console.log("❌ Error al actualizar huella:", result.message);
+      return res.status(404).json({ message: result.message });
+    }
+
+    // Obtener usuario actualizado
+    const updatedUser = await findUserByEmail(email);
+    
+    if (!updatedUser) {
+      console.log("❌ Error: Usuario no encontrado después de actualizar huella");
+      return res.status(500).json({ message: "Error al actualizar usuario" });
+    }
+
+    // Generar nuevo token
+    const token = generateToken(updatedUser);
+
+    console.log("✅ Huella registrada exitosamente para:", email);
+    console.log("🆔 Fingerprint ID registrado:", persistentFingerprintId);
+    console.log("📊 Estado de huella actualizado:", updatedUser.has_fingerprint);
+
+    res.json({
+      message: "Huella dactilar registrada exitosamente",
+      token,
+      user: {
+        id: updatedUser.id,
+        fullName: `${updatedUser.name} ${updatedUser.lastName} ${updatedUser.secondLastName || ""}`,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        phone: updatedUser.phone,
+        hasFingerprint: updatedUser.has_fingerprint,
+        fingerprintId: persistentFingerprintId // Enviar el ID para el frontend
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Error en registerFingerprint:", error);
+    res.status(500).json({ 
+      message: "Error al registrar huella dactilar",
+      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+    });
+  }
+};
+
+// 🆕 Endpoint para verificar estado de huella
+export const checkFingerprintStatus = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || !validateEmail(email)) {
+      return res.status(400).json({ 
+        message: "Email válido es requerido" 
+      });
+    }
+
+    const user = await findUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    // Generar el fingerprint ID que debería tener si estuviera registrado
+    const expectedFingerprintId = user.has_fingerprint ? 
+      generatePersistentFingerprintId(user.id, user.email) : null;
+
+    res.json({
+      hasFingerprint: user.has_fingerprint,
+      canRegister: !user.has_fingerprint,
+      fingerprintId: expectedFingerprintId
+    });
+
+  } catch (error) {
+    console.error("Error en checkFingerprintStatus:", error);
+    res.status(500).json({ 
+      message: "Error al verificar estado de huella",
+      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+    });
+  }
+};
+
+// 🔐 Login para administradores (sin huella)
 export const adminLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
     console.log("🔐 Login de administrador - Email recibido:", email);
 
-    // Buscar usuario
-    const user = await findUserByEmail(email);
-    if (!user) return res.status(400).json({ message: "Usuario no encontrado" });
+    if (!email || !password) {
+      return res.status(400).json({ 
+        message: "Email y contraseña son requeridos" 
+      });
+    }
 
-    // Validar que el usuario sea administrador (rol 1)
+    if (!validateEmail(email)) {
+      return res.status(400).json({ 
+        message: "Formato de email inválido" 
+      });
+    }
+
+    const user = await findUserByEmail(email);
+    if (!user) {
+      return res.status(400).json({ message: "Usuario no encontrado" });
+    }
+
     if (user.role !== 1) {
       return res.status(403).json({ 
         message: "Acceso denegado. Solo administradores pueden acceder aquí." 
       });
     }
 
-    // Validar contraseña
     const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) return res.status(400).json({ message: "Contraseña incorrecta" });
-
-    console.log("👨‍💼 Admin user:", {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role
-    });
-
-    // Generar token
-    let token;
-    try {
-      token = generateToken(user);
-      console.log("✅ Token de administrador generado exitosamente");
-    } catch (tokenError) {
-      console.error("❌ Error generando token:", tokenError.message);
-      return res.status(500).json({ 
-        message: "Error interno del servidor",
-        error: process.env.NODE_ENV === 'development' ? tokenError.message : undefined
-      });
+    if (!validPassword) {
+      return res.status(400).json({ message: "Contraseña incorrecta" });
     }
+
+    const token = generateToken(user);
 
     return res.json({
       message: `Bienvenido administrador ${user.name} ${user.lastName}`,
@@ -119,7 +378,8 @@ export const adminLogin = async (req, res) => {
         email: user.email,
         role: user.role,
         phone: user.phone,
-        isAdmin: true
+        isAdmin: true,
+        hasFingerprint: user.has_fingerprint
       },
     });
 
@@ -129,13 +389,17 @@ export const adminLogin = async (req, res) => {
   }
 };
 
-// 📝 Registro (se mantiene igual)
+// 📝 Registro con huella opcional
 export const register = async (req, res) => {
   try {
-    const { name, lastName, secondLastName, email, phone, password, City_id } = req.body;
+    const { name, lastName, secondLastName, email, phone, password, City_id, fingerprint_data } = req.body;
 
     if (!name || !lastName || !email || !password || !phone) {
       return res.status(400).json({ message: "Faltan campos obligatorios" });
+    }
+
+    if (!validateEmail(email)) {
+      return res.status(400).json({ message: "Formato de email inválido" });
     }
 
     const existingUser = await findUserByEmail(email);
@@ -154,11 +418,13 @@ export const register = async (req, res) => {
       password: hashedPassword,
       phone,
       City_id: City_id || null,
+      fingerprint_data: fingerprint_data || null
     });
 
     res.status(201).json({
       message: "Usuario registrado exitosamente",
       userId,
+      hasFingerprint: !!fingerprint_data
     });
 
   } catch (error) {
@@ -167,7 +433,45 @@ export const register = async (req, res) => {
   }
 };
 
-// 🔄 Recuperar contraseña (se mantiene igual)
+// 🗑️ Eliminar huella dactilar
+export const removeFingerprint = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ 
+        message: "Email y contraseña son requeridos" 
+      });
+    }
+
+    const user = await findUserByEmail(email);
+    if (!user) {
+      return res.status(400).json({ message: "Usuario no encontrado" });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(400).json({ message: "Contraseña incorrecta" });
+    }
+
+    const result = await removeUserFingerprint(user.id);
+
+    if (!result.success) {
+      return res.status(404).json({ message: result.message });
+    }
+
+    res.json({
+      message: "Huella dactilar eliminada exitosamente",
+      hasFingerprint: false
+    });
+
+  } catch (error) {
+    console.error("Error en removeFingerprint:", error);
+    res.status(500).json({ message: "Error en el servidor" });
+  }
+};
+
+// 🔄 Recuperar contraseña
 export const forgotPassword = async (req, res) => {
   try {
     const { email, newPassword } = req.body;

@@ -6,6 +6,7 @@ const Header = ({ activeSection, user, isSidebarOpen, setIsSidebarOpen }) => {
     { id: 'users', label: 'Usuarios' },
     { id: 'routes', label: 'Rutas' },
     { id: 'places', label: 'Lugares' },
+    { id: 'advertising', label: 'Publicidades' },
     { id: 'profile', label: 'Mi Perfil' },
   ];
 

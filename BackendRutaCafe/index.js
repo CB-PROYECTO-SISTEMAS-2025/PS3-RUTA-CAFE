@@ -10,7 +10,7 @@ import placeRoutes from "./src/routes/placeRoutes.js";
 import commentRoutes from "./src/routes/commentRoutes.js";
 import likeRoutes from "./src/routes/likeRoutes.js";
 import favoriteRoutes from "./src/routes/favoriteRoutes.js";
-
+import advertisingRoutes from "./src/routes/advertisingRoutes.js";
 dotenv.config();
 
 const app = express();
@@ -43,6 +43,8 @@ app.use("/api/places", placeRoutes);
 app.use("/api/comments", commentRoutes);
 app.use("/api/likes", likeRoutes);
 app.use("/api/favorites", favoriteRoutes);
+app.use("/api/advertising", advertisingRoutes);
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
