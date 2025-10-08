@@ -7,6 +7,7 @@ import UsersList from './Users/UsersList';
 import Profile from './Profile/Profile';
 import RoutesList from './Routes/RoutesList';
 import PlacesManagement from './Places/PlacesManagement';
+import AdvertisingList from './Advertising/AdvertisingList';
 
 const Home = () => {
   const { user, logout } = useAuth();
@@ -25,6 +26,8 @@ const Home = () => {
         return <RoutesList />;
       case 'places':
        return <PlacesManagement />;
+       case 'advertising': 
+       return <AdvertisingList />;
       default:
         return <Dashboard />;
     }
