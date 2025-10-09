@@ -1,5 +1,4 @@
-
-import { findUserById, updateUser, deleteUser,findUsersByCityId,findUserWithCity,updateUserRoleModel, getAllCities, findAllUsers, findUsersBySpecificCity} from "../models/userModel.js";
+import { findUserById, updateUser, deleteUser, findUsersByCityId, findUserWithCity, updateUserRoleModel, getAllCities, findAllUsers, findUsersBySpecificCity, updateUserPhoto, removeUserPhoto, createUser } from "../models/userModel.js";
 
 export const getProfile = async (req, res) => {
   try {
@@ -24,6 +23,45 @@ export const updateProfile = async (req, res) => {
   }
 };
 
+export const updateProfilePhoto = async (req, res) => {
+  try {
+    const { photoUrl } = req.body;
+    
+    if (!photoUrl) {
+      return res.status(400).json({ message: "URL de foto es requerida" });
+    }
+
+    const result = await updateUserPhoto(req.user.id, photoUrl);
+    
+    if (result.success) {
+      res.json({ 
+        message: "Foto de perfil actualizada correctamente",
+        photoUrl 
+      });
+    } else {
+      res.status(404).json({ message: result.message });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error al actualizar foto de perfil" });
+  }
+};
+
+export const removeProfilePhoto = async (req, res) => {
+  try {
+    const result = await removeUserPhoto(req.user.id);
+    
+    if (result.success) {
+      res.json({ message: "Foto de perfil eliminada correctamente" });
+    } else {
+      res.status(404).json({ message: result.message });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error al eliminar foto de perfil" });
+  }
+};
+
 export const deleteProfile = async (req, res) => {
   try {
     await deleteUser(req.user.id);
@@ -36,10 +74,8 @@ export const deleteProfile = async (req, res) => {
 
 export const getUsersByAdminCity = async (req, res) => {
   try {
-    // El admin está en req.user por el middleware verifyAdmin
     const adminId = req.user.id;
     
-    // Obtener el admin completo con su ciudad
     const admin = await findUserWithCity(adminId);
     if (!admin) {
       return res.status(404).json({ message: "Administrador no encontrado" });
@@ -49,7 +85,6 @@ export const getUsersByAdminCity = async (req, res) => {
       return res.status(400).json({ message: "El administrador no tiene ciudad asignada" });
     }
 
-    // Obtener usuarios de la misma ciudad (roles 2 y 3)
     const users = await findUsersByCityId(admin.City_id);
 
     res.json({
@@ -67,7 +102,6 @@ export const getUsersByAdminCity = async (req, res) => {
   }
 };
 
-
 export const updateUserRole = async (req, res) => {
   try {
     const  userId  = req.params.userId;
@@ -75,21 +109,18 @@ export const updateUserRole = async (req, res) => {
 
     console.log("🔄 Actualizando rol:", { userId, newRole });
 
-    // Validar que newRole esté presente y sea válido
     if (!newRole || ![1, 2, 3].includes(parseInt(newRole))) {
       return res.status(400).json({ 
         message: "Rol inválido. Debe ser 1 (Admin), 2 (Técnico) o 3 (Usuario)" 
       });
     }
 
-    // No permitir que un admin se quite sus propios privilegios
     if (parseInt(userId) === req.user.id && parseInt(newRole) !== 1) {
       return res.status(400).json({ 
         message: "No puedes cambiar tu propio rol de administrador" 
       });
     }
 
-    // Actualizar el rol
     const result = await updateUserRoleModel(userId, parseInt(newRole));
 
     res.json({
@@ -183,4 +214,3 @@ export const getCities = async (req, res) => {
     });
   }
 };
-
