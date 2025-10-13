@@ -16,9 +16,12 @@ import {
 } from "react-native";
 import * as Animatable from "react-native-animatable";
 import { Ionicons } from "@expo/vector-icons";
+import { useThemedStyles } from "../hooks/useThemedStyles";
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
+  const themed = useThemedStyles(); // 🎨 tema oscuro/claro
+
   const [email, setEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -29,7 +32,7 @@ export default function ForgotPasswordScreen() {
   const [isFormValid, setIsFormValid] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // 📊 Calcular fortaleza de la contraseña
+  // 📊 Calcular fortaleza
   useEffect(() => {
     const calculatePasswordStrength = (password: string) => {
       let strength = 0;
@@ -43,7 +46,7 @@ export default function ForgotPasswordScreen() {
     setPasswordStrength(calculatePasswordStrength(newPassword));
   }, [newPassword]);
 
-  // Validar formulario completo
+  // ✅ Validación de formulario
   useEffect(() => {
     const strongPassword =
       newPassword.length >= 8 &&
@@ -51,7 +54,6 @@ export default function ForgotPasswordScreen() {
       /[a-z]/.test(newPassword) &&
       /[0-9]/.test(newPassword) &&
       /[@$!%*?&]/.test(newPassword);
-    
     setIsFormValid(email.length > 0 && strongPassword);
   }, [email, newPassword]);
 
@@ -62,7 +64,7 @@ export default function ForgotPasswordScreen() {
     if (passwordStrength === 3) return "#84cc16";
     if (passwordStrength === 4) return "#22c55e";
     if (passwordStrength === 5) return "#15803d";
-    return "#FFE0B2";
+    return themed.accent as string;
   };
 
   const getPasswordStrengthText = () => {
@@ -75,15 +77,10 @@ export default function ForgotPasswordScreen() {
     return "";
   };
 
-  const showAlert = (
-    type: "success" | "error",
-    message: string,
-    onClose?: () => void
-  ) => {
+  const showAlert = (type: "success" | "error", message: string, onClose?: () => void) => {
     setAlertType(type);
     setAlertMessage(message);
     setAlertVisible(true);
-
     setTimeout(() => {
       setAlertVisible(false);
       if (onClose) onClose();
@@ -110,9 +107,9 @@ export default function ForgotPasswordScreen() {
 
     try {
       setLoading(true);
-     const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/auth/forgot-password`, {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/auth/forgot-password`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Accept": "application/json"
         },
@@ -157,30 +154,41 @@ export default function ForgotPasswordScreen() {
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-[#fcaa70]">
-      <KeyboardAvoidingView 
+    <SafeAreaView style={{ flex: 1, backgroundColor: themed.background }}>
+      <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
+        style={{ flex: 1 }}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView
-            contentContainerStyle={{ 
+            contentContainerStyle={{
               flexGrow: 1,
               paddingHorizontal: 20,
               paddingVertical: Platform.OS === "ios" ? 40 : 20
             }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            style={{ backgroundColor: themed.background }}
           >
             {/* 🔔 Alertas */}
             {alertVisible && (
               <Animatable.View
                 animation="fadeInDown"
                 duration={400}
-                className={`absolute top-5 left-5 right-5 p-4 rounded-xl flex-row items-center z-50 ${
-                  alertType === "success" ? "bg-orange-600" : "bg-red-600"
-                }`}
                 style={{
+                  position: "absolute",
+                  top: 20,
+                  left: 20,
+                  right: 20,
+                  padding: 14,
+                  borderRadius: 12,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  zIndex: 50,
+                  backgroundColor:
+                    alertType === "success"
+                      ? (themed.isDark ? "#16a34a" : "#ea580c")
+                      : (themed.isDark ? "#b91c1c" : "#dc2626"),
                   elevation: 5,
                   shadowColor: "#000",
                   shadowOpacity: 0.2,
@@ -188,96 +196,111 @@ export default function ForgotPasswordScreen() {
                   shadowOffset: { width: 0, height: 2 }
                 }}
               >
-                <Text className="text-white text-sm flex-1">{alertMessage}</Text>
+                <Text style={{ color: "#fff", fontSize: 14, flex: 1 }}>{alertMessage}</Text>
               </Animatable.View>
             )}
 
-            {/* Logotipo - TAMAÑO AJUSTADO */}
-            <View className="items-center mb-8 mt-4">
+            {/* Logotipo */}
+            <View style={{ alignItems: "center", marginBottom: 32, marginTop: 16 }}>
               <Image
                 source={require("../app/images/LOGOTIPO.png")}
-                className="w-64 h-32 mb-6"
+                style={{ width: 256, height: 128, marginBottom: 24 }}
                 resizeMode="contain"
               />
             </View>
 
             {/* Título */}
-            <View className="mb-8 items-center">
-              <Text className="text-2xl font-bold text-orange-900 text-center mb-2">
+            <View style={{ marginBottom: 32, alignItems: "center" }}>
+              <Text style={{ fontSize: 22, fontWeight: "700", color: themed.text, textAlign: "center", marginBottom: 6 }}>
                 Recuperar Contraseña 🔑
               </Text>
-              <Text className="text-base text-orange-700 text-center">
+              <Text style={{ fontSize: 16, color: themed.muted as string, textAlign: "center" }}>
                 Ingresa tu correo y tu nueva contraseña
               </Text>
             </View>
 
             {/* Email */}
-            <View className="mb-6">
-              <Text className="text-orange-900 mb-2 font-medium text-base">
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ color: themed.text, marginBottom: 8, fontWeight: "600", fontSize: 16 }}>
                 Correo electrónico
               </Text>
-              <TextInput
-                placeholder="tu@email.com"
-                placeholderTextColor="#FF8C00"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                value={email}
-                onChangeText={setEmail}
-                className="w-full bg-orange-100 px-4 py-3 rounded-xl border border-orange-300 text-orange-900 text-base"
-              />
+              <View
+                style={{
+                  backgroundColor: themed.isDark ? "#0B1220" : "#FFFFFF",
+                  borderColor: themed.border,
+                  borderWidth: 1,
+                  borderRadius: 14
+                }}
+              >
+                <TextInput
+                  placeholder="tu@email.com"
+                  placeholderTextColor={themed.muted as string}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={email}
+                  onChangeText={setEmail}
+                  style={{ paddingHorizontal: 14, paddingVertical: 12, color: themed.text, fontSize: 16 }}
+                />
+              </View>
             </View>
 
             {/* Nueva contraseña */}
-            <View className="mb-6">
-              <Text className="text-orange-900 mb-2 font-medium text-base">
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ color: themed.text, marginBottom: 8, fontWeight: "600", fontSize: 16 }}>
                 Nueva contraseña
               </Text>
-              <View className="relative">
-                <TextInput
-                  placeholder="Mínimo 8 caracteres con mayúscula, minúscula, número y símbolo"
-                  placeholderTextColor="#FF8C00"
-                  secureTextEntry={!showPassword}
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  className="w-full bg-orange-100 px-4 py-3 rounded-xl border border-orange-300 pr-12 text-orange-900 text-base"
-                />
-                <TouchableOpacity 
-                  onPress={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3"
+              <View style={{ position: "relative" }}>
+                <View
+                  style={{
+                    backgroundColor: themed.isDark ? "#0B1220" : "#FFFFFF",
+                    borderColor: themed.border,
+                    borderWidth: 1,
+                    borderRadius: 14,
+                    paddingRight: 44
+                  }}
                 >
-                  <Ionicons 
-                    name={showPassword ? "eye-off" : "eye"} 
-                    size={24} 
-                    color="#FF8C00" 
+                  <TextInput
+                    placeholder="Mínimo 8 caracteres con mayúscula, minúscula, número y símbolo"
+                    placeholderTextColor={themed.muted as string}
+                    secureTextEntry={!showPassword}
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    style={{ paddingHorizontal: 14, paddingVertical: 12, color: themed.text, fontSize: 16 }}
+                  />
+                </View>
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={{ position: "absolute", right: 10, top: 10, padding: 6 }}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off" : "eye"}
+                    size={22}
+                    color={themed.accent as string}
                   />
                 </TouchableOpacity>
               </View>
-              
-              {/* Indicador de fortaleza de contraseña */}
-              <View className="mt-4">
-                <View className="flex-row justify-between mb-2">
-                  <Text className="text-sm text-orange-700">
-                    Seguridad: 
-                  </Text>
-                  <Text 
-                    className="text-sm font-medium"
-                    style={{ color: getPasswordStrengthColor() }}
-                  >
+
+              {/* Indicador de fortaleza */}
+              <View style={{ marginTop: 16 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+                  <Text style={{ fontSize: 12, color: themed.muted as string }}>Seguridad:</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: getPasswordStrengthColor() }}>
                     {getPasswordStrengthText()}
                   </Text>
                 </View>
-                
-                <View className="h-2 bg-orange-200 rounded-full overflow-hidden mb-2">
+
+                <View style={{ height: 8, backgroundColor: themed.isDark ? "#1f2937" : "#fde68a", borderRadius: 999, overflow: "hidden", marginBottom: 8 }}>
                   <View
-                    className="h-full rounded-full transition-all duration-300"
                     style={{
+                      height: "100%",
+                      borderRadius: 999,
                       width: `${(passwordStrength / 5) * 100}%`,
-                      backgroundColor: getPasswordStrengthColor(),
+                      backgroundColor: getPasswordStrengthColor()
                     }}
                   />
                 </View>
-                
-                <Text className="text-xs text-orange-600 mt-1">
+
+                <Text style={{ fontSize: 12, color: themed.muted as string }}>
                   Requerido: 8+ caracteres, mayúscula, minúscula, número y símbolo
                 </Text>
               </View>
@@ -287,10 +310,13 @@ export default function ForgotPasswordScreen() {
             <TouchableOpacity
               onPress={handleForgotPassword}
               disabled={loading || !isFormValid}
-              className={`py-4 rounded-xl mb-4 ${
-                loading ? "bg-orange-400" : (isFormValid ? "bg-orange-600" : "bg-orange-300")
-              }`}
               style={{
+                paddingVertical: 14,
+                borderRadius: 14,
+                marginBottom: 12,
+                backgroundColor: loading ? (themed.isDark ? "#334155" : "#fb923c") : (isFormValid ? (themed.accent as string) : (themed.isDark ? "#1f2937" : "#fdba74")),
+                alignItems: "center",
+                justifyContent: "center",
                 elevation: 3,
                 shadowColor: "#000",
                 shadowOpacity: 0.1,
@@ -299,9 +325,9 @@ export default function ForgotPasswordScreen() {
               }}
             >
               {loading ? (
-                <ActivityIndicator color="white" />
+                <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text className="text-white font-semibold text-base text-center">
+                <Text style={{ color: "#FFFFFF", fontWeight: "600", fontSize: 16 }}>
                   Actualizar Contraseña
                 </Text>
               )}
@@ -310,9 +336,17 @@ export default function ForgotPasswordScreen() {
             {/* Botón volver */}
             <TouchableOpacity
               onPress={() => router.back()}
-              className="py-3 border border-orange-400 rounded-xl bg-orange-100"
+              style={{
+                paddingVertical: 12,
+                borderRadius: 14,
+                backgroundColor: themed.isDark ? "#0b1220" : "#fff7ed",
+                borderWidth: 1,
+                borderColor: themed.accent,
+                alignItems: "center",
+                justifyContent: "center"
+              }}
             >
-              <Text className="text-orange-700 font-medium text-base text-center">
+              <Text style={{ color: themed.accent as string, fontWeight: "600", fontSize: 16 }}>
                 Volver al inicio de sesión
               </Text>
             </TouchableOpacity>

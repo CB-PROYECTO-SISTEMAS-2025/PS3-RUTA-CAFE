@@ -1,3 +1,4 @@
+// app/Place/create.tsx
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -15,6 +16,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import WebView from 'react-native-webview';
+import { useThemedStyles } from '../../hooks/useThemedStyles';
 
 interface Route {
   id: number;
@@ -47,7 +49,7 @@ const COUNTRY_CODES = [
 // Corregido según la estructura de la base de datos
 const DAYS_OF_WEEK = [
   { key: 'lunes', label: 'Lunes' },
-  { key: 'martes', label: 'Martes' }, // Corregido de 'maries' a 'martes'
+  { key: 'martes', label: 'Martes' },
   { key: 'miércoles', label: 'Miércoles' },
   { key: 'jueves', label: 'Jueves' },
   { key: 'viernes', label: 'Viernes' },
@@ -56,6 +58,7 @@ const DAYS_OF_WEEK = [
 ];
 
 export default function CreatePlaceScreen() {
+  const themed = useThemedStyles();
   const router = useRouter();
   const { routeId, routeName } = useLocalSearchParams<{ routeId?: string; routeName?: string }>();
   const numericRouteId = useMemo(() => (routeId ? Number(routeId) : undefined), [routeId]);
@@ -359,14 +362,14 @@ export default function CreatePlaceScreen() {
           
           setSearchQuery(displayName || 'Ubicación actual');
         }
-      } catch (geocodeError) {
+      } catch {
         setSearchQuery(`Lat: ${latitude.toFixed(4)}, Lng: ${longitude.toFixed(4)}`);
       }
 
       Alert.alert('Ubicación actual', 
         `Se ha colocado un pin en tu ubicación actual:\n\nLatitud: ${latitude.toFixed(6)}\nLongitud: ${longitude.toFixed(6)}\n\nPuedes ajustar la ubicación tocando el mapa directamente.`);
 
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 
         'No se pudo obtener la ubicación actual. Verifica que el GPS esté activado e intenta nuevamente.');
     } finally {
@@ -457,8 +460,6 @@ export default function CreatePlaceScreen() {
 
       // Preparar datos para enviar
       const submitData = new FormData();
-      
-      // Datos básicos del lugar
       submitData.append('name', formData.name.trim());
       submitData.append('description', formData.description.trim());
       submitData.append('latitude', formData.latitude);
@@ -466,25 +467,22 @@ export default function CreatePlaceScreen() {
       submitData.append('route_id', formData.route_id);
       submitData.append('website', formData.website || '');
       submitData.append('phoneNumber', formData.countryCode + (formData.phoneNumber || ''));
-      
-      // Preparar horarios en formato correcto para el backend
+
+      // Horarios
       const schedulesData = schedule
         .filter(daySchedule => daySchedule.isOpen)
         .map(daySchedule => ({
           dayOfWeek: daySchedule.dayOfWeek,
-          openTime: daySchedule.openTime + ':00', // Agregar segundos para formato time
+          openTime: daySchedule.openTime + ':00',
           closeTime: daySchedule.closeTime + ':00'
         }));
-
-      // Agregar horarios como string JSON
       submitData.append('schedules', JSON.stringify(schedulesData));
 
-      // Manejar imagen
+      // Imagen
       if (formData.image_url) {
         const filename = formData.image_url.split('/').pop();
         const match = /\.(\w+)$/.exec(filename || '');
         const type = match ? `image/${match[1]}` : 'image/jpeg';
-        
         submitData.append('image', {
           uri: formData.image_url,
           name: filename || 'image.jpg',
@@ -492,34 +490,15 @@ export default function CreatePlaceScreen() {
         } as any);
       }
 
-      console.log('Enviando datos...', {
-        name: formData.name,
-        description: formData.description,
-        latitude: formData.latitude,
-        longitude: formData.longitude,
-        route_id: formData.route_id,
-        website: formData.website,
-        phoneNumber: formData.countryCode + formData.phoneNumber,
-        schedules: schedulesData
-      });
-
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places`, {
         method: 'POST',
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          // No incluir Content-Type para FormData, React Native lo establece automáticamente con boundary
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: submitData,
       });
 
       const responseText = await response.text();
       let responseData;
-      
-      try {
-        responseData = JSON.parse(responseText);
-      } catch {
-        responseData = { message: responseText || 'Error desconocido' };
-      }
+      try { responseData = JSON.parse(responseText); } catch { responseData = { message: responseText || 'Error desconocido' }; }
 
       if (response.ok) {
         Alert.alert('Éxito', 'Lugar creado correctamente', [
@@ -568,65 +547,29 @@ export default function CreatePlaceScreen() {
           <style>
             body { margin: 0; padding: 0; }
             #map { height: 100vh; width: 100%; }
-            
-            .custom-icon {
-              background: #ea580c;
-              border: 3px solid #fff;
-              border-radius: 50%;
-              width: 20px;
-              height: 20px;
-              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-            }
-            
-            .current-location-icon {
-              background: #2563eb;
-              border: 3px solid #fff;
-              border-radius: 50%;
-              width: 16px;
-              height: 16px;
-              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-            }
+            .custom-icon { background: #ea580c; border: 3px solid #fff; border-radius: 50%; width: 20px; height: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+            .current-location-icon { background: #2563eb; border: 3px solid #fff; border-radius: 50%; width: 16px; height: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
           </style>
       </head>
       <body>
           <div id="map"></div>
           <script>
             const map = L.map('map').setView([${initialLat}, ${initialLng}], 13);
-
-            L.tileLayer('${tileLayers[mapType]}', {
-              attribution: '© OpenStreetMap contributors'
-            }).addTo(map);
-
-            const customIcon = L.divIcon({
-              className: 'custom-icon',
-              iconSize: [20, 20],
-              iconAnchor: [10, 10]
-            });
-            
-            const currentLocationIcon = L.divIcon({
-              className: 'current-location-icon',
-              iconSize: [16, 16],
-              iconAnchor: [8, 8]
-            });
-
+            L.tileLayer('${tileLayers[mapType]}', { attribution: '© OpenStreetMap contributors' }).addTo(map);
+            const customIcon = L.divIcon({ className: 'custom-icon', iconSize: [20, 20], iconAnchor: [10, 10] });
             let marker = null;
-
             ${selectedLocation ? `
               marker = L.marker([${selectedLocation.latitude}, ${selectedLocation.longitude}], { icon: customIcon })
                 .addTo(map)
                 .bindPopup('Ubicación seleccionada')
                 .openPopup();
             ` : ''}
-
             map.on('click', function(e) {
-              if (marker) {
-                map.removeLayer(marker);
-              }
+              if (marker) { map.removeLayer(marker); }
               marker = L.marker(e.latlng, { icon: customIcon })
                 .addTo(map)
                 .bindPopup('Ubicación seleccionada')
                 .openPopup();
-
               window.ReactNativeWebView.postMessage(e.latlng.lat + ',' + e.latlng.lng);
             });
           </script>
@@ -635,22 +578,17 @@ export default function CreatePlaceScreen() {
     `;
   };
 
-  // Función para formatear el horario para mostrar
+  // Resumen del horario
   const getScheduleSummary = () => {
     const openDays = schedule.filter(day => day.isOpen);
     if (openDays.length === 0) return 'Cerrado todos los días';
-    
-    // Verificar si todos los días tienen el mismo horario
     const firstOpenDay = openDays[0];
     const allSameSchedule = openDays.every(day => 
-      day.openTime === firstOpenDay.openTime && 
-      day.closeTime === firstOpenDay.closeTime
+      day.openTime === firstOpenDay.openTime && day.closeTime === firstOpenDay.closeTime
     );
-    
     if (openDays.length === 7 && allSameSchedule) {
       return `Lun-Dom: ${firstOpenDay.openTime} - ${firstOpenDay.closeTime}`;
     }
-    
     return `${openDays.length} días configurados`;
   };
 
@@ -660,315 +598,368 @@ export default function CreatePlaceScreen() {
     (numericRouteId ? `Ruta #${numericRouteId}` : undefined);
 
   return (
-    <View className="flex-1 bg-orange-50">
-      <View className="bg-orange-500 px-6 py-4 rounded-b-3xl shadow-lg">
-        <Text className="text-white text-2xl font-bold text-center">Crear Nuevo Lugar</Text>
+    <View style={{ flex: 1, backgroundColor: themed.background }}>
+      {/* Header */}
+      <View style={{
+        backgroundColor: themed.accent,
+        paddingHorizontal: 24,
+        paddingVertical: 16,
+        borderBottomLeftRadius: 24,
+        borderBottomRightRadius: 24,
+        shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }
+      }}>
+        <Text style={{ color: '#FFFFFF', fontSize: 20, fontWeight: '800', textAlign: 'center' }}>
+          Crear Nuevo Lugar
+        </Text>
         {numericRouteId && (
-          <Text className="text-orange-100 text-center mt-1">
+          <Text style={{ color: '#FFFFFF', opacity: 0.9, textAlign: 'center', marginTop: 4 }}>
             En {lockedRouteName}
           </Text>
         )}
       </View>
 
-      <ScrollView className="flex-1 px-6 mt-6" showsVerticalScrollIndicator={false}>
-        <View className="bg-white rounded-2xl p-6 shadow-md border border-orange-200 mb-6">
-          {/* Campos del formulario */}
+      <ScrollView style={{ flex: 1, paddingHorizontal: 24, marginTop: 16 }} showsVerticalScrollIndicator={false}>
+        <View style={{ backgroundColor: themed.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: themed.border, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } }}>
+          {/* Campos */}
           {[
-            { key: 'name', label: 'Nombre del Lugar', placeholder: 'Ej: Café Central', required: true },
+            { key: 'name', label: 'Nombre del Lugar', placeholder: 'Ej: Café Central', required: true, multiline: false },
             { key: 'description', label: 'Descripción', placeholder: 'Descripción del lugar...', required: true, multiline: true },
           ].map((field) => (
-            <View key={field.key} className="mb-4">
-              <Text className="text-orange-800 font-semibold mb-2">
-                {field.label} {field.required && '*'}
+            <View key={field.key} style={{ marginBottom: 12 }}>
+              <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
+                {field.label} {field.required ? '*' : ''}
               </Text>
               <TextInput
-                className={`border-2 rounded-xl p-3 text-orange-900 ${
-                  field.required && !(formData as any)[field.key] ? 'border-red-300' : 'border-orange-200'
-                }`}
+                style={{
+                  borderWidth: 1.5,
+                  borderColor: themed.border,
+                  borderRadius: 12,
+                  padding: 12,
+                  color: themed.text,
+                  backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
+                  minHeight: field.multiline ? 100 : undefined,
+                  textAlignVertical: field.multiline ? 'top' : 'center',
+                }}
                 placeholder={field.placeholder}
+                placeholderTextColor={themed.muted as string}
                 value={(formData as any)[field.key]}
                 onChangeText={(text) => handleInputChange(field.key, text)}
-                multiline={!!field.multiline}
+                multiline={field.multiline}
                 numberOfLines={field.multiline ? 4 : 1}
-                textAlignVertical={field.multiline ? 'top' : 'center'}
               />
             </View>
           ))}
 
-          {/* Selector de ubicación en mapa */}
-          <View className="mb-4">
-            <Text className="text-orange-800 font-semibold mb-2">Ubicación *</Text>
+          {/* Ubicación */}
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>Ubicación *</Text>
             <TouchableOpacity
               onPress={() => setMapModalVisible(true)}
-              className="border-2 border-orange-200 rounded-xl p-3 flex-row items-center justify-between"
+              style={{
+                borderWidth: 1.5,
+                borderColor: themed.border,
+                borderRadius: 12,
+                padding: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
+              }}
             >
-              <Text className="text-orange-900" numberOfLines={1}>
+              <Text style={{ color: themed.text }} numberOfLines={1}>
                 {formData.latitude && formData.longitude
                   ? `Lat: ${formData.latitude}, Lng: ${formData.longitude}`
                   : 'Seleccionar ubicación en el mapa'}
               </Text>
-              <Ionicons name="map-outline" size={20} color="#ea580c" />
+              <Ionicons name="map-outline" size={20} color={themed.accent as string} />
             </TouchableOpacity>
           </View>
 
-          {/* Horario de atención */}
-          <View className="mb-4">
-            <Text className="text-orange-800 font-semibold mb-2">Horario de Atención</Text>
+          {/* Horario */}
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>Horario de Atención</Text>
             <TouchableOpacity
               onPress={() => setScheduleModalVisible(true)}
-              className="border-2 border-orange-200 rounded-xl p-3 flex-row items-center justify-between"
+              style={{
+                borderWidth: 1.5,
+                borderColor: themed.border,
+                borderRadius: 12,
+                padding: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
+              }}
             >
-              <Text className="text-orange-900" numberOfLines={1}>
+              <Text style={{ color: themed.text }} numberOfLines={1}>
                 {getScheduleSummary()}
               </Text>
-              <Ionicons name="time-outline" size={20} color="#ea580c" />
+              <Ionicons name="time-outline" size={20} color={themed.accent as string} />
             </TouchableOpacity>
-            <Text className="text-orange-600 text-xs mt-1">
+            <Text style={{ color: themed.muted as string, fontSize: 12, marginTop: 4 }}>
               Toque para configurar el horario de atención
             </Text>
           </View>
 
-          {/* Selector de Ruta */}
-          <View className="mb-4">
-            <Text className="text-orange-800 font-semibold mb-2">Ruta *</Text>
-
+          {/* Ruta */}
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>Ruta *</Text>
             {numericRouteId ? (
-              <View className="border-2 border-green-300 bg-green-50 rounded-xl p-3">
-                <Text className="text-green-800 font-semibold">
-                  {lockedRouteName}
+              <View style={{ borderWidth: 1.5, borderColor: themed.successBorder, backgroundColor: themed.successBg, borderRadius: 12, padding: 12 }}>
+                <Text style={{ color: themed.successText, fontWeight: '700' }}>{lockedRouteName}</Text>
+                <Text style={{ color: themed.successTextMuted as string, fontSize: 12, marginTop: 4 }}>
+                  Ruta fija desde la pantalla anterior
                 </Text>
-                <Text className="text-green-600 text-xs mt-1">Ruta fija desde la pantalla anterior</Text>
               </View>
             ) : (
-              <View className="border-2 border-orange-200 rounded-xl max-h-40">
+              <View style={{ borderWidth: 1.5, borderColor: themed.border, borderRadius: 12, maxHeight: 160, overflow: 'hidden' }}>
                 <ScrollView>
                   {routes.map((route) => (
                     <TouchableOpacity
                       key={route.id}
                       onPress={() => handleInputChange('route_id', route.id.toString())}
-                      className={`p-3 border-b border-orange-100 ${
-                        formData.route_id === route.id.toString() ? 'bg-orange-100' : ''
-                      }`}
+                      style={{
+                        padding: 12,
+                        borderBottomWidth: 1,
+                        borderBottomColor: themed.border,
+                        backgroundColor: formData.route_id === route.id.toString()
+                          ? (themed.isDark ? '#0b1220' : '#fff7ed')
+                          : themed.card,
+                      }}
                     >
-                      <Text className="text-orange-900 font-medium">{route.name}</Text>
-                      <Text className="text-green-600 text-xs">✓ Aprobada</Text>
+                      <Text style={{ color: themed.text, fontWeight: '600' }}>{route.name}</Text>
+                      <Text style={{ color: themed.successTextMuted as string, fontSize: 12 }}>✓ Aprobada</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
               </View>
             )}
-
             {formData.route_id && !numericRouteId && (
-              <Text className="text-orange-600 text-sm mt-1">
+              <Text style={{ color: themed.muted as string, marginTop: 4 }}>
                 Ruta seleccionada: {routes.find(r => r.id.toString() === formData.route_id)?.name}
               </Text>
             )}
           </View>
 
-          {/* Sitio Web */}
-          <View className="mb-4">
-            <Text className="text-orange-800 font-semibold mb-2">Sitio Web</Text>
+          {/* Web */}
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>Sitio Web</Text>
             <TextInput
-              className="border-2 border-orange-200 rounded-xl p-3 text-orange-900"
+              style={{
+                borderWidth: 1.5, borderColor: themed.border, borderRadius: 12, padding: 12,
+                color: themed.text, backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF'
+              }}
               placeholder="https://ejemplo.com"
+              placeholderTextColor={themed.muted as string}
               value={formData.website}
               onChangeText={(text) => handleInputChange('website', text)}
               keyboardType="url"
             />
           </View>
 
-          {/* Teléfono - Versión con modal */}
-          <View className="mb-4">
-            <Text className="text-orange-800 font-semibold mb-2">Teléfono</Text>
-            <View className="flex-row gap-2">
-              <View className="flex-1">
-                <TouchableOpacity
-                  onPress={() => setShowCountryModal(true)}
-                  className="border-2 border-orange-200 rounded-xl p-3 flex-row items-center justify-between"
-                >
-                  <Text className="text-orange-900" numberOfLines={1}>
-                    {formData.phoneNumber ? `${formData.countryCode} ${formData.phoneNumber}` : 'Seleccionar teléfono'}
-                  </Text>
-                  <Ionicons name="call-outline" size={20} color="#ea580c" />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <Text className="text-orange-600 text-xs mt-1">
+          {/* Teléfono */}
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>Teléfono</Text>
+            <TouchableOpacity
+              onPress={() => setShowCountryModal(true)}
+              style={{
+                borderWidth: 1.5, borderColor: themed.border, borderRadius: 12, padding: 12,
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF'
+              }}
+            >
+              <Text style={{ color: themed.text }} numberOfLines={1}>
+                {formData.phoneNumber ? `${formData.countryCode} ${formData.phoneNumber}` : 'Seleccionar teléfono'}
+              </Text>
+              <Ionicons name="call-outline" size={20} color={themed.accent as string} />
+            </TouchableOpacity>
+            <Text style={{ color: themed.muted as string, fontSize: 12, marginTop: 4 }}>
               Toque el campo para seleccionar país y número
             </Text>
           </View>
 
           {/* Imagen */}
-          <View className="mb-4">
-            <Text className="text-orange-800 font-semibold mb-2">Imagen del Lugar</Text>
-            <View className="flex-row gap-3">
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>Imagen del Lugar</Text>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
               <TouchableOpacity
                 onPress={pickImage}
-                className="flex-1 bg-orange-100 border border-orange-300 py-3 rounded-xl flex-row items-center justify-center"
+                style={{
+                  flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.border,
+                  paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row'
+                }}
               >
-                <Ionicons name="image-outline" size={20} color="#ea580c" />
-                <Text className="text-orange-700 font-medium ml-2">Galería</Text>
+                <Ionicons name="image-outline" size={20} color={themed.accent as string} />
+                <Text style={{ color: themed.text, marginLeft: 8, fontWeight: '600' }}>Galería</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={takePhoto}
-                className="flex-1 bg-orange-100 border border-orange-300 py-3 rounded-xl flex-row items-center justify-center"
+                style={{
+                  flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.border,
+                  paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row'
+                }}
               >
-                <Ionicons name="camera-outline" size={20} color="#ea580c" />
-                <Text className="text-orange-700 font-medium ml-2">Cámara</Text>
+                <Ionicons name="camera-outline" size={20} color={themed.accent as string} />
+                <Text style={{ color: themed.text, marginLeft: 8, fontWeight: '600' }}>Cámara</Text>
               </TouchableOpacity>
             </View>
-            {formData.image_url && <Text className="text-green-600 text-sm mt-2">✓ Imagen seleccionada</Text>}
+            {formData.image_url ? (
+              <Text style={{ color: themed.successTextMuted as string, fontSize: 12, marginTop: 8 }}>
+                ✓ Imagen seleccionada
+              </Text>
+            ) : null}
           </View>
 
           {/* Acciones */}
-          <View className="flex-row gap-3 mt-6">
-            <TouchableOpacity onPress={() => router.back()} className="flex-1 bg-orange-100 border border-orange-400 py-4 rounded-xl">
-              <Text className="text-orange-700 font-semibold text-center">Cancelar</Text>
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={{
+                flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.accent,
+                paddingVertical: 14, borderRadius: 12, alignItems: 'center'
+              }}
+            >
+              <Text style={{ color: themed.accent as string, fontWeight: '700' }}>Cancelar</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={handleSubmit} disabled={loading} className="flex-1 bg-orange-500 py-4 rounded-xl shadow-lg">
-              {loading ? <ActivityIndicator size="small" color="white" /> : <Text className="text-white font-bold text-center">Crear Lugar</Text>}
+            <TouchableOpacity
+              onPress={handleSubmit}
+              disabled={loading}
+              style={{
+                flex: 1, backgroundColor: themed.accent, paddingVertical: 14, borderRadius: 12,
+                alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }
+              }}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>Crear Lugar</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
 
-      {/* Modal del Horario */}
+      {/* Modal Horario */}
       <Modal visible={scheduleModalVisible} animationType="slide" presentationStyle="pageSheet">
-        <View className="flex-1 bg-white">
-          <View className="bg-orange-500 px-6 py-4 flex-row items-center justify-between">
-            <Text className="text-white text-xl font-bold">Horario de Atención</Text>
+        <View style={{ flex: 1, backgroundColor: themed.background }}>
+          <View style={{ backgroundColor: themed.accent, paddingHorizontal: 24, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '800' }}>Horario de Atención</Text>
             <TouchableOpacity onPress={() => setScheduleModalVisible(false)}>
-              <Ionicons name="close" size={24} color="white" />
+              <Ionicons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
 
-          <ScrollView className="flex-1 p-4">
-            <Text className="text-orange-600 text-sm mb-4 text-center">
+          <ScrollView style={{ flex: 1, padding: 16 }}>
+            <Text style={{ color: themed.muted as string, fontSize: 12, textAlign: 'center', marginBottom: 12 }}>
               Configura los horarios de atención para cada día de la semana
             </Text>
 
             {schedule.map((daySchedule, index) => (
-              <View key={daySchedule.dayOfWeek} className="bg-orange-50 rounded-xl p-4 mb-3 border border-orange-200">
-                <View className="flex-row justify-between items-center mb-3">
-                  <View className="flex-row items-center flex-1">
+              <View key={daySchedule.dayOfWeek} style={{ backgroundColor: themed.card, borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: themed.border }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                     <TouchableOpacity
                       onPress={() => toggleDayOpen(index)}
-                      className={`w-6 h-6 rounded-md border-2 mr-3 ${
-                        daySchedule.isOpen 
-                          ? 'bg-orange-500 border-orange-500' 
-                          : 'bg-white border-orange-300'
-                      }`}
+                      style={{
+                        width: 24, height: 24, borderRadius: 6, borderWidth: 2,
+                        borderColor: themed.accent as string,
+                        backgroundColor: daySchedule.isOpen ? (themed.accent as string) : 'transparent',
+                        alignItems: 'center', justifyContent: 'center', marginRight: 12
+                      }}
                     >
-                      {daySchedule.isOpen && (
-                        <Ionicons name="checkmark" size={16} color="white" />
-                      )}
+                      {daySchedule.isOpen && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
                     </TouchableOpacity>
-                    <Text className="text-orange-900 font-semibold text-lg">
+                    <Text style={{ color: themed.text, fontWeight: '700', fontSize: 16 }}>
                       {DAYS_OF_WEEK.find(day => day.key === daySchedule.dayOfWeek)?.label}
                     </Text>
                   </View>
-                  
-                  <View className="flex-row gap-2">
-                    <TouchableOpacity 
-                      onPress={() => applySameSchedule(index)}
-                      className="bg-blue-500 px-3 py-1 rounded-lg"
-                    >
-                      <Text className="text-white text-xs font-medium">Aplicar a todos</Text>
+
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity onPress={() => applySameSchedule(index)} style={{ backgroundColor: themed.info as string, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Aplicar a todos</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity 
-                      onPress={() => openScheduleEditor(index)}
-                      className="bg-orange-500 px-3 py-1 rounded-lg"
-                    >
-                      <Text className="text-white text-xs font-medium">Editar</Text>
+                    <TouchableOpacity onPress={() => openScheduleEditor(index)} style={{ backgroundColor: themed.accent as string, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Editar</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
 
                 {daySchedule.isOpen ? (
-                  <View className="flex-row justify-between items-center">
-                    <View className="flex-row items-center">
-                      <Ionicons name="time-outline" size={16} color="#ea580c" />
-                      <Text className="text-orange-700 ml-2">
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Ionicons name="time-outline" size={16} color={themed.accent as string} />
+                      <Text style={{ color: themed.text, marginLeft: 8 }}>
                         {daySchedule.openTime} - {daySchedule.closeTime}
                       </Text>
                     </View>
-                    <Text className="text-green-600 text-sm font-medium">● Abierto</Text>
+                    <Text style={{ color: themed.successTextMuted as string, fontSize: 12, fontWeight: '700' }}>● Abierto</Text>
                   </View>
                 ) : (
-                  <View className="flex-row justify-between items-center">
-                    <Text className="text-orange-600">Cerrado</Text>
-                    <Text className="text-red-600 text-sm font-medium">● Cerrado</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: themed.muted as string }}>Cerrado</Text>
+                    <Text style={{ color: themed.danger as string, fontSize: 12, fontWeight: '700' }}>● Cerrado</Text>
                   </View>
                 )}
               </View>
             ))}
           </ScrollView>
 
-          <View className="p-4 border-t border-gray-200">
-            <TouchableOpacity 
-              onPress={() => setScheduleModalVisible(false)}
-              className="bg-orange-500 py-3 rounded-xl"
-            >
-              <Text className="text-white font-bold text-center">Guardar Horario</Text>
+          <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: themed.border }}>
+            <TouchableOpacity onPress={() => setScheduleModalVisible(false)} style={{ backgroundColor: themed.accent as string, paddingVertical: 12, borderRadius: 12 }}>
+              <Text style={{ color: '#FFFFFF', fontWeight: '800', textAlign: 'center' }}>Guardar Horario</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Modal para editar horario específico */}
-      <Modal visible={editingDay !== null} animationType="slide" transparent={true}>
-        <View className="flex-1 justify-center items-center bg-black/50">
-          <View className="bg-white rounded-2xl p-6 mx-4 w-11/12 max-w-md">
-            <Text className="text-orange-800 text-xl font-bold mb-4 text-center">
+      {/* Editor horario puntual */}
+      <Modal visible={editingDay !== null} animationType="slide" transparent>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <View style={{ backgroundColor: themed.card, borderRadius: 16, padding: 16, width: '92%', maxWidth: 480, borderWidth: 1, borderColor: themed.border }}>
+            <Text style={{ color: themed.text, fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>
               Editar Horario - {editingDay !== null ? DAYS_OF_WEEK[editingDay]?.label : ''}
             </Text>
 
             {editingDay !== null && (
               <>
-                <View className="mb-4">
-                  <Text className="text-orange-700 font-semibold mb-2">Hora de Apertura:</Text>
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 6 }}>Hora de Apertura:</Text>
                   <TextInput
-                    className="border-2 border-orange-200 rounded-xl p-3 text-orange-900"
+                    style={{ borderWidth: 1.5, borderColor: themed.border, borderRadius: 12, padding: 12, color: themed.text, backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF' }}
                     value={schedule[editingDay].openTime}
                     onChangeText={(text) => updateScheduleTime(editingDay, 'openTime', text)}
                     placeholder="HH:MM"
+                    placeholderTextColor={themed.muted as string}
                     keyboardType="numbers-and-punctuation"
                   />
                 </View>
 
-                <View className="mb-6">
-                  <Text className="text-orange-700 font-semibold mb-2">Hora de Cierre:</Text>
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 6 }}>Hora de Cierre:</Text>
                   <TextInput
-                    className="border-2 border-orange-200 rounded-xl p-3 text-orange-900"
+                    style={{ borderWidth: 1.5, borderColor: themed.border, borderRadius: 12, padding: 12, color: themed.text, backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF' }}
                     value={schedule[editingDay].closeTime}
                     onChangeText={(text) => updateScheduleTime(editingDay, 'closeTime', text)}
                     placeholder="HH:MM"
+                    placeholderTextColor={themed.muted as string}
                     keyboardType="numbers-and-punctuation"
                   />
                 </View>
 
-                <Text className="text-orange-600 text-xs text-center mb-4">
+                <Text style={{ color: themed.muted as string, fontSize: 12, textAlign: 'center', marginBottom: 12 }}>
                   Formato: HH:MM (24 horas). Ej: 09:00, 14:30, 18:00
                 </Text>
               </>
             )}
 
-            <View className="flex-row gap-3">
-              <TouchableOpacity 
-                onPress={() => setEditingDay(null)}
-                className="flex-1 bg-orange-100 border border-orange-400 py-3 rounded-xl"
-              >
-                <Text className="text-orange-700 font-semibold text-center">Cancelar</Text>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity onPress={() => setEditingDay(null)} style={{ flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.accent, paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}>
+                <Text style={{ color: themed.accent as string, fontWeight: '700' }}>Cancelar</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                onPress={() => setEditingDay(null)}
-                className="flex-1 bg-orange-500 py-3 rounded-xl"
-              >
-                <Text className="text-white font-bold text-center">Guardar</Text>
+              <TouchableOpacity onPress={() => setEditingDay(null)} style={{ flex: 1, backgroundColor: themed.accent as string, paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}>
+                <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>Guardar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -977,69 +968,62 @@ export default function CreatePlaceScreen() {
 
       {/* Modal del Mapa */}
       <Modal visible={mapModalVisible} animationType="slide" presentationStyle="pageSheet">
-        <View className="flex-1 bg-white">
-          <View className="bg-orange-500 px-6 py-4 flex-row items-center justify-between">
-            <Text className="text-white text-xl font-bold">Seleccionar Ubicación</Text>
+        <View style={{ flex: 1, backgroundColor: themed.background }}>
+          <View style={{ backgroundColor: themed.accent, paddingHorizontal: 24, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '800' }}>Seleccionar Ubicación</Text>
             <TouchableOpacity onPress={() => setMapModalVisible(false)}>
-              <Ionicons name="close" size={24} color="white" />
+              <Ionicons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
 
-          <View className="p-4 border-b border-gray-200">
-            <View className="flex-row mb-2">
+          <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: themed.border }}>
+            <View style={{ flexDirection: 'row', marginBottom: 8 }}>
               <TextInput
-                className="flex-1 border-2 border-orange-200 rounded-l-xl p-3"
+                style={{ flex: 1, borderWidth: 1.5, borderColor: themed.border, borderTopLeftRadius: 12, borderBottomLeftRadius: 12, padding: 12, color: themed.text, backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF' }}
                 placeholder="Buscar dirección o lugar..."
+                placeholderTextColor={themed.muted as string}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 onSubmitEditing={searchLocation}
                 returnKeyType="search"
               />
-              <TouchableOpacity 
-                onPress={searchLocation} 
+              <TouchableOpacity
+                onPress={searchLocation}
                 disabled={searchingLocation}
-                className="bg-orange-500 px-4 rounded-r-xl justify-center"
+                style={{ backgroundColor: themed.accent as string, paddingHorizontal: 16, borderTopRightRadius: 12, borderBottomRightRadius: 12, alignItems: 'center', justifyContent: 'center' }}
               >
-                {searchingLocation ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Ionicons name="search" size={20} color="white" />
-                )}
+                {searchingLocation ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Ionicons name="search" size={20} color="#FFFFFF" />}
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={getCurrentLocation}
               disabled={searchingLocation}
-              className="bg-blue-500 py-3 rounded-xl flex-row items-center justify-center mb-2"
+              style={{ backgroundColor: themed.info as string, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', marginBottom: 8 }}
             >
               {searchingLocation ? (
-                <ActivityIndicator size="small" color="white" />
+                <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <>
-                  <Ionicons name="locate" size={20} color="white" />
-                  <Text className="text-white font-semibold ml-2">Mi Ubicación Actual</Text>
+                  <Ionicons name="locate" size={20} color="#FFFFFF" />
+                  <Text style={{ color: '#FFFFFF', fontWeight: '700', marginLeft: 8 }}>Mi Ubicación Actual</Text>
                 </>
               )}
             </TouchableOpacity>
 
-            <Text className="text-orange-600 text-xs text-center">
+            <Text style={{ color: themed.muted as string, fontSize: 12, textAlign: 'center' }}>
               💡 Busca una ubicación o toca el mapa directamente para colocar el pin
             </Text>
 
             {showResults && (
-              <View className="absolute top-40 left-0 right-0 bg-white border border-gray-200 rounded-xl z-10 max-h-48 shadow-lg">
-                <View className="p-2 border-b border-gray-100">
-                  <Text className="text-orange-700 font-semibold">Resultados de búsqueda:</Text>
+              <View style={{ position: 'absolute', top: 140, left: 16, right: 16, backgroundColor: themed.card, borderWidth: 1, borderColor: themed.border, borderRadius: 12, zIndex: 10, maxHeight: 200, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }}>
+                <View style={{ padding: 8, borderBottomWidth: 1, borderBottomColor: themed.border }}>
+                  <Text style={{ color: themed.text, fontWeight: '700' }}>Resultados de búsqueda:</Text>
                 </View>
                 <ScrollView>
                   {searchResults.map((result, index) => (
-                    <TouchableOpacity 
-                      key={index} 
-                      onPress={() => selectSearchResult(result)} 
-                      className="p-3 border-b border-gray-100 active:bg-orange-50"
-                    >
-                      <Text className="text-orange-900 text-sm" numberOfLines={2}>
+                    <TouchableOpacity key={index} onPress={() => selectSearchResult(result)} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: themed.border }}>
+                      <Text style={{ color: themed.text, fontSize: 13 }} numberOfLines={2}>
                         {result.display_name}
                       </Text>
                     </TouchableOpacity>
@@ -1049,172 +1033,118 @@ export default function CreatePlaceScreen() {
             )}
           </View>
 
-          <View className="flex-row justify-around p-3 bg-orange-50">
-            <TouchableOpacity 
-              onPress={() => setMapType('standard')}
-              className={`px-4 py-2 rounded-lg flex-row items-center ${
-                mapType === 'standard' ? 'bg-orange-500' : 'bg-orange-200'
-              }`}
-            >
-              <Ionicons 
-                name="map-outline" 
-                size={16} 
-                color={mapType === 'standard' ? 'white' : '#ea580c'} 
-              />
-              <Text className={`font-medium ml-2 ${
-                mapType === 'standard' ? 'text-white' : 'text-orange-700'
-              }`}>
-                Estándar
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              onPress={() => setMapType('satellite')}
-              className={`px-4 py-2 rounded-lg flex-row items-center ${
-                mapType === 'satellite' ? 'bg-orange-500' : 'bg-orange-200'
-              }`}
-            >
-              <Ionicons 
-                name="earth-outline" 
-                size={16} 
-                color={mapType === 'satellite' ? 'white' : '#ea580c'} 
-              />
-              <Text className={`font-medium ml-2 ${
-                mapType === 'satellite' ? 'text-white' : 'text-orange-700'
-              }`}>
-                Satélite
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              onPress={() => setMapType('light')}
-              className={`px-4 py-2 rounded-lg flex-row items-center ${
-                mapType === 'light' ? 'bg-orange-500' : 'bg-orange-200'
-              }`}
-            >
-              <Ionicons 
-                name="sunny-outline" 
-                size={16} 
-                color={mapType === 'light' ? 'white' : '#ea580c'} 
-              />
-              <Text className={`font-medium ml-2 ${
-                mapType === 'light' ? 'text-white' : 'text-orange-700'
-              }`}>
-                Light
-              </Text>
-            </TouchableOpacity>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-around', padding: 8, backgroundColor: themed.softBg }}>
+            {[
+              { k: 'standard', label: 'Estándar', icon: 'map-outline' as const },
+              { k: 'satellite', label: 'Satélite', icon: 'earth-outline' as const },
+              { k: 'light', label: 'Light', icon: 'sunny-outline' as const },
+            ].map(opt => (
+              <TouchableOpacity
+                key={opt.k}
+                onPress={() => setMapType(opt.k as any)}
+                style={{
+                  paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, flexDirection: 'row', alignItems: 'center',
+                  backgroundColor: mapType === opt.k ? (themed.accent as string) : themed.softBg, borderWidth: mapType === opt.k ? 0 : 1, borderColor: themed.border
+                }}
+              >
+                <Ionicons name={opt.icon} size={16} color={mapType === opt.k ? '#FFFFFF' : (themed.accent as string)} />
+                <Text style={{ marginLeft: 8, fontWeight: '700', color: mapType === opt.k ? '#FFFFFF' : themed.text }}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
-          <View className="flex-1">
-            <WebView 
-              ref={webViewRef}
-              source={{ html: getLeafletMapHTML() }} 
-              style={{ flex: 1 }} 
-              onMessage={handleMapClick} 
-            />
+          <View style={{ flex: 1 }}>
+            <WebView ref={webViewRef} source={{ html: getLeafletMapHTML() }} style={{ flex: 1 }} onMessage={handleMapClick} />
           </View>
 
-          <View className="p-4 border-t border-gray-200">
-            <View className="flex-row gap-3">
-              <TouchableOpacity onPress={() => setMapModalVisible(false)} className="flex-1 bg-orange-100 border border-orange-400 py-3 rounded-xl">
-                <Text className="text-orange-700 font-semibold text-center">Cancelar</Text>
+          <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: themed.border }}>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity onPress={() => setMapModalVisible(false)} style={{ flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.accent, paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}>
+                <Text style={{ color: themed.accent as string, fontWeight: '700' }}>Cancelar</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={() => {
                   if (selectedLocation) {
                     setMapModalVisible(false);
-                    Alert.alert('Ubicación confirmada', 
-                      `Ubicación guardada:\n\nLatitud: ${formData.latitude}\nLongitud: ${formData.longitude}`);
+                    Alert.alert('Ubicación confirmada', `Ubicación guardada:\n\nLatitud: ${formData.latitude}\nLongitud: ${formData.longitude}`);
                   } else {
                     Alert.alert('Ubicación requerida', 'Por favor selecciona una ubicación en el mapa');
                   }
                 }}
-                className="flex-1 bg-orange-500 py-3 rounded-xl"
+                style={{ flex: 1, backgroundColor: themed.accent as string, paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}
               >
-                <Text className="text-white font-bold text-center">Confirmar Ubicación</Text>
+                <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>Confirmar Ubicación</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* Modal para selección de código de país y número */}
-      <Modal visible={showCountryModal} animationType="slide" transparent={true}>
-        <View className="flex-1 justify-center items-center bg-black/50">
-          <View className="bg-white rounded-2xl p-6 mx-4 w-11/12 max-w-md">
-            <View className="flex-row justify-between items-center mb-4">
-              <Text className="text-orange-800 text-xl font-bold">
-                Seleccionar Teléfono
-              </Text>
-              <TouchableOpacity 
-                onPress={() => setShowCountryModal(false)}
-                className="p-2"
-              >
-                <Ionicons name="close" size={24} color="#ea580c" />
-              </TouchableOpacity>
+      {/* Modal Teléfono */}
+      <Modal visible={showCountryModal} animationType="slide" transparent>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <View style={{ backgroundColor: themed.card, borderRadius: 16, padding: 16, width: '92%', maxWidth: 480, borderWidth: 1, borderColor: themed.border }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: themed.text, fontSize: 18, fontWeight: '800' }}>Seleccionar Teléfono</Text>
+              <TouchableOpacity onPress={() => setShowCountryModal(false)}><Ionicons name="close" size={24} color={themed.accent as string} /></TouchableOpacity>
             </View>
-            
-            <Text className="text-orange-700 font-semibold mb-2">País:</Text>
-            <ScrollView className="max-h-32 mb-4">
+
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 6 }}>País:</Text>
+            <ScrollView style={{ maxHeight: 140, marginBottom: 12 }}>
               {COUNTRY_CODES.map((country) => (
                 <TouchableOpacity
                   key={country.code}
                   onPress={() => handleCountryChange(country.code)}
-                  className={`p-3 border-b border-orange-100 rounded-lg mb-1 ${
-                    formData.countryCode === country.code ? 'bg-orange-100 border-orange-300' : 'bg-orange-50'
-                  }`}
+                  style={{
+                    padding: 12, borderBottomWidth: 1, borderBottomColor: themed.border, borderRadius: 8, marginBottom: 6,
+                    backgroundColor: formData.countryCode === country.code ? (themed.isDark ? '#0b1220' : '#fff7ed') : themed.card
+                  }}
                 >
-                  <View className="flex-row justify-between items-center">
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <View>
-                      <Text className="text-orange-900 font-medium">
-                        {country.name}
-                      </Text>
-                      <Text className="text-orange-600 text-xs">{country.code}</Text>
+                      <Text style={{ color: themed.text, fontWeight: '600' }}>{country.name}</Text>
+                      <Text style={{ color: themed.muted as string, fontSize: 12 }}>{country.code}</Text>
                     </View>
-                    <Text className="text-orange-500 text-xs">
-                      Máx. {country.maxLength} dígitos
-                    </Text>
+                    <Text style={{ color: themed.muted as string, fontSize: 12 }}>Máx. {country.maxLength} dígitos</Text>
                   </View>
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
-            <Text className="text-orange-700 font-semibold mb-2">
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 6 }}>
               Número de teléfono para {COUNTRY_CODES.find(c => c.code === formData.countryCode)?.name}:
             </Text>
             <TextInput
-              className="border-2 border-orange-200 rounded-xl p-3 text-orange-900 mb-4"
+              style={{ borderWidth: 1.5, borderColor: themed.border, borderRadius: 12, padding: 12, color: themed.text, backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF', marginBottom: 12 }}
               placeholder={`Ingresa número (máx. ${COUNTRY_CODES.find(c => c.code === formData.countryCode)?.maxLength} dígitos)`}
+              placeholderTextColor={themed.muted as string}
               value={formData.phoneNumber}
               onChangeText={(text) => handleInputChange('phoneNumber', text)}
               keyboardType="phone-pad"
               maxLength={COUNTRY_CODES.find(c => c.code === formData.countryCode)?.maxLength || 10}
             />
 
-            <View className="bg-orange-50 p-3 rounded-xl mb-4">
-              <Text className="text-orange-700 text-sm">Vista previa:</Text>
-              <Text className="text-orange-900 font-semibold text-lg">
+            <View style={{ backgroundColor: themed.softBg, padding: 12, borderRadius: 12, marginBottom: 12 }}>
+              <Text style={{ color: themed.muted as string, fontSize: 12 }}>Vista previa:</Text>
+              <Text style={{ color: themed.text, fontWeight: '800', fontSize: 16 }}>
                 {formData.countryCode} {formData.phoneNumber || 'XXX-XXX-XXX'}
               </Text>
             </View>
 
-            <View className="flex-row gap-3">
-              <TouchableOpacity 
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
                 onPress={() => {
                   setFormData(prev => ({ ...prev, phoneNumber: '' }));
                   setShowCountryModal(false);
                 }}
-                className="flex-1 bg-orange-100 border border-orange-400 py-3 rounded-xl"
+                style={{ flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.accent, paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}
               >
-                <Text className="text-orange-700 font-semibold text-center">Limpiar</Text>
+                <Text style={{ color: themed.accent as string, fontWeight: '700' }}>Limpiar</Text>
               </TouchableOpacity>
               
-              <TouchableOpacity 
-                onPress={handleAcceptPhoneNumber}
-                className="flex-1 bg-orange-500 py-3 rounded-xl"
-              >
-                <Text className="text-white font-bold text-center">Aceptar</Text>
+              <TouchableOpacity onPress={handleAcceptPhoneNumber} style={{ flex: 1, backgroundColor: themed.accent as string, paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}>
+                <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>Aceptar</Text>
               </TouchableOpacity>
             </View>
           </View>

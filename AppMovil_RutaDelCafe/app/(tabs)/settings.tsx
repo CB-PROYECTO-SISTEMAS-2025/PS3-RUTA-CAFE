@@ -1,5 +1,6 @@
-// app/(tabs)/settings.tsx
-import { useState, useEffect } from 'react';
+import { useTheme } from "../../hooks/theme-context";
+import { useThemedStyles } from "../../hooks/useThemedStyles";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,15 +9,18 @@ import {
   Alert,
   Switch,
   ActivityIndicator,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { i18n } from '../../i18n.js';
-import { useSettings } from '../../hooks/useSettings.js';
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { i18n } from "../../i18n.js";
+import { useSettings } from "../../hooks/useSettings.js";
 
 export default function SettingsScreen() {
   const router = useRouter();
   const settings = useSettings();
+  const { theme, setTheme } = useTheme();
+  const themed = useThemedStyles();
+
   const [currentLocale, setCurrentLocale] = useState(i18n.getCurrentLanguage());
   const [changingLanguage, setChangingLanguage] = useState(false);
 
@@ -24,308 +28,303 @@ export default function SettingsScreen() {
     setCurrentLocale(i18n.locale);
   }, []);
 
-
-  // Función de traducción
   const t = (key: string) => i18n.t(key);
 
   const changeLanguage = async (languageCode: string) => {
     if (currentLocale === languageCode) return;
-    
     setChangingLanguage(true);
     try {
       const success = await i18n.changeLanguage(languageCode);
-      
       if (success) {
         Alert.alert(
-          t('settings.languageChanged'),
-          t('settings.languageChangeMessage'),
-          [{ text: t('common.ok') }]
+          t("settings.languageChanged"),
+          t("settings.languageChangeMessage"),
+          [{ text: t("common.ok") }]
         );
-      } else {
-        throw new Error('Failed to change language');
-      }
+      } else throw new Error("Failed to change language");
     } catch (error) {
-      console.error('Error changing language:', error);
-      Alert.alert(t('common.error'), t('settings.languageChangeError'));
+      console.error("Error changing language:", error);
+      Alert.alert(t("common.error"), t("settings.languageChangeError"));
     } finally {
       setChangingLanguage(false);
     }
   };
 
-  const handleToggleDarkMode = async (value: boolean) => {
-    await settings.toggleDarkMode(value);
-    Alert.alert(
-      t('settings.themeChanged'),
-      t('settings.themeChangeMessage'),
-      [{ text: t('common.ok') }]
-    );
-  };
-
-  const handleClearCache = () => {
-    Alert.alert(
-      t('settings.clearCache'),
-      t('settings.clearCacheMessage'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.confirm'),
-          style: 'destructive',
-          onPress: async () => {
-            const success = await settings.clearCache();
-            if (success) {
-              Alert.alert(t('common.success'), t('settings.cacheCleared'));
-            } else {
-              Alert.alert(t('common.error'), t('settings.cacheError'));
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handlePrivacyPolicy = () => {
-    Alert.alert(t('settings.privacyPolicy'), t('settings.comingSoon'));
-  };
-
-  const handleTermsOfService = () => {
-    Alert.alert(t('settings.termsOfService'), t('settings.comingSoon'));
-  };
-
-  const handleAppInfo = () => {
-    Alert.alert(
-      t('settings.about'),
-      `${t('settings.appDescription')}\n\n${t('settings.version')}: 1.0.0\n${t('settings.build')}: 2024.01.001`,
-      [{ text: t('common.ok') }]
-    );
-  };
-
   const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.push('/(tabs)/advertisement');
-    }
+    if (router.canGoBack()) router.back();
+    else router.push("/(tabs)/advertisement");
   };
+
+  const languages = i18n.getAvailableLanguages();
 
   if (settings.refreshing) {
     return (
-      <View className="flex-1 justify-center items-center bg-orange-50">
-        <ActivityIndicator size="large" color="#f97316" />
-        <Text className="text-orange-700 mt-4">{t('common.loading')}</Text>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: themed.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={themed.accent} />
+        <Text style={{ color: themed.text, marginTop: 10 }}>
+          {t("common.loading")}
+        </Text>
       </View>
     );
   }
 
-  const languages = i18n.getAvailableLanguages();
-
   return (
-    <View className="flex-1 bg-orange-50">
-      {/* Header con fondo naranja */}
-      <View className="bg-orange-500 px-6 pt-12 pb-6 rounded-b-3xl shadow-lg">
-        <View className="flex-row items-center justify-center">
-          <View className="items-center">
-            <Ionicons name="settings-outline" size={32} color="white" />
-            <Text className="text-white text-2xl font-bold text-center mt-2">
-              {t('settings.title')}
-            </Text>
-          </View>
+    <View style={{ flex: 1, backgroundColor: themed.background }}>
+      {/* Header */}
+      <View
+        style={{
+          backgroundColor: themed.accent,
+          paddingHorizontal: 24,
+          paddingTop: 48,
+          paddingBottom: 20,
+          borderBottomLeftRadius: 24,
+          borderBottomRightRadius: 24,
+          shadowColor: "#000",
+          shadowOpacity: 0.2,
+          shadowRadius: 6,
+        }}
+      >
+        <View style={{ alignItems: "center" }}>
+          <Ionicons name="settings-outline" size={32} color="#FFFFFF" />
+          <Text
+            style={{
+              color: "#FFFFFF",
+              fontSize: 24,
+              fontWeight: "bold",
+              marginTop: 8,
+            }}
+          >
+            {t("settings.title")}
+          </Text>
         </View>
       </View>
 
-      {/* Contenido principal */}
-      <ScrollView 
-        className="flex-1"
+      {/* Contenido */}
+      <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingBottom: 100,
           paddingHorizontal: 16,
           paddingTop: 16,
+          paddingBottom: 100,
         }}
       >
-        {/* Botón de volver */}
-        <View className="mb-4">
-          <TouchableOpacity
-            onPress={handleBack}
-            className="bg-orange-100 border border-orange-400 py-4 rounded-xl shadow flex-row items-center justify-center"
+        {/* Volver */}
+        <TouchableOpacity
+          onPress={handleBack}
+          style={{
+            backgroundColor: themed.card,
+            borderColor: themed.border,
+            borderWidth: 1,
+            paddingVertical: 14,
+            borderRadius: 16,
+            alignItems: "center",
+            flexDirection: "row",
+            justifyContent: "center",
+            marginBottom: 16,
+          }}
+        >
+          <Ionicons
+            name="arrow-back"
+            size={22}
+            color={themed.accent}
+            style={{ marginRight: 8 }}
+          />
+          <Text
+            style={{
+              color: themed.text,
+              fontWeight: "600",
+              fontSize: 16,
+            }}
           >
-            <Ionicons name="arrow-back" size={22} color="#f97316" />
-            <Text className="text-orange-700 font-semibold text-base ml-2">
-              {t('common.back')}
-            </Text>
-          </TouchableOpacity>
-        </View>
+            {t("common.back")}
+          </Text>
+        </TouchableOpacity>
 
-        {/* Sección de Idioma */}
-        <View className="bg-white rounded-2xl p-5 mb-4 border border-orange-200 shadow-sm">
-          <View className="flex-row items-center mb-4">
-            <Ionicons name="language-outline" size={24} color="#ea580c" />
-            <Text className="text-orange-900 text-xl font-bold ml-3">
-              {t('settings.language')}
+        {/* Idioma */}
+        <View
+          style={{
+            backgroundColor: themed.card,
+            borderRadius: 20,
+            borderColor: themed.border,
+            borderWidth: 1,
+            padding: 20,
+            marginBottom: 16,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+            <Ionicons name="language-outline" size={24} color={themed.accent} />
+            <Text
+              style={{
+                color: themed.text,
+                fontWeight: "bold",
+                fontSize: 20,
+                marginLeft: 8,
+              }}
+            >
+              {t("settings.language")}
             </Text>
           </View>
-          
-          <Text className="text-orange-700 mb-4 text-sm">
-            {t('settings.selectLanguage')}
-          </Text>
 
           {languages.map((language) => (
             <TouchableOpacity
               key={language.code}
               onPress={() => changeLanguage(language.code)}
               disabled={changingLanguage}
-              className={`flex-row items-center justify-between p-4 rounded-xl mb-3 border ${
-                currentLocale === language.code 
-                  ? 'bg-orange-100 border-orange-400 shadow' 
-                  : 'bg-orange-50 border-orange-200'
-              } ${changingLanguage ? 'opacity-50' : ''}`}
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                backgroundColor:
+                  currentLocale === language.code
+                    ? themed.accent + "22"
+                    : themed.background,
+                borderColor:
+                  currentLocale === language.code
+                    ? themed.accent
+                    : themed.border,
+                borderWidth: 1,
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 8,
+              }}
             >
-              <View className="flex-row items-center flex-1">
-                <Text className="text-2xl mr-4">{i18n.getLanguageFlag(language.code)}</Text>
-                <View className="flex-1">
-                  <Text className="text-orange-900 font-semibold text-base">
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Text style={{ fontSize: 22, marginRight: 10 }}>
+                  {i18n.getLanguageFlag(language.code)}
+                </Text>
+                <View>
+                  <Text
+                    style={{ color: themed.text, fontWeight: "600", fontSize: 16 }}
+                  >
                     {language.nativeName}
                   </Text>
-                  <Text className="text-orange-600 text-xs mt-1">
+                  <Text style={{ color: themed.muted, fontSize: 12 }}>
                     {language.name}
                   </Text>
                 </View>
               </View>
-              
-              <View className="flex-row items-center">
-                {changingLanguage && currentLocale === language.code ? (
-                  <ActivityIndicator size="small" color="#f97316" />
-                ) : (
-                  currentLocale === language.code && (
-                    <Ionicons name="checkmark-circle" size={24} color="#22c55e" />
-                  )
-                )}
-              </View>
+
+              {currentLocale === language.code && !changingLanguage && (
+                <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
+              )}
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Sección de Preferencias */}
-        <View className="bg-white rounded-2xl p-5 mb-4 border border-orange-200 shadow-sm">
-          <View className="flex-row items-center mb-4">
-            <Ionicons name="options-outline" size={24} color="#ea580c" />
-            <Text className="text-orange-900 text-xl font-bold ml-3">
-              {t('settings.preferences')}
+        {/* Preferencias */}
+        <View
+          style={{
+            backgroundColor: themed.card,
+            borderColor: themed.border,
+            borderWidth: 1,
+            borderRadius: 20,
+            padding: 20,
+            marginBottom: 16,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+            <Ionicons name="options-outline" size={24} color={themed.accent} />
+            <Text
+              style={{
+                color: themed.text,
+                fontWeight: "bold",
+                fontSize: 20,
+                marginLeft: 8,
+              }}
+            >
+              {t("settings.preferences")}
             </Text>
           </View>
 
-          <View className="flex-row items-center justify-between py-4 border-b border-orange-100">
-            <View className="flex-1 mr-4">
-              <Text className="text-orange-900 font-semibold text-base">
-                {t('settings.notifications')}
+          {/* Notificaciones */}
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderBottomColor: themed.border,
+              borderBottomWidth: 1,
+              paddingBottom: 10,
+              marginBottom: 10,
+            }}
+          >
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={{ color: themed.text, fontWeight: "600", fontSize: 16 }}>
+                {t("settings.notifications")}
               </Text>
-              <Text className="text-orange-600 text-xs mt-1">
-                {t('settings.notificationsDescription')}
+              <Text style={{ color: themed.muted, fontSize: 12, marginTop: 4 }}>
+                {t("settings.notificationsDescription")}
               </Text>
             </View>
             <Switch
               value={settings.notifications}
               onValueChange={settings.toggleNotifications}
-              trackColor={{ false: '#d1d5db', true: '#fed7aa' }}
-              thumbColor={settings.notifications ? '#f97316' : '#f3f4f6'}
+              trackColor={{ false: "#d1d5db", true: themed.accent + "66" }}
+              thumbColor={settings.notifications ? themed.accent : "#ccc"}
             />
           </View>
 
-          <View className="flex-row items-center justify-between py-4">
-            <View className="flex-1 mr-4">
-              <Text className="text-orange-900 font-semibold text-base">
-                {t('settings.darkMode')}
+          {/* Tema */}
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              paddingTop: 10,
+            }}
+          >
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={{ color: themed.text, fontWeight: "600", fontSize: 16 }}>
+                Tema
               </Text>
-              <Text className="text-orange-600 text-xs mt-1">
-                {t('settings.darkModeDescription')}
+              <Text style={{ color: themed.muted, fontSize: 12, marginTop: 4 }}>
+                Automático por hora o forzado
               </Text>
             </View>
-            <Switch
-              value={settings.darkMode}
-              onValueChange={handleToggleDarkMode}
-              trackColor={{ false: '#d1d5db', true: '#fed7aa' }}
-              thumbColor={settings.darkMode ? '#f97316' : '#f3f4f6'}
-            />
+            <TouchableOpacity
+              onPress={() => {
+                const next =
+                  theme === "light"
+                    ? "dark"
+                    : theme === "dark"
+                    ? "auto"
+                    : "light";
+                setTheme(next);
+                Alert.alert(
+                  "Tema cambiado",
+                  next === "auto"
+                    ? "Automático (19:00 a 06:00 oscuro)"
+                    : next === "dark"
+                    ? "Oscuro"
+                    : "Claro"
+                );
+              }}
+              style={{
+                backgroundColor: themed.accent + "22",
+                paddingVertical: 8,
+                paddingHorizontal: 16,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: themed.accent,
+              }}
+            >
+              <Text style={{ color: themed.accent, fontWeight: "600" }}>
+                {theme === "light"
+                  ? "Claro"
+                  : theme === "dark"
+                  ? "Oscuro"
+                  : "Automático"}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
-
-        {/* Sección de Privacidad y Seguridad */}
-        <View className="bg-white rounded-2xl p-5 mb-4 border border-orange-200 shadow-sm">
-          <View className="flex-row items-center mb-4">
-            <Ionicons name="shield-checkmark-outline" size={24} color="#ea580c" />
-            <Text className="text-orange-900 text-xl font-bold ml-3">
-              {t('settings.privacySecurity')}
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            onPress={handleClearCache}
-            className="flex-row items-center justify-between py-4 border-b border-orange-100"
-          >
-            <View className="flex-row items-center flex-1">
-              <Ionicons name="trash-outline" size={20} color="#ef4444" />
-              <Text className="text-orange-900 font-semibold ml-3">
-                {t('settings.clearCache')}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#6b7280" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handlePrivacyPolicy}
-            className="flex-row items-center justify-between py-4 border-b border-orange-100"
-          >
-            <View className="flex-row items-center flex-1">
-              <Ionicons name="document-text-outline" size={20} color="#3b82f6" />
-              <Text className="text-orange-900 font-semibold ml-3">
-                {t('settings.privacyPolicy')}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#6b7280" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handleTermsOfService}
-            className="flex-row items-center justify-between py-4"
-          >
-            <View className="flex-row items-center flex-1">
-              <Ionicons name="business-outline" size={20} color="#8b5cf6" />
-              <Text className="text-orange-900 font-semibold ml-3">
-                {t('settings.termsOfService')}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#6b7280" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Información de la App */}
-        <View className="bg-white rounded-2xl p-5 mb-4 border border-orange-200 shadow-sm">
-          <View className="flex-row items-center mb-4">
-            <Ionicons name="information-circle-outline" size={24} color="#ea580c" />
-            <Text className="text-orange-900 text-xl font-bold ml-3">
-              {t('settings.about')}
-            </Text>
-          </View>
-
-          <TouchableOpacity onPress={handleAppInfo}>
-            <View className="bg-orange-50 rounded-xl p-4 border border-orange-200">
-              <View className="flex-row items-center justify-between mb-2">
-                <Text className="text-orange-700 font-medium">{t('settings.version')}</Text>
-                <Text className="text-orange-900 font-semibold">1.0.0</Text>
-              </View>
-
-              <View className="flex-row items-center justify-between mb-3">
-                <Text className="text-orange-700 font-medium">{t('settings.build')}</Text>
-                <Text className="text-orange-900 font-semibold">2024.01.001</Text>
-              </View>
-
-              <Text className="text-orange-800 text-sm text-center leading-5">
-                {t('settings.appDescription')}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ height: 20 }} />
       </ScrollView>
     </View>
   );

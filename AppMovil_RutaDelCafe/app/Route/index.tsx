@@ -12,13 +12,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useThemedStyles } from '../../hooks/useThemedStyles';
 
 interface Route {
   id: number;
   name: string;
   description: string;
   status: 'pendiente' | 'aprobada' | 'rechazada';
-  rejectionComment?: string; // 👈 Nuevo campo añadido
+  rejectionComment?: string;
   image_url: string;
   createdBy: number;
   createdAt: string;
@@ -33,88 +34,72 @@ interface UserData {
 
 function RoutesScreen() {
   const router = useRouter();
+  const themed = useThemedStyles(); // 🎨 tema
+
   const [routes, setRoutes] = useState<Route[]>([]);
   const [filteredRoutes, setFilteredRoutes] = useState<Route[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [userRole, setUserRole] = useState<number>(0); // 0 = visitante
+  const [userRole, setUserRole] = useState<number>(0);
   const [userId, setUserId] = useState<number>(0);
   const [hasPendingRoutes, setHasPendingRoutes] = useState(false);
   const [userToken, setUserToken] = useState<string | null>(null);
 
-  // 🔹 Al iniciar, carga usuario (si existe) y rutas
   useEffect(() => {
     loadUserData();
     fetchRoutes();
   }, []);
 
-  // 🔹 Filtrado de rutas según rol y verificación de rutas pendientes
   useEffect(() => {
     if (userRole === 2) {
-      // 🧑‍🔧 Técnico: solo sus rutas, cualquier estado
       const userRoutes = routes.filter(r => r.createdBy === userId);
       setFilteredRoutes(userRoutes);
-      
-      // Verificar si tiene rutas pendientes
       const pending = userRoutes.some(r => r.status === 'pendiente');
       setHasPendingRoutes(pending);
     } else if (userRole === 3 || userRole === 0) {
-      // 👤 Usuario logueado o visitante: solo aprobadas
       setFilteredRoutes(routes.filter(r => r.status === 'aprobada'));
       setHasPendingRoutes(false);
     } else if (userRole === 1) {
-      // 👑 Administrador: puede ver todas las rutas
       setFilteredRoutes(routes);
       setHasPendingRoutes(false);
     } else {
-      // Rol desconocido: seguridad -> solo aprobadas
       setFilteredRoutes(routes.filter(r => r.status === 'aprobada'));
       setHasPendingRoutes(false);
     }
   }, [routes, userRole, userId]);
 
-  // 🔹 Cargar datos del usuario (si hay sesión)
   const loadUserData = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
       setUserToken(token);
-      
+
       const userData = await AsyncStorage.getItem('userData');
       if (userData) {
         const user: UserData = JSON.parse(userData);
         setUserRole(user.role || 3);
         setUserId(user.id || 0);
-        console.log("👤 Usuario cargado:", { role: user.role, id: user.id, name: user.name });
       } else {
-        // 🌐 Visitante sin login
         setUserRole(0);
         setUserId(0);
-        console.log("👤 Visitante sin sesión");
       }
-    } catch (error) {
-      console.error('Error loading user data:', error);
+    } catch {
       setUserRole(0);
     }
   };
 
-  // 🔹 Obtener rutas desde backend (ahora permite visitante)
   const fetchRoutes = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
       const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`; // opcional
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      console.log("🌍 Fetching routes with token:", !!token);
-      
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes`, {
         method: 'GET',
         headers,
       });
 
       if (!response.ok) {
-        // Si hay error de autenticación, limpiar token inválido
         if (response.status === 401) {
-          console.log("🔐 Token inválido, limpiando sesión...");
           await AsyncStorage.removeItem('userToken');
           await AsyncStorage.removeItem('userData');
           setUserToken(null);
@@ -122,12 +107,10 @@ function RoutesScreen() {
         }
         throw new Error('Error al cargar las rutas');
       }
-      
+
       const data = await response.json();
       setRoutes(data);
-      console.log("✅ Rutas cargadas:", data.length);
-    } catch (error) {
-      console.error('Error fetching routes:', error);
+    } catch {
       Alert.alert('Error', 'No se pudieron cargar las rutas');
     } finally {
       setLoading(false);
@@ -143,9 +126,9 @@ function RoutesScreen() {
   const handleCreateRoute = () => {
     if (hasPendingRoutes) {
       Alert.alert(
-        'Ruta Pendiente', 
+        'Ruta Pendiente',
         'No puedes crear una nueva ruta hasta que el administrador apruebe tu ruta pendiente.',
-        [{ text: 'Entendido', style: 'default' }]
+        [{ text: 'Entendido', style: 'default' }],
       );
       return;
     }
@@ -168,17 +151,16 @@ function RoutesScreen() {
 
             const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes/${id}`, {
               method: 'DELETE',
-              headers: { 
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
               },
             });
-            
+
             if (response.ok) {
               Alert.alert('Éxito', 'Ruta eliminada correctamente');
               fetchRoutes();
             } else if (response.status === 401) {
-              // Token expirado
               await AsyncStorage.removeItem('userToken');
               await AsyncStorage.removeItem('userData');
               Alert.alert('Sesión expirada', 'Por favor inicia sesión nuevamente.');
@@ -193,15 +175,28 @@ function RoutesScreen() {
     ]);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'aprobada':
-        return 'bg-green-100 border-green-500 text-green-700';
-      case 'rechazada':
-        return 'bg-red-100 border-red-500 text-red-700';
-      default:
-        return 'bg-orange-100 border-orange-500 text-orange-700';
+  // 🎨 estilos del estado (pill) en claro/oscuro
+  const statusStyles = (status: string) => {
+    if (status === 'aprobada') {
+      return {
+        bg: themed.isDark ? '#052e1a' : '#d1fae5',
+        border: themed.isDark ? '#10b981' : '#10b981',
+        text: themed.isDark ? '#6ee7b7' : '#065f46',
+      };
     }
+    if (status === 'rechazada') {
+      return {
+        bg: themed.isDark ? '#2f0b0b' : '#fee2e2',
+        border: themed.isDark ? '#ef4444' : '#ef4444',
+        text: themed.isDark ? '#fecaca' : '#7f1d1d',
+      };
+    }
+    // pendiente
+    return {
+      bg: themed.isDark ? '#341a05' : '#ffedd5',
+      border: themed.isDark ? '#f59e0b' : '#f59e0b',
+      text: themed.isDark ? '#fde68a' : '#7c2d12',
+    };
   };
 
   const getStatusText = (status: string) => {
@@ -215,35 +210,53 @@ function RoutesScreen() {
     }
   };
 
-  // 🔹 CORREGIDO: Definir correctamente los roles
-  const isTechnician = userRole === 2; // Técnico
-  const isAdmin = userRole === 1; // Administrador
-  const isUser = userRole === 3; // Usuario normal
-  const isVisitor = userRole === 0; // Visitante
+  const isTechnician = userRole === 2;
+  const isAdmin = userRole === 1;
+  const isUser = userRole === 3;
+  const isVisitor = userRole === 0;
 
   if (loading) {
     return (
-      <View className="flex-1 justify-center items-center bg-orange-50">
-        <ActivityIndicator size="large" color="#f97316" />
-        <Text className="text-orange-700 mt-4">Cargando rutas...</Text>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: themed.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={themed.accent as string} />
+        <Text style={{ color: themed.accent, marginTop: 16 }}>Cargando rutas...</Text>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-orange-50">
-      {/* 🔹 Header */}
-      <View className="bg-orange-500 px-6 py-4 rounded-b-3xl shadow-lg">
-        <Text className="text-white text-2xl font-bold text-center">
+    <View style={{ flex: 1, backgroundColor: themed.background }}>
+      {/* Header */}
+      <View
+        style={{
+          backgroundColor: themed.accent,
+          paddingHorizontal: 24,
+          paddingVertical: 16,
+          borderBottomLeftRadius: 24,
+          borderBottomRightRadius: 24,
+          shadowColor: '#000',
+          shadowOpacity: 0.15,
+          shadowOffset: { width: 0, height: 3 },
+          shadowRadius: 6,
+          elevation: 6,
+        }}
+      >
+        <Text style={{ color: '#fff', fontSize: 22, fontWeight: 'bold', textAlign: 'center' }}>
           {isTechnician ? 'Mis Rutas' : 'Rutas Disponibles'}
         </Text>
-        <Text className="text-orange-100 text-center mt-1">
+        <Text style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'center', marginTop: 4 }}>
           {isTechnician
             ? 'Gestiona tus rutas gastronómicas'
             : 'Descubre las mejores rutas gastronómicas'}
         </Text>
-        {/* 👇 Texto dinámico del rol */}
-        <Text className="text-orange-200 text-center mt-1 text-xs">
+        <Text style={{ color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 4, fontSize: 12 }}>
           {isTechnician
             ? 'Rol: Técnico'
             : isAdmin
@@ -255,47 +268,76 @@ function RoutesScreen() {
         </Text>
       </View>
 
-      {/* 🔹 Alerta de ruta pendiente para técnicos */}
+      {/* Alerta de pendiente (técnico) */}
       {isTechnician && hasPendingRoutes && (
-        <View className="mx-6 mt-4 bg-orange-200 border border-orange-400 rounded-xl p-4">
-          <View className="flex-row items-center">
-            <Ionicons name="information-circle" size={24} color="#ea580c" />
-            <Text className="text-orange-800 font-bold ml-2 flex-1">
+        <View
+          style={{
+            marginHorizontal: 24,
+            marginTop: 16,
+            backgroundColor: themed.isDark ? '#3b2106' : '#fde68a',
+            borderColor: themed.isDark ? '#f59e0b' : '#f59e0b',
+            borderWidth: 1,
+            borderRadius: 12,
+            padding: 16,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="information-circle" size={24} color={themed.accent as string} />
+            <Text
+              style={{
+                color: themed.isDark ? '#fde68a' : '#9a3412',
+                fontWeight: 'bold',
+                marginLeft: 8,
+                flex: 1,
+              }}
+            >
               Tienes rutas pendientes de aprobación
             </Text>
           </View>
-          <Text className="text-orange-700 mt-2 text-sm">
+          <Text style={{ color: themed.isDark ? '#fde68a' : '#9a3412', marginTop: 8, fontSize: 13 }}>
             No puedes crear nuevas rutas hasta que el administrador apruebe tus rutas pendientes.
           </Text>
         </View>
       )}
 
-      {/* 🔹 Botón crear (solo técnicos sin rutas pendientes) */}
+      {/* Botón crear (técnico) */}
       {isTechnician && (
-        <View className="px-6 mt-4">
+        <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
           <TouchableOpacity
             onPress={handleCreateRoute}
-            className={`py-4 rounded-2xl shadow-lg flex-row items-center justify-center ${
-              hasPendingRoutes ? 'bg-orange-300' : 'bg-orange-500'
-            }`}
             disabled={hasPendingRoutes}
+            style={{
+              paddingVertical: 16,
+              borderRadius: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: hasPendingRoutes ? (themed.isDark ? '#b45309' : '#fdba74') : (themed.accent as string),
+              opacity: hasPendingRoutes ? 0.95 : 1,
+              elevation: 3,
+            }}
           >
-            <Ionicons 
-              name="add-circle" 
-              size={24} 
-              color={hasPendingRoutes ? "#9a3412" : "white"} 
+            <Ionicons
+              name="add-circle"
+              size={24}
+              color={hasPendingRoutes ? (themed.isDark ? '#1f1305' : '#7c2d12') : '#fff'}
             />
-            <Text className={`font-bold text-lg ml-2 ${
-              hasPendingRoutes ? 'text-orange-800' : 'text-white'
-            }`}>
+            <Text
+              style={{
+                fontWeight: 'bold',
+                fontSize: 18,
+                marginLeft: 8,
+                color: hasPendingRoutes ? (themed.isDark ? '#1f1305' : '#7c2d12') : '#fff',
+              }}
+            >
               {hasPendingRoutes ? 'Creación Bloqueada' : 'Crear Nueva Ruta'}
             </Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* 🔹 Botón volver */}
-      <View className="px-6 mt-4">
+      {/* Botón volver */}
+      <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
         <TouchableOpacity
           onPress={() => {
             if (router.canGoBack()) {
@@ -304,153 +346,259 @@ function RoutesScreen() {
               router.replace('/(tabs)/advertisement');
             }
           }}
-          className="bg-orange-100 border border-orange-400 py-3 rounded-xl shadow flex-row items-center justify-center mb-2"
+          style={{
+            backgroundColor: themed.isDark ? '#0b1220' : '#fff7ed',
+            borderColor: themed.accent as string,
+            borderWidth: 1,
+            paddingVertical: 12,
+            borderRadius: 12,
+            shadowColor: '#000',
+            shadowOpacity: 0.1,
+            shadowOffset: { width: 0, height: 2 },
+            shadowRadius: 4,
+            elevation: 2,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 8,
+          }}
         >
-          <Ionicons name="arrow-back" size={22} color="#f97316" />
-          <Text className="text-orange-700 font-semibold text-base ml-2">Volver</Text>
+          <Ionicons name="arrow-back" size={22} color={themed.accent as string} />
+          <Text style={{ color: themed.accent, fontWeight: '600', fontSize: 16, marginLeft: 8 }}>
+            Volver
+          </Text>
         </TouchableOpacity>
       </View>
 
-      {/* 🔹 Lista de rutas */}
+      {/* Lista de rutas */}
       <ScrollView
-        className="flex-1 px-6 mt-6"
+        style={{ flex: 1, paddingHorizontal: 24, marginTop: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
       >
         {filteredRoutes.length === 0 ? (
-          <View className="bg-white rounded-2xl p-8 items-center mt-8">
-            <Ionicons name="map-outline" size={64} color="#f97316" />
-            <Text className="text-orange-700 text-lg font-bold mt-4 text-center">
+          <View
+            style={{
+              backgroundColor: themed.card,
+              borderColor: themed.border,
+              borderWidth: 1,
+              borderRadius: 16,
+              padding: 24,
+              alignItems: 'center',
+              marginTop: 16,
+            }}
+          >
+            <Ionicons name="map-outline" size={64} color={themed.accent as string} />
+            <Text
+              style={{
+                color: themed.text,
+                fontSize: 18,
+                fontWeight: 'bold',
+                marginTop: 12,
+                textAlign: 'center',
+              }}
+            >
               {isTechnician ? 'No hay rutas creadas' : 'No hay rutas disponibles'}
             </Text>
-            <Text className="text-orange-500 text-center mt-2">
+            <Text style={{ color: themed.muted, textAlign: 'center', marginTop: 8 }}>
               {isTechnician
                 ? '¡Comienza creando tu primera ruta gastronómica!'
                 : 'Pronto habrá nuevas rutas disponibles'}
             </Text>
           </View>
         ) : (
-          filteredRoutes.map(route => (
-            <View
-              key={route.id}
-              className="bg-orange-100 rounded-2xl p-4 mb-4 shadow-md border border-orange-300"
-            >
-              {route.image_url && (
-                <Image
-                  source={{ uri: route.image_url }}
-                  className="w-full h-40 rounded-xl mb-4"
-                  resizeMode="cover"
-                />
-              )}
+          filteredRoutes.map(route => {
+            const pill = statusStyles(route.status);
+            return (
+              <View
+                key={route.id}
+                style={{
+                  backgroundColor: themed.isDark ? '#1b283f' : '#fff7ed',
+                  borderColor: themed.isDark ? '#314264' : '#fdba74',
+                  borderWidth: 1,
+                  borderRadius: 16,
+                  padding: 16,
+                  marginBottom: 16,
+                  shadowColor: '#000',
+                  shadowOpacity: 0.1,
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowRadius: 4,
+                  elevation: 2,
+                }}
+              >
+                {route.image_url ? (
+                  <Image
+                    source={{ uri: route.image_url }}
+                    style={{ width: '100%', height: 160, borderRadius: 12, marginBottom: 12 }}
+                    resizeMode="cover"
+                  />
+                ) : null}
 
-              <View className="flex-row justify-between items-start mb-2">
-                <Text className="text-orange-900 font-bold text-lg flex-1">{route.name}</Text>
-                <View
-                  className={`px-3 py-1 rounded-full border ${getStatusColor(route.status)}`}
-                >
-                  <Text className="text-xs font-bold">{getStatusText(route.status)}</Text>
-                </View>
-              </View>
-
-              <Text className="text-orange-700 mb-4" numberOfLines={3}>
-                {route.description}
-              </Text>
-
-              {/* 🔹 MOSTRAR COMENTARIO DE RECHAZO SI EXISTE */}
-              {route.status === 'rechazada' && route.rejectionComment && (
-                <View className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
-                  <View className="flex-row items-start">
-                    <Ionicons name="alert-circle-outline" size={20} color="#dc2626" />
-                    <Text className="text-red-800 font-bold ml-2 flex-1">
-                      Motivo del rechazo:
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                  <Text style={{ color: themed.text, fontWeight: 'bold', fontSize: 18, flex: 1 }}>
+                    {route.name}
+                  </Text>
+                  <View
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      backgroundColor: pill.bg,
+                      borderColor: pill.border,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: pill.text }}>
+                      {getStatusText(route.status)}
                     </Text>
                   </View>
-                  <Text className="text-red-700 mt-1 text-sm">
-                    {route.rejectionComment}
-                  </Text>
                 </View>
-              )}
 
-              <View className="flex-row justify-between items-center">
-                <Text className="text-orange-500 text-sm">
-                  {new Date(route.createdAt).toLocaleDateString()}
+                <Text style={{ color: themed.muted, marginBottom: 12 }} numberOfLines={3}>
+                  {route.description}
                 </Text>
 
-                {/* Acciones */}
-                {isTechnician ? (
-                  <View className="flex-row space-x-2 gap-2">
-                    {/* Ver Sitios */}
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push({
-                          pathname: '/Place',
-                          params: { routeId: String(route.id), routeName: route.name },
-                        })
-                      }
-                      className="bg-orange-100 px-3 py-2 rounded-lg flex-row items-center"
-                    >
-                      <Ionicons name="locate-outline" size={18} color="#ea580c" />
-                      <Text className="text-orange-700 font-semibold text-sm ml-1">Ver Sitios</Text>
-                    </TouchableOpacity>
+                {route.status === 'rechazada' && route.rejectionComment ? (
+                  <View
+                    style={{
+                      backgroundColor: themed.isDark ? '#2f0b0b' : '#fef2f2',
+                      borderColor: themed.isDark ? '#7f1d1d' : '#fecaca',
+                      borderWidth: 1,
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                      <Ionicons name="alert-circle-outline" size={20} color="#dc2626" />
+                      <Text style={{ color: themed.text, fontWeight: 'bold', marginLeft: 8, flex: 1 }}>
+                        Motivo del rechazo:
+                      </Text>
+                    </View>
+                    <Text style={{ color: themed.isDark ? '#fecaca' : '#991b1b', marginTop: 6, fontSize: 13 }}>
+                      {route.rejectionComment}
+                    </Text>
+                  </View>
+                ) : null}
 
-                    {/* Editar - Solo disponible para rutas pendientes o rechazadas */}
-                    {(route.status === 'pendiente' || route.status === 'rechazada') && (
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ color: themed.muted, fontSize: 12 }}>
+                    {new Date(route.createdAt).toLocaleDateString()}
+                  </Text>
+
+                  {isTechnician ? (
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {/* Ver Sitios */}
                       <TouchableOpacity
                         onPress={() =>
                           router.push({
-                            pathname: '/Route/edit',
+                            pathname: '/Place',
+                            params: { routeId: String(route.id), routeName: route.name },
+                          })
+                        }
+                        style={{
+                          backgroundColor: themed.isDark ? '#0b1220' : '#fff7ed',
+                          borderColor: themed.accent as string,
+                          borderWidth: 1,
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          borderRadius: 10,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Ionicons name="locate-outline" size={18} color={themed.accent as string} />
+                        <Text style={{ color: themed.accent, fontWeight: '600', fontSize: 13, marginLeft: 6 }}>
+                          Ver Sitios
+                        </Text>
+                      </TouchableOpacity>
+
+                      {(route.status === 'pendiente' || route.status === 'rechazada') && (
+                        <TouchableOpacity
+                          onPress={() =>
+                            router.push({
+                              pathname: '/Route/edit',
+                              params: { id: route.id.toString() },
+                            })
+                          }
+                          style={{
+                            backgroundColor: themed.isDark ? '#34240f' : '#fed7aa',
+                            padding: 8,
+                            borderRadius: 10,
+                          }}
+                        >
+                          <Ionicons name="pencil" size={20} color={themed.accent as string} />
+                        </TouchableOpacity>
+                      )}
+
+                      {(route.status === 'pendiente' || route.status === 'rechazada') && (
+                        <TouchableOpacity
+                          onPress={() => handleDelete(route.id)}
+                          style={{
+                            backgroundColor: themed.isDark ? '#4a2e0b' : '#fdba74',
+                            padding: 8,
+                            borderRadius: 10,
+                          }}
+                        >
+                          <Ionicons name="trash" size={20} color={themed.accent as string} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ) : (
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {/* Ver Sitios */}
+                      <TouchableOpacity
+                        onPress={() =>
+                          router.push({
+                            pathname: '/Place',
+                            params: { routeId: String(route.id), routeName: route.name },
+                          })
+                        }
+                        style={{
+                          backgroundColor: themed.isDark ? '#0b1220' : '#fff7ed',
+                          borderColor: themed.accent as string,
+                          borderWidth: 1,
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          borderRadius: 10,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Ionicons name="locate-outline" size={18} color={themed.accent as string} />
+                        <Text style={{ color: themed.accent, fontWeight: '600', fontSize: 13, marginLeft: 6 }}>
+                          Ver Sitios
+                        </Text>
+                      </TouchableOpacity>
+
+                      {/* Ver Detalles */}
+                      <TouchableOpacity
+                        onPress={() =>
+                          router.push({
+                            pathname: '/Route/details',
                             params: { id: route.id.toString() },
                           })
                         }
-                        className="bg-orange-200 p-2 rounded-lg"
+                        style={{
+                          backgroundColor: themed.isDark ? '#34240f' : '#fed7aa',
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                          borderRadius: 10,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                        }}
                       >
-                        <Ionicons name="pencil" size={20} color="#ea580c" />
+                        <Ionicons name="eye" size={16} color={themed.accent as string} />
+                        <Text style={{ color: themed.accent, fontWeight: '600', fontSize: 13, marginLeft: 6 }}>
+                          Ver Detalles
+                        </Text>
                       </TouchableOpacity>
-                    )}
-
-                    {/* Eliminar - Solo disponible para rutas pendientes o rechazadas */}
-                    {(route.status === 'pendiente' || route.status === 'rechazada') && (
-                      <TouchableOpacity
-                        onPress={() => handleDelete(route.id)}
-                        className="bg-orange-300 p-2 rounded-lg"
-                      >
-                        <Ionicons name="trash" size={20} color="#f97316" />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ) : (
-                  <View className="flex-row gap-2">
-                    {/* Ver Sitios */}
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push({
-                          pathname: '/Place',
-                          params: { routeId: String(route.id), routeName: route.name },
-                        })
-                      }
-                      className="bg-orange-100 px-3 py-2 rounded-lg flex-row items-center"
-                    >
-                      <Ionicons name="locate-outline" size={18} color="#ea580c" />
-                      <Text className="text-orange-700 font-semibold text-sm ml-1">Ver Sitios</Text>
-                    </TouchableOpacity>
-
-                    {/* Ver Detalles */}
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push({
-                          pathname: '/Route/details',
-                          params: { id: route.id.toString() },
-                        })
-                      }
-                      className="bg-orange-200 px-3 py-2 rounded-lg flex-row items-center"
-                    >
-                      <Ionicons name="eye" size={16} color="#ea580c" />
-                      <Text className="text-orange-700 font-semibold text-sm ml-1">Ver Detalles</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                    </View>
+                  )}
+                </View>
               </View>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
     </View>

@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useThemedStyles } from '../../hooks/useThemedStyles';
 
 interface Comment {
   id: number;
@@ -29,6 +30,7 @@ interface Comment {
 
 export default function CommentsScreen() {
   const router = useRouter();
+  const themed = useThemedStyles(); // 🎨 tema
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
   const placeId = Number(id);
 
@@ -235,21 +237,37 @@ export default function CommentsScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 justify-center items-center bg-orange-50">
-        <ActivityIndicator size="large" color="#f97316" />
-        <Text className="text-orange-700 mt-4">Cargando comentarios...</Text>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: themed.background }}>
+        <ActivityIndicator size="large" color={themed.accent as string} />
+        <Text style={{ color: themed.muted as string, marginTop: 16 }}>Cargando comentarios...</Text>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-orange-50">
+    <View style={{ flex: 1, backgroundColor: themed.background }}>
       {/* Header */}
-      <View className="bg-orange-500 px-6 py-4 rounded-b-3xl shadow-lg">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1">
-            <Text className="text-white text-xl font-bold text-center">Comentarios</Text>
-            <Text className="text-orange-100 text-sm mt-1 text-center" numberOfLines={1}>
+      <View
+        style={{
+          backgroundColor: themed.accent,
+          paddingHorizontal: 24,
+          paddingVertical: 16,
+          borderBottomLeftRadius: 24,
+          borderBottomRightRadius: 24,
+          shadowColor: '#000',
+          shadowOpacity: 0.15,
+          shadowRadius: 6,
+          shadowOffset: { width: 0, height: 2 },
+          elevation: 4,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '800', textAlign: 'center' }}>Comentarios</Text>
+            <Text
+              style={{ color: '#FFFFFF', opacity: 0.9, fontSize: 12, marginTop: 4, textAlign: 'center' }}
+              numberOfLines={1}
+            >
               {name || 'Lugar'}
             </Text>
           </View>
@@ -257,77 +275,150 @@ export default function CommentsScreen() {
       </View>
 
       {/* Volver */}
-      <View className="px-6 mt-4">
+      <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="bg-orange-100 border border-orange-400 py-3 rounded-xl shadow flex-row items-center justify-center"
+          style={{
+            backgroundColor: themed.isDark ? '#0b1220' : '#fff7ed',
+            borderWidth: 1,
+            borderColor: themed.accent,
+            paddingVertical: 12,
+            borderRadius: 12,
+            shadowColor: '#000',
+            shadowOpacity: 0.1,
+            shadowRadius: 4,
+            shadowOffset: { width: 0, height: 2 },
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'row',
+          }}
         >
-          <Ionicons name="arrow-back" size={22} color="#f97316" />
-          <Text className="text-orange-700 font-semibold text-base ml-2">Volver</Text>
+          <Ionicons name="arrow-back" size={22} color={themed.accent as string} />
+          <Text style={{ color: themed.accent as string, fontWeight: '600', fontSize: 16, marginLeft: 8 }}>Volver</Text>
         </TouchableOpacity>
       </View>
 
       {/* Crear comentario (solo logueado) */}
       {isLogged ? (
-        <View className="p-4 bg-white mx-4 mt-4 rounded-2xl border border-orange-200 shadow-sm">
+        <View
+          style={{
+            padding: 16,
+            backgroundColor: themed.card,
+            marginHorizontal: 16,
+            marginTop: 16,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: themed.border,
+            shadowColor: '#000',
+            shadowOpacity: 0.05,
+            shadowRadius: 4,
+            shadowOffset: { width: 0, height: 2 },
+          }}
+        >
           <TextInput
             value={newComment}
             onChangeText={setNewComment}
             placeholder="Escribe tu comentario..."
             multiline
             numberOfLines={3}
-            className="bg-orange-50 rounded-xl p-4 border border-orange-200 text-orange-900"
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={themed.muted as string}
+            style={{
+              backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
+              borderWidth: 1,
+              borderColor: themed.border,
+              color: themed.text,
+              borderRadius: 12,
+              padding: 12,
+              minHeight: 90,
+            }}
           />
           <TouchableOpacity
             onPress={submitComment}
             disabled={submitting || !newComment.trim()}
-            className={`py-3 rounded-xl mt-3 flex-row items-center justify-center ${
-              submitting || !newComment.trim() ? 'bg-orange-300' : 'bg-orange-500'
-            }`}
+            style={{
+              paddingVertical: 12,
+              borderRadius: 12,
+              marginTop: 12,
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'row',
+              backgroundColor: submitting || !newComment.trim() ? (themed.isDark ? '#5b5b5b' : '#fed7aa') : (themed.accent as string),
+            }}
           >
             {submitting ? (
-              <ActivityIndicator size="small" color="white" />
+              <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
               <>
-                <Ionicons name="send-outline" size={20} color="white" />
-                <Text className="text-white font-semibold text-lg ml-2">Enviar Comentario</Text>
+                <Ionicons name="send-outline" size={20} color="#FFFFFF" />
+                <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 16, marginLeft: 8 }}>
+                  Enviar Comentario
+                </Text>
               </>
             )}
           </TouchableOpacity>
         </View>
       ) : (
-        <View className="p-4 bg-white mx-4 mt-4 rounded-2xl border border-orange-200">
-          <Text className="text-orange-700">Inicia sesión para escribir un comentario.</Text>
+        <View
+          style={{
+            padding: 16,
+            backgroundColor: themed.card,
+            marginHorizontal: 16,
+            marginTop: 16,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: themed.border,
+          }}
+        >
+          <Text style={{ color: themed.text }}>Inicia sesión para escribir un comentario.</Text>
           <TouchableOpacity
             onPress={() => router.push('/login')}
-            className="bg-orange-500 px-4 py-2 rounded-xl mt-3 self-start"
+            style={{
+              backgroundColor: themed.accent,
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              borderRadius: 12,
+              marginTop: 12,
+              alignSelf: 'flex-start',
+            }}
           >
-            <Text className="text-white font-semibold">Iniciar sesión</Text>
+            <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Iniciar sesión</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {/* Lista */}
-      <View className="flex-1 mt-4">
-        <Text className="text-orange-800 text-lg font-bold px-4 mb-3">
+      <View style={{ flex: 1, marginTop: 16 }}>
+        <Text style={{ color: themed.text, fontSize: 18, fontWeight: '800', paddingHorizontal: 16, marginBottom: 12 }}>
           Comentarios ({comments.length})
         </Text>
 
         <FlatList
           data={comments}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themed.accent as string} />}
           keyExtractor={(item) => item.id.toString()}
           showsVerticalScrollIndicator={false}
-          contentContainerClassName="px-4 pb-4"
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16 }}
           renderItem={({ item }) => (
-            <View className="bg-white rounded-2xl p-4 mb-3 border border-orange-200 shadow-sm">
-              <View className="flex-row justify-between items-start mb-2">
-                <View className="flex-1">
-                  <Text className="text-orange-900 font-bold text-base">
+            <View
+              style={{
+                backgroundColor: themed.card,
+                borderRadius: 16,
+                padding: 16,
+                marginBottom: 12,
+                borderWidth: 1,
+                borderColor: themed.border,
+                shadowColor: '#000',
+                shadowOpacity: 0.05,
+                shadowRadius: 4,
+                shadowOffset: { width: 0, height: 2 },
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={{ color: themed.text, fontWeight: '800', fontSize: 16 }}>
                     {item.user_name || 'Usuario'}
                   </Text>
-                  <Text className="text-orange-600 text-xs">
+                  <Text style={{ color: themed.muted as string, fontSize: 12, marginTop: 2 }}>
                     {formatDate(item.createdAt)}
                     {item.createdAt !== item.date && ' • Editado'}
                   </Text>
@@ -335,27 +426,37 @@ export default function CommentsScreen() {
 
                 {/* Acciones: solo autor + logueado */}
                 {isLogged && item.user_id === userId && (
-                  <View className="flex-row">
-                    <TouchableOpacity onPress={() => startEditComment(item)} className="p-1 mr-2">
-                      <Ionicons name="create-outline" size={18} color="#3b82f6" />
+                  <View style={{ flexDirection: 'row' }}>
+                    <TouchableOpacity onPress={() => startEditComment(item)} style={{ padding: 4, marginRight: 8 }}>
+                      <Ionicons name="create-outline" size={18} color={themed.isDark ? '#60a5fa' : '#3b82f6'} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => deleteComment(item.id)} className="p-1">
+                    <TouchableOpacity onPress={() => deleteComment(item.id)} style={{ padding: 4 }}>
                       <Ionicons name="trash-outline" size={18} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
                 )}
               </View>
 
-              <Text className="text-orange-800 text-sm leading-5">{item.comment}</Text>
+              <Text style={{ color: themed.text, fontSize: 14, lineHeight: 20 }}>{item.comment}</Text>
             </View>
           )}
           ListEmptyComponent={
-            <View className="bg-white rounded-2xl p-8 items-center justify-center border border-orange-200">
-              <Ionicons name="chatbubble-outline" size={48} color="#ea580c" />
-              <Text className="text-orange-800 text-lg font-semibold mt-4 text-center">
+            <View
+              style={{
+                backgroundColor: themed.card,
+                borderRadius: 16,
+                padding: 24,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: themed.border,
+              }}
+            >
+              <Ionicons name="chatbubble-outline" size={48} color={themed.accent as string} />
+              <Text style={{ color: themed.text, fontSize: 18, fontWeight: '800', marginTop: 12, textAlign: 'center' }}>
                 No hay comentarios aún
               </Text>
-              <Text className="text-orange-600 text-center mt-2">
+              <Text style={{ color: themed.muted as string, textAlign: 'center', marginTop: 8 }}>
                 {isLogged ? 'Sé el primero en comentar sobre este lugar' : 'Inicia sesión para comentar'}
               </Text>
             </View>
@@ -370,9 +471,22 @@ export default function CommentsScreen() {
         animationType="slide"
         onRequestClose={() => setEditModalVisible(false)}
       >
-        <View className="flex-1 justify-center items-center bg-black/50">
-          <View className="bg-white rounded-2xl p-6 mx-4 w-11/12 max-w-md">
-            <Text className="text-orange-900 text-xl font-bold mb-4">Editar Comentario</Text>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <View
+            style={{
+              backgroundColor: themed.card,
+              borderRadius: 16,
+              padding: 20,
+              marginHorizontal: 16,
+              width: '92%',
+              maxWidth: 480,
+              borderWidth: 1,
+              borderColor: themed.border,
+            }}
+          >
+            <Text style={{ color: themed.text, fontSize: 20, fontWeight: '800', marginBottom: 12 }}>
+              Editar Comentario
+            </Text>
 
             <TextInput
               value={editText}
@@ -380,33 +494,54 @@ export default function CommentsScreen() {
               placeholder="Edita tu comentario..."
               multiline
               numberOfLines={4}
-              className="bg-orange-50 rounded-xl p-4 border border-orange-200 text-orange-900 mb-4"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={themed.muted as string}
+              style={{
+                backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
+                borderWidth: 1,
+                borderColor: themed.border,
+                color: themed.text,
+                borderRadius: 12,
+                padding: 12,
+                minHeight: 100,
+                marginBottom: 16,
+              }}
             />
 
-            <View className="flex-row justify-between gap-3">
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
               <TouchableOpacity
                 onPress={() => {
                   setEditModalVisible(false);
                   setEditingComment(null);
                   setEditText('');
                 }}
-                className="flex-1 bg-gray-200 py-3 rounded-xl flex-row items-center justify-center"
+                style={{
+                  flex: 1,
+                  backgroundColor: themed.isDark ? '#111827' : '#e5e7eb',
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
               >
-                <Text className="text-gray-700 font-semibold">Cancelar</Text>
+                <Text style={{ color: themed.text, fontWeight: '700' }}>Cancelar</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={submitEditComment}
                 disabled={editing || !editText.trim()}
-                className={`flex-1 py-3 rounded-xl flex-row items-center justify-center ${
-                  editing || !editText.trim() ? 'bg-orange-300' : 'bg-orange-500'
-                }`}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: editing || !editText.trim() ? (themed.isDark ? '#5b5b5b' : '#fed7aa') : (themed.accent as string),
+                }}
               >
                 {editing ? (
-                  <ActivityIndicator size="small" color="white" />
+                  <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text className="text-white font-semibold">Guardar</Text>
+                  <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>Guardar</Text>
                 )}
               </TouchableOpacity>
             </View>

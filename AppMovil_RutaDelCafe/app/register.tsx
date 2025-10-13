@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
-import * as ImagePicker from 'expo-image-picker';
+import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -16,9 +16,11 @@ import {
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  View
+  View,
 } from "react-native";
 import * as Animatable from "react-native-animatable";
+import { useThemedStyles } from "../hooks/useThemedStyles"; // 👈 usa tu hook
+import { useTheme } from "../hooks/theme-context";          // (para saber si es dark)
 
 // Importar imágenes PNG/JPG de banderas
 const LaPazFlag = require("../app/images/Banderas/LaPaz.jpg");
@@ -46,6 +48,10 @@ interface FormData {
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const themed = useThemedStyles();
+  const { effectiveTheme } = useTheme();
+  const isDark = effectiveTheme === "dark";
+
   const [formData, setFormData] = useState<FormData>({
     name: "",
     lastName: "",
@@ -98,19 +104,16 @@ export default function RegisterScreen() {
   ];
 
   const getMaxPhoneLength = () => {
-    const phoneCodeObj = phoneCodes.find(item => item.code === formData.phoneCode);
+    const phoneCodeObj = phoneCodes.find((item) => item.code === formData.phoneCode);
     return phoneCodeObj ? phoneCodeObj.maxLength : 15;
-  };
+    };
 
   const isValidEmail = (email: string): { isValid: boolean; message: string } => {
     if (!email) return { isValid: false, message: "El correo electrónico es requerido" };
-    
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    
     if (!emailRegex.test(email)) {
       return { isValid: false, message: "Formato de correo electrónico inválido" };
     }
-    
     return { isValid: true, message: "" };
   };
 
@@ -170,16 +173,17 @@ export default function RegisterScreen() {
   }, [successMessage, errorMessage]);
 
   const getCityFlag = () => {
+    const style = { width: 40, height: 24 };
     switch (formData.City_id) {
-      case 1: return <Image source={LaPazFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 2: return <Image source={CochabambaFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 3: return <Image source={SantaCruzFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 4: return <Image source={OruroFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 5: return <Image source={PotosiFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 6: return <Image source={TarijaFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 7: return <Image source={ChuquisacaFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 8: return <Image source={BeniFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 9: return <Image source={PandoFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
+      case 1: return <Image source={LaPazFlag} style={style} resizeMode="contain" />;
+      case 2: return <Image source={CochabambaFlag} style={style} resizeMode="contain" />;
+      case 3: return <Image source={SantaCruzFlag} style={style} resizeMode="contain" />;
+      case 4: return <Image source={OruroFlag} style={style} resizeMode="contain" />;
+      case 5: return <Image source={PotosiFlag} style={style} resizeMode="contain" />;
+      case 6: return <Image source={TarijaFlag} style={style} resizeMode="contain" />;
+      case 7: return <Image source={ChuquisacaFlag} style={style} resizeMode="contain" />;
+      case 8: return <Image source={BeniFlag} style={style} resizeMode="contain" />;
+      case 9: return <Image source={PandoFlag} style={style} resizeMode="contain" />;
       default: return null;
     }
   };
@@ -191,7 +195,6 @@ export default function RegisterScreen() {
   const handlePhoneChange = (text: string) => {
     const maxLength = getMaxPhoneLength();
     const numericText = text.replace(/[^0-9]/g, "");
-    
     if (numericText.length <= maxLength) {
       handleChange("phone", numericText);
     }
@@ -201,14 +204,16 @@ export default function RegisterScreen() {
     handleChange("email", text.toLowerCase());
   };
 
+  // 🔹 Colores de fortaleza adaptados, barra vacía usa themed.border
   const getPasswordStrengthColor = () => {
+    // Mantiene la escala pero encaja en ambos temas
     if (passwordStrength === 0) return "#ef4444";
     if (passwordStrength === 1) return "#f97316";
     if (passwordStrength === 2) return "#eab308";
     if (passwordStrength === 3) return "#84cc16";
     if (passwordStrength === 4) return "#22c55e";
     if (passwordStrength === 5) return "#15803d";
-    return "#d1d5db";
+    return themed.border;
   };
 
   const getPasswordStrengthText = () => {
@@ -224,11 +229,10 @@ export default function RegisterScreen() {
   const handleTakePhoto = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permisos requeridos', 'Se necesitan permisos de cámara para tomar fotos');
+      if (status !== "granted") {
+        Alert.alert("Permisos requeridos", "Se necesitan permisos de cámara para tomar fotos");
         return;
       }
-
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -236,26 +240,24 @@ export default function RegisterScreen() {
         quality: 0.1,
         base64: true,
       });
-
       if (!result.canceled && result.assets && result.assets[0].base64) {
         const base64data = `data:image/jpeg;base64,${result.assets[0].base64}`;
-        setFormData(prev => ({ ...prev, photo: base64data }));
+        setFormData((prev) => ({ ...prev, photo: base64data }));
         setSuccessMessage("Foto tomada correctamente");
       }
     } catch (error) {
-      console.error('Error al tomar foto:', error);
-      Alert.alert('Error', 'No se pudo tomar la foto');
+      console.error("Error al tomar foto:", error);
+      Alert.alert("Error", "No se pudo tomar la foto");
     }
   };
 
   const handleChoosePhoto = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permisos requeridos', 'Se necesitan permisos para acceder a la galería');
+      if (status !== "granted") {
+        Alert.alert("Permisos requeridos", "Se necesitan permisos para acceder a la galería");
         return;
       }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -263,20 +265,19 @@ export default function RegisterScreen() {
         quality: 0.1,
         base64: true,
       });
-
       if (!result.canceled && result.assets && result.assets[0].base64) {
         const base64data = `data:image/jpeg;base64,${result.assets[0].base64}`;
-        setFormData(prev => ({ ...prev, photo: base64data }));
+        setFormData((prev) => ({ ...prev, photo: base64data }));
         setSuccessMessage("Foto seleccionada correctamente");
       }
     } catch (error) {
-      console.error('Error al seleccionar foto:', error);
-      Alert.alert('Error', 'No se pudo seleccionar la foto');
+      console.error("Error al seleccionar foto:", error);
+      Alert.alert("Error", "No se pudo seleccionar la foto");
     }
   };
 
   const handleRemovePhoto = () => {
-    setFormData(prev => ({ ...prev, photo: null }));
+    setFormData((prev) => ({ ...prev, photo: null }));
     setSuccessMessage("Foto eliminada");
   };
 
@@ -340,7 +341,7 @@ export default function RegisterScreen() {
     setIsLoading(true);
     try {
       const fullPhone = formData.phoneCode + formData.phone;
-      
+
       const submitData: any = {
         name: formData.name,
         lastName: formData.lastName,
@@ -353,7 +354,6 @@ export default function RegisterScreen() {
       };
 
       if (formData.photo) {
-        console.log("📸 Enviando foto - longitud:", formData.photo.length);
         submitData.photo = formData.photo;
       }
 
@@ -368,9 +368,7 @@ export default function RegisterScreen() {
         throw new Error(errorText || `Error HTTP: ${response.status}`);
       }
 
-      const data = await response.json();
-      console.log("✅ Registro exitoso");
-      
+      await response.json();
       setSuccessMessage("✅ Perfil creado exitosamente");
       setFormData({
         name: "",
@@ -389,7 +387,6 @@ export default function RegisterScreen() {
     } catch (error: unknown) {
       let errorMsg = "No se pudo conectar con el servidor";
       if (error instanceof Error) {
-        console.error("❌ Error:", error);
         if (error.message.includes("400") || error.message.toLowerCase().includes("email")) {
           errorMsg = "El correo electrónico ya está registrado";
         } else if (error.message.includes("500")) {
@@ -413,9 +410,24 @@ export default function RegisterScreen() {
 
   const dismissKeyboard = () => Keyboard.dismiss();
 
+  // 🔹 Estilos reusables
+  const labelStyle = { color: themed.text, fontWeight: "600" as const, marginBottom: 6 };
+  const inputWrapperStyle = {
+    backgroundColor: themed.inputBg,
+    borderColor: themed.border,
+    borderWidth: 1,
+    borderRadius: 12,
+  };
+  const inputTextStyle = {
+    color: themed.inputText,
+    height: 52,
+    paddingHorizontal: 16,
+    fontSize: 16,
+  };
+
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: '#fffbeb' }}
+      style={{ flex: 1, backgroundColor: themed.background }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
@@ -430,65 +442,71 @@ export default function RegisterScreen() {
           showsVerticalScrollIndicator={false}
           alwaysBounceVertical={false}
         >
-
           {/* Header */}
-          <View style={{ 
-            width: '100%', 
-            height: 192, 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            marginBottom: 24,
-            backgroundColor: '#f97316',
-            borderRadius: 24,
-            padding: 20,
-          }}>
-            <Text style={{ fontSize: 28, fontWeight: 'bold', color: 'white', textAlign: 'center' }}>
+          <View
+            style={{
+              width: "100%",
+              height: 192,
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 24,
+              backgroundColor: themed.accent,
+              borderRadius: 24,
+              padding: 20,
+              shadowColor: "#000",
+              shadowOpacity: 0.25,
+              shadowRadius: 8,
+            }}
+          >
+            <Text style={{ fontSize: 28, fontWeight: "bold", color: "#FFFFFF", textAlign: "center" }}>
               ¡Bienvenido!
             </Text>
-            <Text style={{ color: 'white', fontSize: 16, textAlign: 'center', marginTop: 4 }}>
+            <Text style={{ color: "#FFFFFF", fontSize: 16, textAlign: "center", marginTop: 4 }}>
               Completa tus datos para crear tu cuenta
             </Text>
 
             {/* Foto de perfil */}
-            <View style={{ position: 'relative', marginTop: 12 }}>
+            <View style={{ position: "relative", marginTop: 12 }}>
               {formData.photo ? (
-                <Image 
-                  source={{ uri: formData.photo }} 
-                  style={{ width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: 'white' }}
+                <Image
+                  source={{ uri: formData.photo }}
+                  style={{ width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: "white" }}
                   resizeMode="cover"
                 />
               ) : (
-                <View style={{ 
-                  width: 80, 
-                  height: 80, 
-                  borderRadius: 40, 
-                  backgroundColor: 'rgba(255,255,255,0.2)', 
-                  borderWidth: 4, 
-                  borderColor: 'white',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
+                <View
+                  style={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: 40,
+                    backgroundColor: "rgba(255,255,255,0.2)",
+                    borderWidth: 4,
+                    borderColor: "white",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
                   <Ionicons name="person" size={30} color="white" />
                 </View>
               )}
-              
-              <View style={{ position: 'absolute', bottom: -8, flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity 
+
+              <View style={{ position: "absolute", bottom: -8, flexDirection: "row", gap: 8 }}>
+                <TouchableOpacity
                   onPress={handleTakePhoto}
-                  style={{ backgroundColor: 'white', padding: 8, borderRadius: 20, elevation: 4 }}
+                  style={{ backgroundColor: "white", padding: 8, borderRadius: 20, elevation: 4 }}
                 >
-                  <Ionicons name="camera" size={14} color="#f97316" />
+                  <Ionicons name="camera" size={14} color={themed.accent} />
                 </TouchableOpacity>
-                <TouchableOpacity 
+                <TouchableOpacity
                   onPress={handleChoosePhoto}
-                  style={{ backgroundColor: 'white', padding: 8, borderRadius: 20, elevation: 4 }}
+                  style={{ backgroundColor: "white", padding: 8, borderRadius: 20, elevation: 4 }}
                 >
-                  <Ionicons name="image" size={14} color="#f97316" />
+                  <Ionicons name="image" size={14} color={themed.accent} />
                 </TouchableOpacity>
                 {formData.photo && (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={handleRemovePhoto}
-                    style={{ backgroundColor: 'white', padding: 8, borderRadius: 20, elevation: 4 }}
+                    style={{ backgroundColor: "white", padding: 8, borderRadius: 20, elevation: 4 }}
                   >
                     <Ionicons name="trash" size={14} color="#ef4444" />
                   </TouchableOpacity>
@@ -498,42 +516,59 @@ export default function RegisterScreen() {
           </View>
 
           {/* Mensajes */}
-          {successMessage && (
+          {successMessage ? (
             <Animatable.View
               animation="fadeIn"
-              style={{ backgroundColor: '#fed7aa', padding: 12, borderRadius: 12, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: '#ea580c' }}
+              style={{
+                backgroundColor: themed.accent + "22",
+                padding: 12,
+                borderRadius: 12,
+                marginBottom: 16,
+                borderLeftWidth: 4,
+                borderLeftColor: themed.accent,
+              }}
             >
-              <Text style={{ color: '#92400e', textAlign: 'center', fontWeight: '500' }}>{successMessage}</Text>
+              <Text style={{ color: themed.accent, textAlign: "center", fontWeight: "600" }}>
+                {successMessage}
+              </Text>
             </Animatable.View>
-          )}
-          {errorMessage && (
+          ) : null}
+
+          {errorMessage ? (
             <Animatable.View
               animation="shake"
-              style={{ backgroundColor: '#fed7aa', padding: 12, borderRadius: 12, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: '#dc2626' }}
+              style={{
+                backgroundColor: isDark ? "#2a1212" : "#fee2e2",
+                padding: 12,
+                borderRadius: 12,
+                marginBottom: 16,
+                borderLeftWidth: 4,
+                borderLeftColor: "#dc2626",
+              }}
             >
-              <Text style={{ color: '#dc2626', textAlign: 'center', fontWeight: '500' }}>{errorMessage}</Text>
+              <Text style={{ color: "#dc2626", textAlign: "center", fontWeight: "600" }}>{errorMessage}</Text>
             </Animatable.View>
-          )}
+          ) : null}
 
           {/* Nombre y Apellidos */}
           {[
-            { key: "name", label: "Nombre *", placeholder: "Ingresa tu nombre", autoCapitalize: "words" as const },
-            { key: "lastName", label: "Apellido Paterno *", placeholder: "Ingresa tu apellido paterno", autoCapitalize: "words" as const },
-            { key: "secondLastName", label: "Apellido Materno", placeholder: "Opcional", autoCapitalize: "words" as const },
+            { key: "name", label: "Nombre *", placeholder: "Ingresa tu nombre", cap: "words" as const },
+            { key: "lastName", label: "Apellido Paterno *", placeholder: "Ingresa tu apellido paterno", cap: "words" as const },
+            { key: "secondLastName", label: "Apellido Materno", placeholder: "Opcional", cap: "words" as const },
           ].map((field) => (
-            <View key={field.key} className="mb-4">
-              <Text className="font-semibold mb-1.5 text-orange-900">{field.label}</Text>
-              <View className="rounded-xl border border-orange-300 bg-amber-50">
+            <View key={field.key} style={{ marginBottom: 16 }}>
+              <Text style={labelStyle}>{field.label}</Text>
+              <View style={inputWrapperStyle}>
                 <TextInput
                   value={(formData as any)[field.key] ?? ""}
                   onChangeText={(text) =>
                     handleChange(field.key as keyof FormData, text.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, ""))
                   }
                   placeholder={field.placeholder}
-                  placeholderTextColor="#f97316"
-                  autoCapitalize={field.autoCapitalize}
+                  placeholderTextColor={themed.placeholder}
+                  autoCapitalize={field.cap}
                   editable={!isLoading}
-                  className="text-base text-orange-900 h-13 px-4"
+                  style={inputTextStyle}
                   returnKeyType="next"
                 />
               </View>
@@ -541,95 +576,117 @@ export default function RegisterScreen() {
           ))}
 
           {/* Correo */}
-          <View className="mb-4">
-            <Text className="font-semibold mb-1.5 text-orange-900">Correo Electrónico *</Text>
-            <View className={`rounded-xl border bg-amber-50 ${emailError ? "border-red-600" : "border-orange-300"}`}>
+          <View style={{ marginBottom: 16 }}>
+            <Text style={labelStyle}>Correo Electrónico *</Text>
+            <View
+              style={[
+                inputWrapperStyle,
+                { borderColor: emailError ? "#dc2626" : themed.border },
+              ]}
+            >
               <TextInput
                 value={formData.email}
                 onChangeText={handleEmailChange}
                 placeholder="ejemplo@correo.com"
-                placeholderTextColor="#f97316"
+                placeholderTextColor={themed.placeholder}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!isLoading}
-                className="text-base text-orange-900 h-13 px-4"
+                style={inputTextStyle}
                 returnKeyType="next"
               />
             </View>
             {emailError ? (
-              <Text className="text-xs text-red-600 mt-1">{emailError}</Text>
+              <Text style={{ color: "#dc2626", fontSize: 12, marginTop: 4 }}>{emailError}</Text>
             ) : (
-              <Text className="text-xs text-orange-600 mt-1">
+              <Text style={{ color: themed.muted, fontSize: 12, marginTop: 4 }}>
                 Ej: usuario@gmail.com, nombre.apellido@hotmail.com
               </Text>
             )}
           </View>
 
           {/* Teléfono */}
-          <View className="mb-4">
-            <Text className="font-semibold mb-1.5 text-orange-900">Teléfono *</Text>
-            <View className="flex-row items-center">
+          <View style={{ marginBottom: 16 }}>
+            <Text style={labelStyle}>Teléfono *</Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
               <TouchableOpacity
                 onPress={() => {
                   dismissKeyboard();
                   setShowPhoneCodePicker(true);
                 }}
-                className="rounded-xl border border-orange-300 bg-amber-50 mr-2 px-3 justify-center min-w-20 h-13"
+                style={[
+                  inputWrapperStyle,
+                  {
+                    marginRight: 8,
+                    paddingHorizontal: 12,
+                    minWidth: 80,
+                    height: 52,
+                    justifyContent: "center",
+                  },
+                ]}
               >
-                <Text className="text-base text-orange-900 text-center">{formData.phoneCode}</Text>
+                <Text style={{ color: themed.text, fontSize: 16, textAlign: "center" }}>
+                  {formData.phoneCode}
+                </Text>
               </TouchableOpacity>
-              <View className="flex-1 rounded-xl border border-orange-300 bg-amber-50">
+
+              <View style={[inputWrapperStyle, { flex: 1 }]}>
                 <TextInput
                   value={formData.phone}
                   onChangeText={handlePhoneChange}
-                  placeholder={`Ej: ${"0".repeat(getMaxPhoneLength() - 1)}`}
-                  placeholderTextColor="#f97316"
+                  placeholder={`Ej: ${"0".repeat(Math.max(1, getMaxPhoneLength() - 1))}`}
+                  placeholderTextColor={themed.placeholder}
                   keyboardType="number-pad"
                   editable={!isLoading}
                   maxLength={getMaxPhoneLength()}
-                  className="text-base text-orange-900 h-13 px-4"
+                  style={inputTextStyle}
                   returnKeyType="next"
                 />
               </View>
             </View>
-            <Text className="text-xs text-orange-600 mt-1">
+            <Text style={{ color: themed.muted, fontSize: 12, marginTop: 4 }}>
               Máximo {getMaxPhoneLength()} dígitos para {formData.phoneCode}
             </Text>
           </View>
 
           {/* Contraseña */}
-          <View className="mb-4">
-            <Text className="font-semibold mb-1.5 text-orange-900">Contraseña *</Text>
-            <View className="rounded-xl border border-orange-300 bg-amber-50 flex-row items-center">
+          <View style={{ marginBottom: 16 }}>
+            <Text style={labelStyle}>Contraseña *</Text>
+            <View style={[inputWrapperStyle, { flexDirection: "row", alignItems: "center" }]}>
               <TextInput
                 value={formData.password}
                 onChangeText={(text) => handleChange("password", text)}
                 placeholder="Mínimo 6 caracteres"
-                placeholderTextColor="#f97316"
+                placeholderTextColor={themed.placeholder}
                 secureTextEntry={!showPassword}
                 editable={!isLoading}
-                className="text-base text-orange-900 h-13 px-4 flex-1"
+                style={[inputTextStyle, { flex: 1 }]}
                 returnKeyType="next"
               />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)} className="p-3">
-                <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color="#f97316" />
+              <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 10 }}>
+                <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color={themed.accent} />
               </TouchableOpacity>
             </View>
 
             {/* Barra de fortaleza */}
             {formData.password.length > 0 && (
-              <View className="mt-2">
-                <View className="flex-row mb-1">
+              <View style={{ marginTop: 8 }}>
+                <View style={{ flexDirection: "row", marginBottom: 4 }}>
                   {[1, 2, 3, 4, 5].map((i) => (
                     <View
                       key={i}
-                      className="flex-1 h-1 mx-0.5 rounded-full"
-                      style={{ backgroundColor: i <= passwordStrength ? getPasswordStrengthColor() : "#fed7aa" }}
+                      style={{
+                        flex: 1,
+                        height: 4,
+                        marginHorizontal: 2,
+                        borderRadius: 999,
+                        backgroundColor: i <= passwordStrength ? getPasswordStrengthColor() : themed.border,
+                      }}
                     />
                   ))}
                 </View>
-                <Text className="text-xs font-medium" style={{ color: getPasswordStrengthColor() }}>
+                <Text style={{ color: getPasswordStrengthColor(), fontSize: 12, fontWeight: "600" }}>
                   {getPasswordStrengthText()}
                 </Text>
               </View>
@@ -637,45 +694,62 @@ export default function RegisterScreen() {
           </View>
 
           {/* Confirmar Contraseña */}
-          <View className="mb-4">
-            <Text className="font-semibold mb-1.5 text-orange-900">Confirmar Contraseña *</Text>
-            <View className={`rounded-xl border bg-amber-50 flex-row items-center ${
-              formData.password !== formData.confirmPassword && formData.confirmPassword.length > 0
-                ? "border-red-600"
-                : "border-orange-300"
-            }`}>
+          <View style={{ marginBottom: 16 }}>
+            <Text style={labelStyle}>Confirmar Contraseña *</Text>
+            <View
+              style={[
+                inputWrapperStyle,
+                {
+                  flexDirection: "row",
+                  alignItems: "center",
+                  borderColor:
+                    formData.password !== formData.confirmPassword && formData.confirmPassword.length > 0
+                      ? "#dc2626"
+                      : themed.border,
+                },
+              ]}
+            >
               <TextInput
                 value={formData.confirmPassword}
                 onChangeText={(text) => handleChange("confirmPassword", text)}
                 placeholder="Repite tu contraseña"
-                placeholderTextColor="#f97316"
+                placeholderTextColor={themed.placeholder}
                 secureTextEntry={!showConfirmPassword}
                 editable={!isLoading}
-                className="text-base text-orange-900 h-13 px-4 flex-1"
+                style={[inputTextStyle, { flex: 1 }]}
                 returnKeyType="done"
               />
-              <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} className="p-3">
-                <Ionicons name={showConfirmPassword ? "eye-off" : "eye"} size={20} color="#f97316" />
+              <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={{ padding: 10 }}>
+                <Ionicons name={showConfirmPassword ? "eye-off" : "eye"} size={20} color={themed.accent} />
               </TouchableOpacity>
             </View>
             {formData.password !== formData.confirmPassword && formData.confirmPassword.length > 0 && (
-              <Text className="text-xs text-red-600 mt-1">Las contraseñas no coinciden</Text>
+              <Text style={{ color: "#dc2626", fontSize: 12, marginTop: 4 }}>Las contraseñas no coinciden</Text>
             )}
           </View>
 
           {/* Ciudad */}
-          <View className="mb-4">
-            <Text className="font-semibold mb-2 text-orange-900">Ciudad *</Text>
+          <View style={{ marginBottom: 16 }}>
+            <Text style={labelStyle}>Ciudad *</Text>
             <TouchableOpacity
               onPress={() => {
                 dismissKeyboard();
                 setShowCityPicker(true);
               }}
-              className="p-4 rounded-xl bg-amber-50 border border-orange-300"
+              style={[
+                inputWrapperStyle,
+                { padding: 16, backgroundColor: themed.inputBg },
+              ]}
             >
-              <View className="flex-row items-center">
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
                 {getCityFlag()}
-                <Text className={`text-base ml-2 ${formData.City_id ? "text-orange-900" : "text-orange-500"}`}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    marginLeft: 8,
+                    color: formData.City_id ? themed.text : themed.muted,
+                  }}
+                >
                   {getSelectedCityLabel()}
                 </Text>
               </View>
@@ -683,18 +757,24 @@ export default function RegisterScreen() {
           </View>
 
           {/* Botones */}
-          <View className="mt-2.5 mb-7">
+          <View style={{ marginTop: 10, marginBottom: 28 }}>
             <TouchableOpacity
               onPress={handleSubmit}
               disabled={isLoading}
-              className={`p-3.5 rounded-xl items-center mb-3 border ${
-                isLoading ? "bg-orange-200 border-orange-600" : "bg-orange-500 border-orange-600"
-              }`}
+              style={{
+                paddingVertical: 14,
+                borderRadius: 12,
+                alignItems: "center",
+                marginBottom: 12,
+                borderWidth: 1,
+                backgroundColor: isLoading ? themed.accent + "66" : themed.accent,
+                borderColor: themed.accent,
+              }}
             >
               {isLoading ? (
-                <ActivityIndicator color="#7c2d12" />
+                <ActivityIndicator color={isDark ? "#0B1220" : "#FFFFFF"} />
               ) : (
-                <Text className="text-white font-semibold text-sm">Crear Cuenta</Text>
+                <Text style={{ color: "#FFFFFF", fontWeight: "600", fontSize: 14 }}>Crear Cuenta</Text>
               )}
             </TouchableOpacity>
 
@@ -706,11 +786,16 @@ export default function RegisterScreen() {
                   router.replace("/(tabs)/advertisement");
                 }
               }}
-              className="py-3 border border-orange-400 rounded-xl bg-orange-100"
+              style={{
+                paddingVertical: 12,
+                borderRadius: 12,
+                alignItems: "center",
+                borderWidth: 1,
+                backgroundColor: themed.card,
+                borderColor: themed.border,
+              }}
             >
-              <Text className="text-orange-700 font-medium text-base text-center">
-                Volver
-              </Text>
+              <Text style={{ color: themed.accent, fontWeight: "600", fontSize: 16 }}>Volver</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -718,21 +803,37 @@ export default function RegisterScreen() {
 
       {/* Modal Picker para Ciudad */}
       <Modal visible={showCityPicker} transparent animationType="slide" onRequestClose={() => setShowCityPicker(false)}>
-        <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-orange-50 p-5 rounded-t-2xl">
-            <Text className="text-lg font-bold text-center mb-4 text-orange-900">
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <View style={{ backgroundColor: themed.card, padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+            <Text style={{ fontSize: 18, fontWeight: "700", textAlign: "center", marginBottom: 12, color: themed.text }}>
               Selecciona una ciudad
             </Text>
-            <Picker selectedValue={formData.City_id} onValueChange={(value) => handleChange("City_id", value)}>
+            <Picker
+              selectedValue={formData.City_id}
+              onValueChange={(value) => handleChange("City_id", value)}
+              dropdownIconColor={themed.text}
+            >
               {cityItems.map((item) => (
-                <Picker.Item key={item.value} label={item.label} value={item.value} color="#7c2d12" />
+                <Picker.Item
+                  key={String(item.value)}
+                  label={item.label}
+                  value={item.value}
+                  color={themed.inputText}
+                />
               ))}
             </Picker>
             <TouchableOpacity
               onPress={() => setShowCityPicker(false)}
-              className="mt-4 p-3 rounded-xl bg-orange-200"
+              style={{
+                marginTop: 16,
+                paddingVertical: 12,
+                borderRadius: 12,
+                backgroundColor: themed.accent + "22",
+                borderWidth: 1,
+                borderColor: themed.accent,
+              }}
             >
-              <Text className="text-center font-semibold text-orange-900">Cerrar</Text>
+              <Text style={{ textAlign: "center", fontWeight: "700", color: themed.accent }}>Cerrar</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -740,21 +841,37 @@ export default function RegisterScreen() {
 
       {/* Modal Picker para Código de Teléfono */}
       <Modal visible={showPhoneCodePicker} transparent animationType="slide" onRequestClose={() => setShowPhoneCodePicker(false)}>
-        <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-orange-50 p-5 rounded-t-2xl">
-            <Text className="text-lg font-bold text-center mb-4 text-orange-900">
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <View style={{ backgroundColor: themed.card, padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+            <Text style={{ fontSize: 18, fontWeight: "700", textAlign: "center", marginBottom: 12, color: themed.text }}>
               Selecciona código de país
             </Text>
-            <Picker selectedValue={formData.phoneCode} onValueChange={(value) => handleChange("phoneCode", value)}>
+            <Picker
+              selectedValue={formData.phoneCode}
+              onValueChange={(value) => handleChange("phoneCode", value)}
+              dropdownIconColor={themed.text}
+            >
               {phoneCodes.map((item) => (
-                <Picker.Item key={item.code} label={`${item.code} (${item.country})`} value={item.code} color="#7c2d12" />
+                <Picker.Item
+                  key={item.code}
+                  label={`${item.code} (${item.country})`}
+                  value={item.code}
+                  color={themed.inputText}
+                />
               ))}
             </Picker>
             <TouchableOpacity
               onPress={() => setShowPhoneCodePicker(false)}
-              className="mt-4 p-3 rounded-xl bg-orange-200"
+              style={{
+                marginTop: 16,
+                paddingVertical: 12,
+                borderRadius: 12,
+                backgroundColor: themed.accent + "22",
+                borderWidth: 1,
+                borderColor: themed.accent,
+              }}
             >
-              <Text className="text-center font-semibold text-orange-900">Cerrar</Text>
+              <Text style={{ textAlign: "center", fontWeight: "700", color: themed.accent }}>Cerrar</Text>
             </TouchableOpacity>
           </View>
         </View>

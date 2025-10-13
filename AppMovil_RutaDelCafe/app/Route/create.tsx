@@ -4,11 +4,20 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-    ActivityIndicator, Alert, Image, ScrollView, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import { useThemedStyles } from '../../hooks/useThemedStyles';
 
 export default function CreateRouteScreen() {
   const router = useRouter();
+  const themed = useThemedStyles(); // 🎨 Tema oscuro/claro
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -17,165 +26,238 @@ export default function CreateRouteScreen() {
   });
 
   const pickImage = async () => {
-    // ✅ SOLUCIÓN: Usar la sintaxis correcta para tu versión
+    // ✅ Mantengo tu lógica
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: 'images', // ← Opción más segura
+      mediaTypes: 'images',
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
     });
 
     if (!result.canceled) {
-      setFormData({ ...formData, image_url: result.assets[0].uri }); // ← También corregí "url" por "uri"
+      setFormData({ ...formData, image_url: result.assets[0].uri });
     }
   };
 
-const handleSubmit = async () => {
-  if (!formData.name || !formData.description) {
-    Alert.alert('Error', 'Por favor completa todos los campos obligatorios');
-    return;
-  }
-
-  setLoading(true);
-  try {
-    const token = await AsyncStorage.getItem('userToken');
-    if (!token) {
-      router.replace('/login');
+  const handleSubmit = async () => {
+    if (!formData.name || !formData.description) {
+      Alert.alert('Error', 'Por favor completa todos los campos obligatorios');
       return;
     }
 
-    console.log('🌐 Enviando petición a:', `${process.env.EXPO_PUBLIC_API_URL}/api/routes`);
-    console.log('📦 Datos enviados:', {
-      name: formData.name,
-      description: formData.description,
-      image_url: formData.image_url,
-    });
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        router.replace('/login');
+        return;
+      }
 
-
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+      console.log('🌐 Enviando petición a:', `${process.env.EXPO_PUBLIC_API_URL}/api/routes`);
+      console.log('📦 Datos enviados:', {
         name: formData.name,
         description: formData.description,
         image_url: formData.image_url,
-      }),
-    });
+      });
 
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          description: formData.description,
+          image_url: formData.image_url,
+        }),
+      });
 
-    // Debug: Ver la respuesta completa
-    const responseText = await response.text();
-    console.log('📊 Status de respuesta:', response.status);
-    console.log('📨 Respuesta del servidor:', responseText);
+      const responseText = await response.text();
+      console.log('📊 Status de respuesta:', response.status);
+      console.log('📨 Respuesta del servidor:', responseText);
 
-    // Intentar parsear como JSON solo si parece ser JSON
-    let responseData;
-    try {
-      responseData = JSON.parse(responseText);
-    } catch (jsonError) {
-      console.error('❌ Error parseando JSON:', jsonError);
-      throw new Error(`El servidor devolvió: ${responseText.substring(0, 100)}...`);
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (jsonError) {
+        console.error('❌ Error parseando JSON:', jsonError);
+        throw new Error(`El servidor devolvió: ${responseText.substring(0, 100)}...`);
+      }
+
+      if (response.ok) {
+        Alert.alert('Éxito', 'Ruta creada correctamente');
+        router.replace('/Route');
+      } else {
+        throw new Error(responseData.message || `Error (${response.status})`);
+      }
+    } catch (error: any) {
+      console.error('🔥 Error completo:', error);
+      Alert.alert('Error', error.message || 'Error al crear la ruta');
+    } finally {
+      setLoading(false);
     }
-
-    if (response.ok) {
-      Alert.alert('Éxito', 'Ruta creada correctamente');
-    //   router.back();
-     router.replace('/Route');
-    } else {
-      throw new Error(responseData.message || `Error (${response.status})`);
-    }
-  } catch (error: any) {
-    console.error('🔥 Error completo:', error);
-    Alert.alert('Error', error.message || 'Error al crear la ruta');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
-    <ScrollView className="flex-1 bg-orange-50">
+    <ScrollView
+      style={{ flex: 1, backgroundColor: themed.background }}
+      contentContainerStyle={{ paddingBottom: 24 }}
+      showsVerticalScrollIndicator={false}
+    >
       {/* Header */}
-      <View className="bg-orange-500 px-6 py-4 rounded-b-3xl shadow-lg">
-        <Text className="text-white text-2xl font-bold text-center">
+      <View
+        style={{
+          backgroundColor: themed.accent,
+          paddingHorizontal: 24,
+          paddingVertical: 16,
+          borderBottomLeftRadius: 24,
+          borderBottomRightRadius: 24,
+          shadowColor: '#000',
+          shadowOpacity: 0.15,
+          shadowOffset: { width: 0, height: 3 },
+          shadowRadius: 6,
+          elevation: 6,
+        }}
+      >
+        <Text style={{ color: '#fff', fontSize: 22, fontWeight: 'bold', textAlign: 'center' }}>
           Crear Nueva Ruta
         </Text>
-        <Text className="text-orange-100 text-center mt-1">
+        <Text style={{ color: '#fff', opacity: 0.9, textAlign: 'center', marginTop: 4 }}>
           Comparte tu experiencia gastronómica
         </Text>
       </View>
 
       {/* Formulario */}
-      <View className="px-6 mt-6">
+      <View style={{ paddingHorizontal: 24, marginTop: 20 }}>
         {/* Nombre */}
-        <View className="mb-6">
-          <Text className="text-orange-900 font-bold mb-2">Nombre de la Ruta *</Text>
-          <TextInput
-            value={formData.name}
-            onChangeText={(text) => setFormData({ ...formData, name: text })}
-            placeholder="Ej: Ruta de Antojos Paceños"
-            placeholderTextColor="#9ca3af"
-            className="bg-white border border-orange-200 rounded-2xl px-4 py-3 text-orange-900"
-          />
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
+            Nombre de la Ruta *
+          </Text>
+          <View
+            style={{
+              backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
+              borderColor: themed.border,
+              borderWidth: 1,
+              borderRadius: 16,
+            }}
+          >
+            <TextInput
+              value={formData.name}
+              onChangeText={(text) => setFormData({ ...formData, name: text })}
+              placeholder="Ej: Ruta de Antojos Paceños"
+              placeholderTextColor={themed.muted as string}
+              style={{ color: themed.text, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }}
+            />
+          </View>
         </View>
 
         {/* Descripción */}
-        <View className="mb-6">
-          <Text className="text-orange-900 font-bold mb-2">Descripción *</Text>
-          <TextInput
-            value={formData.description}
-            onChangeText={(text) => setFormData({ ...formData, description: text })}
-            placeholder="Describe tu ruta gastronómica..."
-            placeholderTextColor="#9ca3af"
-            multiline
-            numberOfLines={4}
-            className="bg-white border border-orange-200 rounded-2xl px-4 py-3 text-orange-900 h-32"
-          />
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
+            Descripción *
+          </Text>
+          <View
+            style={{
+              backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
+              borderColor: themed.border,
+              borderWidth: 1,
+              borderRadius: 16,
+              height: 128,
+            }}
+          >
+            <TextInput
+              value={formData.description}
+              onChangeText={(text) => setFormData({ ...formData, description: text })}
+              placeholder="Describe tu ruta gastronómica..."
+              placeholderTextColor={themed.muted as string}
+              multiline
+              numberOfLines={4}
+              style={{
+                color: themed.text,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 16,
+                textAlignVertical: 'top',
+                height: '100%',
+              }}
+            />
+          </View>
         </View>
 
         {/* Imagen */}
-        <View className="mb-6">
-          <Text className="text-orange-900 font-bold mb-2">Imagen (Opcional)</Text>
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
+            Imagen (Opcional)
+          </Text>
           <TouchableOpacity
             onPress={pickImage}
-            className="bg-white border border-orange-200 rounded-2xl p-4 items-center justify-center h-40"
+            style={{
+              backgroundColor: themed.card,
+              borderColor: themed.border,
+              borderWidth: 1,
+              borderRadius: 16,
+              padding: 12,
+              height: 160,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
             {formData.image_url ? (
               <Image
                 source={{ uri: formData.image_url }}
-                className="w-full h-full rounded-xl"
+                style={{ width: '100%', height: '100%', borderRadius: 12 }}
                 resizeMode="cover"
               />
             ) : (
-              <View className="items-center">
-                <Ionicons name="image-outline" size={48} color="#f97316" />
-                <Text className="text-orange-500 mt-2">Seleccionar imagen</Text>
+              <View style={{ alignItems: 'center' }}>
+                <Ionicons name="image-outline" size={48} color={themed.accent as string} />
+                <Text style={{ color: themed.muted as string, marginTop: 6 }}>
+                  Seleccionar imagen
+                </Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
 
         {/* Botones */}
-        <View className="flex-row space-x-4 mb-8">
+        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 28 }}>
           <TouchableOpacity
             onPress={() => router.back()}
-            className="flex-1 bg-orange-100 border border-orange-300 py-4 rounded-2xl"
+            style={{
+              flex: 1,
+              backgroundColor: themed.isDark ? '#0b1220' : '#fff7ed',
+              borderColor: themed.accent,
+              borderWidth: 1,
+              paddingVertical: 14,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
-            <Text className="text-orange-700 font-bold text-center">Cancelar</Text>
+            <Text style={{ color: themed.accent, fontWeight: '700' }}>Cancelar</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             onPress={handleSubmit}
             disabled={loading}
-            className="flex-1 bg-orange-500 py-4 rounded-2xl shadow-lg"
+            style={{
+              flex: 1,
+              backgroundColor: themed.accent,
+              paddingVertical: 14,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+              elevation: 3,
+              opacity: loading ? 0.9 : 1,
+            }}
           >
             {loading ? (
-              <ActivityIndicator color="white" />
+              <ActivityIndicator color="#fff" />
             ) : (
-              <Text className="text-white font-bold text-center">Crear Ruta</Text>
-            )} 
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Crear Ruta</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>

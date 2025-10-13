@@ -2,7 +2,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Picker } from "@react-native-picker/picker";
-import * as ImagePicker from 'expo-image-picker';
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -21,8 +21,10 @@ import {
   View,
 } from "react-native";
 import * as Animatable from "react-native-animatable";
+import { withAuth } from "../../components/ui/withAuth";
+import { useThemedStyles } from "../../hooks/useThemedStyles";
 
-// Banderas locales - Rutas corregidas
+// Banderas locales
 const LaPazFlag = require("../images/Banderas/LaPaz.jpg");
 const CochabambaFlag = require("../images/Banderas/COCHABAMBA.jpg");
 const SantaCruzFlag = require("../images/Banderas/Santa_Cruz.png");
@@ -88,7 +90,7 @@ const phoneCodes = [
 
 function ProfileScreen() {
   const router = useRouter();
-  // ALTURA FIJA para el tab bar personalizado (96px según tu layout)
+  const themed = useThemedStyles(); // 🎨 tema (oscuro / claro)
   const tabBarHeight = 96;
 
   const [user, setUser] = useState<User | null>(null);
@@ -100,7 +102,6 @@ function ProfileScreen() {
   const [alertType, setAlertType] = useState<"success" | "error">("success");
   const [showCityPicker, setShowCityPicker] = useState(false);
   const [showPhoneCodePicker, setShowPhoneCodePicker] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [editedData, setEditedData] = useState<EditedData>({
@@ -121,16 +122,17 @@ function ProfileScreen() {
   }, []);
 
   const getCityFlag = (cityId: number) => {
+    const imgStyle = { width: 40, height: 24 };
     switch (cityId) {
-      case 1: return <Image source={LaPazFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 2: return <Image source={CochabambaFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 3: return <Image source={SantaCruzFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 4: return <Image source={OruroFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 5: return <Image source={PotosiFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 6: return <Image source={TarijaFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 7: return <Image source={ChuquisacaFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 8: return <Image source={BeniFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
-      case 9: return <Image source={PandoFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
+      case 1: return <Image source={LaPazFlag} style={imgStyle} resizeMode="contain" />;
+      case 2: return <Image source={CochabambaFlag} style={imgStyle} resizeMode="contain" />;
+      case 3: return <Image source={SantaCruzFlag} style={imgStyle} resizeMode="contain" />;
+      case 4: return <Image source={OruroFlag} style={imgStyle} resizeMode="contain" />;
+      case 5: return <Image source={PotosiFlag} style={imgStyle} resizeMode="contain" />;
+      case 6: return <Image source={TarijaFlag} style={imgStyle} resizeMode="contain" />;
+      case 7: return <Image source={ChuquisacaFlag} style={imgStyle} resizeMode="contain" />;
+      case 8: return <Image source={BeniFlag} style={imgStyle} resizeMode="contain" />;
+      case 9: return <Image source={PandoFlag} style={imgStyle} resizeMode="contain" />;
       default: return null;
     }
   };
@@ -164,17 +166,23 @@ function ProfileScreen() {
 
   const loadUserData = async () => {
     try {
+      // 🔐 extra por si se llama sin pasar por el HOC
       const token = await AsyncStorage.getItem("userToken");
       if (!token) {
-        setIsAuthenticated(false);
-        router.replace("/(tabs)/advertisement");
+        router.replace("/login");
         return;
       }
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/users/profile`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/api/users/profile`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
       if (!response.ok) throw new Error("Error al cargar datos del usuario");
 
@@ -200,10 +208,7 @@ function ProfileScreen() {
     } catch {
       showAlert("error", "Error al cargar los datos del perfil");
       const token = await AsyncStorage.getItem("userToken");
-      if (!token) {
-        setIsAuthenticated(false);
-        router.replace("/(tabs)/advertisement");
-      }
+      if (!token) router.replace("/login");
     } finally {
       setLoading(false);
     }
@@ -212,18 +217,13 @@ function ProfileScreen() {
   const getMaxPhoneLength = () => {
     const phoneCodeObj = phoneCodes.find((i) => i.code === editedData.phoneCode);
     return phoneCodeObj ? phoneCodeObj.maxLength : 15;
-  };
+    };
 
   const showAlert = (type: "success" | "error", message: string) => {
     setAlertType(type);
     setAlertMessage(message);
     setAlertVisible(true);
-    setTimeout(() => {
-      setAlertVisible(false);
-      if (type === "success" && message.includes("eliminada")) {
-        router.replace("/(tabs)/advertisement");
-      }
-    }, 3000);
+    setTimeout(() => setAlertVisible(false), 3000);
   };
 
   const handleEdit = () => setEditMode(true);
@@ -240,15 +240,19 @@ function ProfileScreen() {
         showAlert("error", "Por favor complete todos los campos obligatorios");
         return;
       }
-      if (!onlyLettersRegex.test(editedData.name)) return showAlert("error", "El nombre solo puede contener letras");
-      if (!onlyLettersRegex.test(editedData.lastName)) return showAlert("error", "El apellido paterno solo puede contener letras");
+      if (!onlyLettersRegex.test(editedData.name))
+        return showAlert("error", "El nombre solo puede contener letras");
+      if (!onlyLettersRegex.test(editedData.lastName))
+        return showAlert("error", "El apellido paterno solo puede contener letras");
       if (editedData.secondLastName && !onlyLettersRegex.test(editedData.secondLastName))
         return showAlert("error", "El apellido materno solo puede contener letras");
 
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(editedData.email)) return showAlert("error", "Formato de correo electrónico inválido");
+      if (!emailRegex.test(editedData.email))
+        return showAlert("error", "Formato de correo electrónico inválido");
 
-      if (!onlyNumbersRegex.test(editedData.phone)) return showAlert("error", "El teléfono solo puede contener números");
+      if (!onlyNumbersRegex.test(editedData.phone))
+        return showAlert("error", "El teléfono solo puede contener números");
 
       const maxLength = getMaxPhoneLength();
       if (maxLength && editedData.phone.length !== maxLength)
@@ -258,18 +262,21 @@ function ProfileScreen() {
 
       const fullPhone = editedData.phoneCode + editedData.phone;
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/users/profile`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editedData.name,
-          lastName: editedData.lastName,
-          secondLastName: editedData.secondLastName,
-          email: editedData.email,
-          phone: fullPhone,
-          City_id: editedData.City_id,
-        }),
-      });
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/api/users/profile`,
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: editedData.name,
+            lastName: editedData.lastName,
+            secondLastName: editedData.secondLastName,
+            email: editedData.email,
+            phone: fullPhone,
+            City_id: editedData.City_id,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -312,8 +319,8 @@ function ProfileScreen() {
   const handleTakePhoto = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        showAlert('error', 'Se necesitan permisos de cámara para tomar fotos');
+      if (status !== "granted") {
+        showAlert("error", "Se necesitan permisos de cámara para tomar fotos");
         return;
       }
 
@@ -327,16 +334,16 @@ function ProfileScreen() {
       if (!result.canceled && result.assets && result.assets[0].uri) {
         await uploadPhoto(result.assets[0].uri);
       }
-    } catch (error) {
-      showAlert('error', 'Error al tomar la foto');
+    } catch {
+      showAlert("error", "Error al tomar la foto");
     }
   };
 
   const handleChoosePhoto = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        showAlert('error', 'Se necesitan permisos para acceder a la galería');
+      if (status !== "granted") {
+        showAlert("error", "Se necesitan permisos para acceder a la galería");
         return;
       }
 
@@ -350,8 +357,8 @@ function ProfileScreen() {
       if (!result.canceled && result.assets && result.assets[0].uri) {
         await uploadPhoto(result.assets[0].uri);
       }
-    } catch (error) {
-      showAlert('error', 'Error al seleccionar la foto');
+    } catch {
+      showAlert("error", "Error al seleccionar la foto");
     }
   };
 
@@ -359,31 +366,29 @@ function ProfileScreen() {
     setUploadingPhoto(true);
     try {
       const token = await AsyncStorage.getItem("userToken");
-      
-      // Convertir la imagen a base64
+
       const response = await fetch(uri);
       const blob = await response.blob();
-      
+
       return new Promise<void>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = async () => {
           try {
             const base64data = reader.result as string;
 
-            const uploadResponse = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/users/profile/photo`, {
-              method: "PUT",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                photoUrl: base64data,
-              }),
-            });
+            const uploadResponse = await fetch(
+              `${process.env.EXPO_PUBLIC_API_URL}/api/users/profile/photo`,
+              {
+                method: "PUT",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ photoUrl: base64data }),
+              }
+            );
 
-            if (!uploadResponse.ok) {
-              throw new Error("Error al subir la foto");
-            }
+            if (!uploadResponse.ok) throw new Error("Error al subir la foto");
 
             const result = await uploadResponse.json();
             setEditedData({ ...editedData, photo: result.photoUrl });
@@ -397,7 +402,7 @@ function ProfileScreen() {
         reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
-    } catch (error) {
+    } catch {
       showAlert("error", "Error al subir la foto");
     } finally {
       setUploadingPhoto(false);
@@ -407,46 +412,49 @@ function ProfileScreen() {
   const handleRemovePhoto = async () => {
     try {
       const token = await AsyncStorage.getItem("userToken");
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/users/profile/photo`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/api/users/profile/photo`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+      );
 
       if (!response.ok) throw new Error("Error al eliminar la foto");
 
       setEditedData({ ...editedData, photo: "" });
       showAlert("success", "Foto de perfil eliminada correctamente");
       loadUserData();
-    } catch (error) {
+    } catch {
       showAlert("error", "Error al eliminar la foto");
     }
   };
 
   const handleDeleteAccount = async () => {
-    Alert.alert("Eliminar cuenta", "¿Estás seguro? Esta acción es irreversible.", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Eliminar",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            const token = await AsyncStorage.getItem("userToken");
-            const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/users/profile`, {
-              method: "DELETE",
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!response.ok) throw new Error("Error al eliminar la cuenta");
-            showAlert("success", "Cuenta eliminada correctamente");
-            await AsyncStorage.removeItem("userToken");
-            await AsyncStorage.removeItem("userData");
-            setIsAuthenticated(false);
-            router.replace("/(tabs)/advertisement");
-          } catch {
-            showAlert("error", "Error al eliminar la cuenta");
-          }
+    Alert.alert(
+      "Eliminar cuenta",
+      "¿Estás seguro? Esta acción es irreversible.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem("userToken");
+              const response = await fetch(
+                `${process.env.EXPO_PUBLIC_API_URL}/api/users/profile`,
+                { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+              );
+              if (!response.ok) throw new Error("Error al eliminar la cuenta");
+              showAlert("success", "Cuenta eliminada correctamente");
+              await AsyncStorage.removeItem("userToken");
+              await AsyncStorage.removeItem("userData");
+              router.replace("/login");
+            } catch {
+              showAlert("error", "Error al eliminar la cuenta");
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   const handleLogout = async () => {
@@ -458,8 +466,7 @@ function ProfileScreen() {
         onPress: async () => {
           await AsyncStorage.removeItem("userToken");
           await AsyncStorage.removeItem("userData");
-          setIsAuthenticated(false);
-          router.replace("/(tabs)/advertisement");
+          router.replace("/login");
         },
       },
     ]);
@@ -473,104 +480,137 @@ function ProfileScreen() {
   const handlePhoneChange = (text: string) => {
     const numericText = text.replace(/[^0-9]/g, "");
     const maxLength = getMaxPhoneLength();
-    if (numericText.length <= maxLength) setEditedData({ ...editedData, phone: numericText });
+    if (numericText.length <= maxLength)
+      setEditedData({ ...editedData, phone: numericText });
   };
 
   const dismissKeyboard = () => Keyboard.dismiss();
-  const getSelectedCityLabel = () => cityItems.find((i) => i.value === editedData.City_id)?.label || "Selecciona una ciudad";
+  const getSelectedCityLabel = () =>
+    cityItems.find((i) => i.value === editedData.City_id)?.label ||
+    "Selecciona una ciudad";
   const handleGoHome = () => router.replace("/(tabs)/advertisement");
-
-  if (!isAuthenticated) {
-    return (
-      <View className="flex-1 justify-center items-center bg-orange-50">
-        <ActivityIndicator size="large" color="#f97316" />
-        <Text className="mt-4 text-gray-600">Redirigiendo...</Text>
-      </View>
-    );
-  }
 
   if (loading) {
     return (
-      <View className="flex-1 justify-center items-center bg-orange-50">
-        <ActivityIndicator size="large" color="#f97316" />
-        <Text className="mt-4 text-gray-600">Cargando perfil...</Text>
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: themed.background }}>
+        <ActivityIndicator size="large" color={themed.accent as string} />
+        <Text style={{ marginTop: 16, color: themed.muted }}>Cargando perfil...</Text>
       </View>
     );
   }
 
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-orange-50"
+      style={{ flex: 1, backgroundColor: themed.background }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
       <TouchableWithoutFeedback onPress={dismissKeyboard}>
         <ScrollView
-          className="p-5"
           contentContainerStyle={{
             flexGrow: 1,
-            paddingBottom: tabBarHeight + 32, // ✅ Ahora usa la altura fija
+            paddingBottom: tabBarHeight + 32,
+            paddingHorizontal: 20,
+            paddingTop: 20,
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Header con Foto de Perfil */}
-          <View className="w-full h-60 items-center justify-center mb-6 bg-orange-500 rounded-[40px] px-5 py-5">
-            <View className="items-center">
-              {/* Avatar/Photo */}
-              <View className="relative mb-3">
+          {/* Header con Foto */}
+          <View
+            style={{
+              width: "100%",
+              height: 240,
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 24,
+              backgroundColor: themed.accent,
+              borderRadius: 32,
+              paddingHorizontal: 20,
+              paddingVertical: 20,
+            }}
+          >
+            <View style={{ alignItems: "center" }}>
+              <View style={{ position: "relative", marginBottom: 12 }}>
                 {editedData.photo ? (
-                  <Image 
-                    source={{ uri: editedData.photo }} 
-                    className="w-24 h-24 rounded-full border-4 border-white"
+                  <Image
+                    source={{ uri: editedData.photo }}
+                    style={{
+                      width: 96,
+                      height: 96,
+                      borderRadius: 999,
+                      borderWidth: 4,
+                      borderColor: "#FFFFFF",
+                    }}
                     resizeMode="cover"
                   />
                 ) : (
-                  <View className="w-24 h-24 rounded-full bg-white/20 border-4 border-white items-center justify-center">
-                    <Ionicons name="person" size={40} color="white" />
+                  <View
+                    style={{
+                      width: 96,
+                      height: 96,
+                      borderRadius: 999,
+                      backgroundColor: "rgba(255,255,255,0.2)",
+                      borderWidth: 4,
+                      borderColor: "#FFFFFF",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="person" size={40} color="#FFFFFF" />
                   </View>
                 )}
-                
-                {/* Botones de foto en modo edición */}
+
                 {editMode && (
-                  <View className="absolute -bottom-2 flex-row space-x-2">
-                    <TouchableOpacity 
+                  <View style={{ position: "absolute", bottom: -8, left: 0, right: 0, flexDirection: "row", justifyContent: "center", gap: 8 }}>
+                    <TouchableOpacity
                       onPress={handleTakePhoto}
                       disabled={uploadingPhoto}
-                      className="bg-white p-2 rounded-full shadow-lg"
+                      style={{ backgroundColor: "#FFFFFF", padding: 8, borderRadius: 999, elevation: 3 }}
                     >
-                      <Ionicons name="camera" size={16} color="#f97316" />
+                      <Ionicons name="camera" size={16} color={themed.accent as string} />
                     </TouchableOpacity>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       onPress={handleChoosePhoto}
                       disabled={uploadingPhoto}
-                      className="bg-white p-2 rounded-full shadow-lg"
+                      style={{ backgroundColor: "#FFFFFF", padding: 8, borderRadius: 999, elevation: 3 }}
                     >
-                      <Ionicons name="image" size={16} color="#f97316" />
+                      <Ionicons name="image" size={16} color={themed.accent as string} />
                     </TouchableOpacity>
-                    {editedData.photo && (
-                      <TouchableOpacity 
+                    {editedData.photo ? (
+                      <TouchableOpacity
                         onPress={handleRemovePhoto}
                         disabled={uploadingPhoto}
-                        className="bg-white p-2 rounded-full shadow-lg"
+                        style={{ backgroundColor: "#FFFFFF", padding: 8, borderRadius: 999, elevation: 3 }}
                       >
                         <Ionicons name="trash" size={16} color="#ef4444" />
                       </TouchableOpacity>
-                    )}
+                    ) : null}
                   </View>
                 )}
-                
+
                 {uploadingPhoto && (
-                  <View className="absolute inset-0 bg-black/50 rounded-full items-center justify-center">
-                    <ActivityIndicator size="small" color="white" />
+                  <View
+                    style={{
+                      position: "absolute",
+                      inset: 0 as any,
+                      backgroundColor: "rgba(0,0,0,0.5)",
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <ActivityIndicator size="small" color="#FFFFFF" />
                   </View>
                 )}
               </View>
 
-              <Text className="text-2xl font-bold text-white text-center">
+              <Text style={{ fontSize: 22, fontWeight: "bold", color: "#FFFFFF", textAlign: "center" }}>
                 {editedData.name} {editedData.lastName}
               </Text>
-              <Text className="text-white text-sm text-center mt-1">{editedData.email}</Text>
+              <Text style={{ color: "#FFFFFF", opacity: 0.9, marginTop: 4, textAlign: "center" }}>
+                {editedData.email}
+              </Text>
             </View>
           </View>
 
@@ -578,39 +618,61 @@ function ProfileScreen() {
           {alertVisible && (
             <Animatable.View
               animation="fadeIn"
-              className={`p-3.5 rounded-xl mb-4 ${alertType === "success" ? "bg-green-100" : "bg-red-100"}`}
+              style={{
+                padding: 12,
+                borderRadius: 12,
+                marginBottom: 16,
+                backgroundColor: alertType === "success" ? (themed.isDark ? "#064e3b" : "#dcfce7") : (themed.isDark ? "#7f1d1d" : "#fee2e2"),
+              }}
             >
-              <Text className={`text-center font-medium ${alertType === "success" ? "text-green-800" : "text-red-800"}`}>
+              <Text
+                style={{
+                  textAlign: "center",
+                  fontWeight: "600",
+                  color: alertType === "success" ? (themed.isDark ? "#a7f3d0" : "#166534") : (themed.isDark ? "#fecaca" : "#991b1b"),
+                }}
+              >
                 {alertMessage}
               </Text>
             </Animatable.View>
           )}
 
           {/* Card info */}
-          <View className="bg-white rounded-2xl p-5 mb-5 shadow-lg">
-            <Text className="text-xl font-bold mb-5 text-gray-800 text-center">Información personal</Text>
+          <View
+            style={{
+              backgroundColor: themed.card,
+              borderRadius: 16,
+              padding: 16,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor: themed.border,
+            }}
+          >
+            <Text style={{ fontSize: 18, fontWeight: "bold", marginBottom: 16, color: themed.text, textAlign: "center" }}>
+              Información personal
+            </Text>
 
             {[
               { key: "name" as keyof EditedData, label: "Nombre *", placeholder: "Ingresa tu nombre" },
               { key: "lastName" as keyof EditedData, label: "Apellido Paterno *", placeholder: "Ingresa tu apellido paterno" },
               { key: "secondLastName" as keyof EditedData, label: "Apellido Materno", placeholder: "Opcional" },
             ].map((f) => (
-              <View key={f.key} className="mb-4">
-                <Text className="font-semibold mb-1.5 text-gray-600">{f.label}</Text>
+              <View key={f.key} style={{ marginBottom: 12 }}>
+                <Text style={{ fontWeight: "600", marginBottom: 6, color: themed.muted }}>{f.label}</Text>
                 {editMode ? (
-                  <View className="rounded-xl border border-gray-300 bg-white">
+                  <View style={{ borderRadius: 12, borderWidth: 1, borderColor: themed.border, backgroundColor: themed.isDark ? "#0B1220" : "#FFFFFF" }}>
                     <TextInput
                       value={editedData[f.key] as string}
                       onChangeText={(t) => handleTextChange(f.key, t)}
                       placeholder={f.placeholder}
-                      placeholderTextColor="#9ca3af"
+                      placeholderTextColor={themed.muted as string}
                       autoCapitalize="words"
                       editable={!saving}
-                      className="text-base text-gray-900 h-13 px-4"
+                      style={{ color: themed.text, height: 52, paddingHorizontal: 14, fontSize: 16 }}
                     />
                   </View>
                 ) : (
-                  <Text className={`text-base py-3.5 px-1 ${editedData[f.key] ? "text-gray-600" : "text-gray-400"}`}>
+                  <Text style={{ color: editedData[f.key] ? themed.text : themed.muted, fontSize: 16, paddingVertical: 10 }}>
                     {(editedData[f.key] as string) || "No especificado"}
                   </Text>
                 )}
@@ -618,85 +680,95 @@ function ProfileScreen() {
             ))}
 
             {/* Correo */}
-            <View className="mb-4">
-              <Text className="font-semibold mb-1.5 text-gray-600">Correo Electrónico *</Text>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontWeight: "600", marginBottom: 6, color: themed.muted }}>Correo Electrónico *</Text>
               {editMode ? (
-                <View className="rounded-xl border border-gray-300 bg-white">
+                <View style={{ borderRadius: 12, borderWidth: 1, borderColor: themed.border, backgroundColor: themed.isDark ? "#0B1220" : "#FFFFFF" }}>
                   <TextInput
                     value={editedData.email}
                     onChangeText={(t) => handleTextChange("email", t)}
                     placeholder="ejemplo@correo.com"
-                    placeholderTextColor="#9ca3af"
+                    placeholderTextColor={themed.muted as string}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
                     editable={!saving}
-                    className="text-base text-gray-900 h-13 px-4"
+                    style={{ color: themed.text, height: 52, paddingHorizontal: 14, fontSize: 16 }}
                   />
                 </View>
               ) : (
-                <Text className={`text-base py-3.5 px-1 ${editedData.email ? "text-gray-600" : "text-gray-400"}`}>
+                <Text style={{ color: editedData.email ? themed.text : themed.muted, fontSize: 16, paddingVertical: 10 }}>
                   {editedData.email || "No especificado"}
                 </Text>
               )}
             </View>
 
             {/* Teléfono */}
-            <View className="mb-4">
-              <Text className="font-semibold mb-1.5 text-gray-600">Teléfono *</Text>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontWeight: "600", marginBottom: 6, color: themed.muted }}>Teléfono *</Text>
               {editMode ? (
-                <View className="flex-row items-center">
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <TouchableOpacity
                     onPress={() => {
                       Keyboard.dismiss();
                       setShowPhoneCodePicker(true);
                     }}
-                    className="rounded-xl border border-gray-300 bg-white mr-2 px-3 justify-center min-w-20 h-13"
+                    style={{
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: themed.border,
+                      backgroundColor: themed.isDark ? "#0B1220" : "#FFFFFF",
+                      marginRight: 8,
+                      paddingHorizontal: 12,
+                      minWidth: 64,
+                      height: 52,
+                      justifyContent: "center",
+                    }}
                   >
-                    <Text className="text-base text-gray-900 text-center">{editedData.phoneCode}</Text>
+                    <Text style={{ color: themed.text, textAlign: "center", fontSize: 16 }}>{editedData.phoneCode}</Text>
                   </TouchableOpacity>
-                  <View className="flex-1 rounded-xl border border-gray-300 bg-white">
+                  <View style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: themed.border, backgroundColor: themed.isDark ? "#0B1220" : "#FFFFFF" }}>
                     <TextInput
                       value={editedData.phone}
                       onChangeText={handlePhoneChange}
                       placeholder={`Ej: ${"0".repeat(Math.max(getMaxPhoneLength() - 1, 1))}`}
-                      placeholderTextColor="#9ca3af"
+                      placeholderTextColor={themed.muted as string}
                       keyboardType="number-pad"
                       editable={!saving}
                       maxLength={getMaxPhoneLength()}
-                      className="text-base text-gray-900 h-13 px-4"
+                      style={{ color: themed.text, height: 52, paddingHorizontal: 14, fontSize: 16 }}
                     />
                   </View>
                 </View>
               ) : (
-                <Text className={`text-base py-3.5 px-1 ${editedData.phone ? "text-gray-600" : "text-gray-400"}`}>
+                <Text style={{ color: editedData.phone ? themed.text : themed.muted, fontSize: 16, paddingVertical: 10 }}>
                   {editedData.phoneCode} {editedData.phone || "No especificado"}
                 </Text>
               )}
             </View>
 
             {/* Ciudad */}
-            <View className="mb-4">
-              <Text className="font-semibold mb-2 text-gray-600">Ciudad *</Text>
+            <View style={{ marginBottom: 4 }}>
+              <Text style={{ fontWeight: "600", marginBottom: 8, color: themed.muted }}>Ciudad *</Text>
               {editMode ? (
                 <TouchableOpacity
                   onPress={() => {
                     Keyboard.dismiss();
                     setShowCityPicker(true);
                   }}
-                  className="p-4 rounded-xl bg-white border border-gray-300"
+                  style={{ padding: 14, borderRadius: 12, backgroundColor: themed.isDark ? "#0B1220" : "#FFFFFF", borderWidth: 1, borderColor: themed.border }}
                 >
-                  <View className="flex-row items-center">
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
                     {getCityFlag(editedData.City_id)}
-                    <Text className={`text-base ml-2 ${editedData.City_id ? "text-gray-600" : "text-gray-400"}`}>
+                    <Text style={{ marginLeft: 8, color: editedData.City_id ? themed.text : themed.muted, fontSize: 16 }}>
                       {getSelectedCityLabel()}
                     </Text>
                   </View>
                 </TouchableOpacity>
               ) : (
-                <View className="flex-row items-center py-2">
+                <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
                   {getCityFlag(editedData.City_id)}
-                  <Text className={`text-base ml-2 ${editedData.City_id ? "text-gray-600" : "text-gray-400"}`}>
+                  <Text style={{ marginLeft: 8, color: editedData.City_id ? themed.text : themed.muted, fontSize: 16 }}>
                     {getSelectedCityLabel()}
                   </Text>
                 </View>
@@ -704,118 +776,223 @@ function ProfileScreen() {
             </View>
           </View>
 
-          {/* Sección de Favoritos */}
+          {/* Favoritos */}
           <TouchableOpacity
-            onPress={() => router.push('/Place/favorites')}
-            className="mb-4 p-4 rounded-xl bg-pink-100 border border-pink-300 flex-row items-center justify-between"
+            onPress={() => router.push("/Place/favorites")}
+            style={{
+              marginBottom: 12,
+              padding: 14,
+              borderRadius: 12,
+              backgroundColor: themed.isDark ? "#4c0519" : "#ffe4e6",
+              borderWidth: 1,
+              borderColor: themed.isDark ? "#9f1239" : "#f9a8d4",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
           >
-            <View className="flex-row items-center">
-              <Ionicons name="heart" size={24} color="#ec4899" />
-              <Text className="text-pink-700 font-semibold text-base ml-3">Mis Lugares Favoritos</Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name="heart" size={22} color={themed.isDark ? "#f472b6" : "#ec4899"} />
+              <Text style={{ color: themed.isDark ? "#f9a8d4" : "#9d174d", fontWeight: "600", fontSize: 16, marginLeft: 10 }}>
+                Mis Lugares Favoritos
+              </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#ec4899" />
+            <Ionicons name="chevron-forward" size={18} color={themed.isDark ? "#f9a8d4" : "#ec4899"} />
           </TouchableOpacity>
 
           {/* Ir a Home */}
           <TouchableOpacity
             onPress={handleGoHome}
-            className="mb-4 p-4 rounded-xl bg-orange-100 border border-orange-300 flex-row items-center justify-center"
+            style={{
+              marginBottom: 12,
+              padding: 14,
+              borderRadius: 12,
+              backgroundColor: themed.isDark ? "#0b1220" : "#fff7ed",
+              borderWidth: 1,
+              borderColor: themed.isDark ? "#1f2a44" : "#fdba74",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
-            <Ionicons name="arrow-back-outline" size={20} color="#f97316" />
-            <Text className="text-orange-600 font-semibold text-base ml-2">Volver a la página principal</Text>
+            <Ionicons name="arrow-back-outline" size={20} color={themed.accent as string} />
+            <Text style={{ color: themed.accent, fontWeight: "600", fontSize: 16, marginLeft: 8 }}>
+              Volver a la página principal
+            </Text>
           </TouchableOpacity>
 
           {/* Acciones */}
-          <View className="mt-2.5">
+          <View style={{ marginTop: 8 }}>
             {editMode ? (
-              <View className="flex-row">
+              <View style={{ flexDirection: "row" }}>
                 <TouchableOpacity
                   onPress={handleCancel}
                   disabled={saving}
-                  className="flex-1 p-3.5 rounded-xl items-center mr-2 bg-orange-50 border border-orange-500"
+                  style={{
+                    flex: 1,
+                    padding: 14,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    marginRight: 6,
+                    backgroundColor: themed.isDark ? "#0b1220" : "#fff7ed",
+                    borderWidth: 1,
+                    borderColor: themed.accent,
+                  }}
                 >
-                  <Text className="text-orange-500 font-semibold text-sm">Cancelar</Text>
+                  <Text style={{ color: themed.accent, fontWeight: "600" }}>Cancelar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSave}
                   disabled={saving}
-                  className={`flex-1 p-3.5 rounded-xl items-center ml-2 ${saving ? "bg-yellow-300" : "bg-orange-500"}`}
+                  style={{
+                    flex: 1,
+                    padding: 14,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    marginLeft: 6,
+                    backgroundColor: themed.accent,
+                  }}
                 >
-                  {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold text-sm">Guardar</Text>}
+                  {saving ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>Guardar</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             ) : (
               <>
-                <TouchableOpacity onPress={handleEdit} className="p-3.5 rounded-xl mb-3 bg-orange-500">
-                  <View className="flex-row items-center justify-center">
-                    <Ionicons name="pencil-outline" size={20} color="#fff" />
-                    <Text className="text-white font-semibold text-sm ml-2">Editar perfil</Text>
+                <TouchableOpacity
+                  onPress={handleEdit}
+                  style={{
+                    padding: 14,
+                    borderRadius: 12,
+                    marginBottom: 10,
+                    backgroundColor: themed.accent,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Ionicons name="pencil-outline" size={20} color="#FFFFFF" />
+                    <Text style={{ color: "#FFFFFF", fontWeight: "700", marginLeft: 8 }}>Editar perfil</Text>
                   </View>
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={handleLogout} className="p-3.5 rounded-xl mb-3 bg-orange-50 border border-orange-500">
-                  <View className="flex-row items-center justify-center">
-                    <Ionicons name="log-out-outline" size={20} color="#f97316" />
-                    <Text className="text-orange-500 font-medium text-sm ml-2">Cerrar sesión</Text>
+                <TouchableOpacity
+                  onPress={handleLogout}
+                  style={{
+                    padding: 14,
+                    borderRadius: 12,
+                    marginBottom: 10,
+                    backgroundColor: themed.isDark ? "#0b1220" : "#fff7ed",
+                    borderWidth: 1,
+                    borderColor: themed.accent,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Ionicons name="log-out-outline" size={20} color={themed.accent as string} />
+                    <Text style={{ color: themed.accent, fontWeight: "600", marginLeft: 8 }}>
+                      Cerrar sesión
+                    </Text>
                   </View>
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={handleDeleteAccount} className="p-3.5 rounded-xl bg-red-50 border border-red-500">
-                  <View className="flex-row items-center justify-center">
+                <TouchableOpacity
+                  onPress={handleDeleteAccount}
+                  style={{
+                    padding: 14,
+                    borderRadius: 12,
+                    backgroundColor: themed.isDark ? "#2f0b0b" : "#fef2f2",
+                    borderWidth: 1,
+                    borderColor: themed.isDark ? "#7f1d1d" : "#ef4444",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
                     <Ionicons name="trash-outline" size={20} color="#dc2626" />
-                    <Text className="text-red-600 font-medium text-sm ml-2">Eliminar cuenta</Text>
+                    <Text style={{ color: "#dc2626", fontWeight: "600", marginLeft: 8 }}>
+                      Eliminar cuenta
+                    </Text>
                   </View>
                 </TouchableOpacity>
               </>
             )}
           </View>
 
-          {/* Spacer final = alto de la tabbar */}
+          {/* Spacer final (altura de tabbar) */}
           <View style={{ height: tabBarHeight }} />
         </ScrollView>
       </TouchableWithoutFeedback>
 
       {/* Picker Ciudad */}
-      <Modal visible={showCityPicker} transparent animationType="slide" onRequestClose={() => setShowCityPicker(false)}>
-        <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-white p-5 rounded-t-2xl">
-            <Text className="text-lg font-bold text-center mb-4">Selecciona una ciudad</Text>
+      <Modal
+  visible={showCityPicker}
+  transparent
+  animationType="slide"
+  onRequestClose={() => setShowCityPicker(false)}
+>
+  <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" }}>
+    <View style={{ backgroundColor: themed.card, padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderTopWidth: 1, borderColor: themed.border }}>
+            <Text style={{ fontSize: 18, fontWeight: "bold", textAlign: "center", marginBottom: 12, color: themed.text }}>
+              Selecciona una ciudad
+            </Text>
             <Picker
               selectedValue={editedData.City_id}
               onValueChange={(value) => {
                 const selectedCity = cityItems.find((i) => i.value === value);
                 if (selectedCity) selectCity(selectedCity.value, selectedCity.name);
               }}
+              dropdownIconColor={themed.text as string}
+              style={{ color: themed.text }}
             >
               {cityItems.map((item) => (
-                <Picker.Item key={item.value} label={item.label} value={item.value} />
+                <Picker.Item key={item.value} label={item.label} value={item.value} color={themed.text as string} />
               ))}
             </Picker>
-            <TouchableOpacity onPress={() => setShowCityPicker(false)} className="mt-4 p-3 rounded-xl bg-gray-100">
-              <Text className="text-center font-semibold text-gray-900">Cerrar</Text>
+            <TouchableOpacity
+              onPress={() => setShowCityPicker(false)}
+              style={{ marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: themed.isDark ? "#0b1220" : "#f3f4f6" }}
+            >
+              <Text style={{ textAlign: "center", fontWeight: "600", color: themed.text }}>Cerrar</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
       {/* Picker Código Teléfono */}
-      <Modal visible={showPhoneCodePicker} transparent animationType="slide" onRequestClose={() => setShowPhoneCodePicker(false)}>
-        <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-white p-5 rounded-t-2xl">
-            <Text className="text-lg font-bold text-center mb-4">Selecciona código de país</Text>
+     <Modal
+  visible={showPhoneCodePicker}
+  transparent
+  animationType="slide"
+  onRequestClose={() => setShowPhoneCodePicker(false)}
+>
+  <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" }}>
+    <View style={{ backgroundColor: themed.card, padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderTopWidth: 1, borderColor: themed.border }}>
+            <Text style={{ fontSize: 18, fontWeight: "bold", textAlign: "center", marginBottom: 12, color: themed.text }}>
+              Selecciona código de país
+            </Text>
             <Picker
               selectedValue={editedData.phoneCode}
               onValueChange={(value) => {
                 setEditedData({ ...editedData, phoneCode: value as string });
                 setShowPhoneCodePicker(false);
               }}
+              dropdownIconColor={themed.text as string}
+              style={{ color: themed.text }}
             >
               {phoneCodes.map((item) => (
-                <Picker.Item key={item.code} label={`${item.code} (${item.country})`} value={item.code} />
+                <Picker.Item key={item.code} label={`${item.code} (${item.country})`} value={item.code} color={themed.text as string} />
               ))}
             </Picker>
-            <TouchableOpacity onPress={() => setShowPhoneCodePicker(false)} className="mt-4 p-3 rounded-xl bg-gray-100">
-              <Text className="text-center font-semibold text-gray-900">Cerrar</Text>
+            <TouchableOpacity
+              onPress={() => setShowPhoneCodePicker(false)}
+              style={{ marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: themed.isDark ? "#0b1220" : "#f3f4f6" }}
+            >
+              <Text style={{ textAlign: "center", fontWeight: "600", color: themed.text }}>Cerrar</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -824,4 +1001,5 @@ function ProfileScreen() {
   );
 }
 
-export default ProfileScreen;
+// 👇 Exporta la pantalla envuelta con el HOC de protección
+export default withAuth(ProfileScreen);
