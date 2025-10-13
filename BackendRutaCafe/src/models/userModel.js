@@ -34,9 +34,7 @@ export const findUserByFingerprint = async (fingerprintId) => {
   }
 };
 
-// 🔑 Función para generar un fingerprint ID único y persistente
 export const generatePersistentFingerprintId = (userId, email) => {
-  // Crear un hash único basado en userId + email + una clave secreta
   const secret = 'ruta_del_sabor_app_2024';
   const data = `${userId}_${email}_${secret}`;
   const hash = crypto.createHash('sha256').update(data).digest('hex');
@@ -45,7 +43,7 @@ export const generatePersistentFingerprintId = (userId, email) => {
 
 export const createUser = async (userData) => {
   try {
-    const { name, lastName, secondLastName, email, password, phone, City_id, role, fingerprint_data } = userData;
+    const { name, lastName, secondLastName, email, password, phone, City_id, role, fingerprint_data, photo } = userData;
     
     if (!name || !lastName || !email || !password || !phone) {
       throw new Error("Faltan campos obligatorios");
@@ -53,9 +51,15 @@ export const createUser = async (userData) => {
     
     const has_fingerprint = !!fingerprint_data;
     
+    console.log("📸 Datos de foto recibidos:", {
+      tieneFoto: !!photo,
+      longitudFoto: photo ? photo.length : 0,
+      primerosCaracteres: photo ? photo.substring(0, 50) + '...' : 'null'
+    });
+    
     const [result] = await pool.query(
-      "INSERT INTO users (name, lastName, secondLastName, email, password, phone, City_id, role, fingerprint_data, has_fingerprint, createdAt, modifiedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NULL)",
-      [name, lastName, secondLastName || null, email, password, phone, City_id || null, role || 3, fingerprint_data || null, has_fingerprint]
+      "INSERT INTO users (name, lastName, secondLastName, email, password, phone, City_id, role, fingerprint_data, has_fingerprint, photo, createdAt, modifiedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NULL)",
+      [name, lastName, secondLastName || null, email, password, phone, City_id || null, role || 3, fingerprint_data || null, has_fingerprint, photo || null]
     );
     
     console.log("✅ Usuario creado con ID:", result.insertId);
@@ -66,9 +70,60 @@ export const createUser = async (userData) => {
   }
 };
 
+export const updateUserPhoto = async (id, photoUrl) => {
+  try {
+    const [result] = await pool.query(
+      "UPDATE users SET photo = ?, modifiedAt = NOW() WHERE id = ?",
+      [photoUrl, id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return {
+        success: false,
+        message: "Usuario no encontrado"
+      };
+    }
+
+    console.log("✅ Foto actualizada para usuario:", id);
+    return {
+      success: true,
+      affectedRows: result.affectedRows,
+      message: "Foto actualizada correctamente"
+    };
+  } catch (error) {
+    console.error("Error en updateUserPhoto:", error);
+    throw error;
+  }
+};
+
+export const removeUserPhoto = async (id) => {
+  try {
+    const [result] = await pool.query(
+      "UPDATE users SET photo = NULL, modifiedAt = NOW() WHERE id = ?",
+      [id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return {
+        success: false,
+        message: "Usuario no encontrado"
+      };
+    }
+
+    console.log("✅ Foto eliminada para usuario:", id);
+    return {
+      success: true,
+      affectedRows: result.affectedRows,
+      message: "Foto eliminada correctamente"
+    };
+  } catch (error) {
+    console.error("Error en removeUserPhoto:", error);
+    throw error;
+  }
+};
+
 export const updateUserFingerprint = async (id, fingerprintData) => {
   try {
-    // Validar que el fingerprintData no esté vacío
     if (!fingerprintData || fingerprintData.trim() === '') {
       throw new Error("Los datos de huella no pueden estar vacíos");
     }
@@ -194,6 +249,7 @@ export const findUsersByCityId = async (cityId) => {
         u.phone, 
         u.role,
         u.City_id,
+        u.photo,
         u.createdAt,
         c.name as cityName  
        FROM users u 
@@ -260,6 +316,7 @@ export const findAllUsers = async () => {
         u.phone, 
         u.role,
         u.City_id,
+        u.photo,
         u.createdAt,
         c.name as cityName
        FROM users u 
@@ -285,6 +342,7 @@ export const findUsersBySpecificCity = async (cityId) => {
         u.phone, 
         u.role,
         u.City_id,
+        u.photo,
         u.createdAt,
         c.name as cityName
        FROM users u 
@@ -322,6 +380,7 @@ export const findUsersWithCityByCityId = async (cityId) => {
         u.phone, 
         u.role,
         u.City_id,
+        u.photo,
         u.createdAt,
         c.name as cityName
        FROM users u 

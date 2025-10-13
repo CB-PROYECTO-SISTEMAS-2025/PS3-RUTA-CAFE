@@ -1,5 +1,16 @@
 import express from "express";
-import { getProfile, updateProfile, deleteProfile ,getUsersByAdminCity, updateUserRole,getAllUsers, getUsersBySpecificCity, getCities } from "../controllers/userController.js";
+import { 
+  getProfile, 
+  updateProfile, 
+  deleteProfile, 
+  updateProfilePhoto, 
+  removeProfilePhoto,
+  getUsersByAdminCity, 
+  updateUserRole,
+  getAllUsers, 
+  getUsersBySpecificCity, 
+  getCities 
+} from "../controllers/userController.js";
 import { verifyToken , verifyAdmin } from "../middlewares/authMiddleware.js";
 import { getDashboardData } from "../controllers/dashboardController.js"; 
 
@@ -8,6 +19,8 @@ const router = express.Router();
 // Todas las rutas de usuario requieren token
 router.get("/profile", verifyToken, getProfile);
 router.put("/profile", verifyToken, updateProfile);
+router.put("/profile/photo", verifyToken, updateProfilePhoto);
+router.delete("/profile/photo", verifyToken, removeProfilePhoto);
 router.delete("/profile", verifyToken, deleteProfile);
 
 router.get("/users", verifyAdmin, getUsersByAdminCity);
@@ -17,6 +30,6 @@ router.get("/users/:cityId", verifyAdmin, getUsersBySpecificCity);
 router.get("/cities", verifyAdmin, getCities);
 
 // Ruta para el dashboard (solo admin)
-router.get("/dashboard", verifyAdmin, getDashboardData); // Agregar esta línea
+router.get("/dashboard", verifyAdmin, getDashboardData);
 
-export default router;  
+export default router;

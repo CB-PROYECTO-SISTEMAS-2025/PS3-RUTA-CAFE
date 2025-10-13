@@ -1,23 +1,24 @@
-import { useRouter, useFocusEffect } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { Picker } from "@react-native-picker/picker";
+import * as ImagePicker from 'expo-image-picker';
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
-  Text,
-  TouchableOpacity,
-  View,
-  TextInput,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  ScrollView,
-  Platform,
-  Modal,
-  Keyboard,
-  TouchableWithoutFeedback,
   Alert,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from "react-native";
-import { useState, useEffect, useCallback } from "react";
 import * as Animatable from "react-native-animatable";
-import { Picker } from "@react-native-picker/picker";
-import { Ionicons } from "@expo/vector-icons";
 
 // Importar imágenes PNG/JPG de banderas
 const LaPazFlag = require("../app/images/Banderas/LaPaz.jpg");
@@ -40,6 +41,7 @@ interface FormData {
   password: string;
   confirmPassword: string;
   City_id: number | null;
+  photo: string | null;
 }
 
 export default function RegisterScreen() {
@@ -54,6 +56,7 @@ export default function RegisterScreen() {
     password: "",
     confirmPassword: "",
     City_id: null,
+    photo: null,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -64,6 +67,7 @@ export default function RegisterScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [emailError, setEmailError] = useState("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const cityItems = [
     { label: "Selecciona una ciudad", value: null },
@@ -78,7 +82,6 @@ export default function RegisterScreen() {
     { label: "Pando", value: 9 },
   ];
 
-  // Códigos de teléfono de países latinoamericanos y longitud máxima
   const phoneCodes = [
     { code: "+591", country: "Bolivia", maxLength: 8 },
     { code: "+52", country: "México", maxLength: 10 },
@@ -94,13 +97,11 @@ export default function RegisterScreen() {
     { code: "+509", country: "Haití", maxLength: 8 },
   ];
 
-  // Obtener la longitud máxima para el código de teléfono actual
   const getMaxPhoneLength = () => {
     const phoneCodeObj = phoneCodes.find(item => item.code === formData.phoneCode);
     return phoneCodeObj ? phoneCodeObj.maxLength : 15;
   };
 
-  // Validación de email
   const isValidEmail = (email: string): { isValid: boolean; message: string } => {
     if (!email) return { isValid: false, message: "El correo electrónico es requerido" };
     
@@ -113,7 +114,6 @@ export default function RegisterScreen() {
     return { isValid: true, message: "" };
   };
 
-  // Calcular fortaleza de la contraseña
   useEffect(() => {
     const calculatePasswordStrength = (password: string) => {
       let strength = 0;
@@ -127,7 +127,6 @@ export default function RegisterScreen() {
     setPasswordStrength(calculatePasswordStrength(formData.password));
   }, [formData.password]);
 
-  // Validar email cuando cambia
   useEffect(() => {
     if (formData.email) {
       const validation = isValidEmail(formData.email);
@@ -137,7 +136,6 @@ export default function RegisterScreen() {
     }
   }, [formData.email]);
 
-  // Reiniciar estado cuando la pantalla obtiene foco
   useFocusEffect(
     useCallback(() => {
       setFormData({
@@ -150,6 +148,7 @@ export default function RegisterScreen() {
         password: "",
         confirmPassword: "",
         City_id: null,
+        photo: null,
       });
       setSuccessMessage("");
       setErrorMessage("");
@@ -172,26 +171,16 @@ export default function RegisterScreen() {
 
   const getCityFlag = () => {
     switch (formData.City_id) {
-      case 1:
-        return <Image source={LaPazFlag} className="w-10 h-6 contain" />;
-      case 2:
-        return <Image source={CochabambaFlag} className="w-10 h-6 contain" />;
-      case 3:
-        return <Image source={SantaCruzFlag} className="w-10 h-6 contain" />;
-      case 4:
-        return <Image source={OruroFlag} className="w-10 h-6 contain" />;
-      case 5:
-        return <Image source={PotosiFlag} className="w-10 h-6 contain" />;
-      case 6:
-        return <Image source={TarijaFlag} className="w-10 h-6 contain" />;
-      case 7:
-        return <Image source={ChuquisacaFlag} className="w-10 h-6 contain" />;
-      case 8:
-        return <Image source={BeniFlag} className="w-10 h-6 contain" />;
-      case 9:
-        return <Image source={PandoFlag} className="w-10 h-6 contain" />;
-      default:
-        return null;
+      case 1: return <Image source={LaPazFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
+      case 2: return <Image source={CochabambaFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
+      case 3: return <Image source={SantaCruzFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
+      case 4: return <Image source={OruroFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
+      case 5: return <Image source={PotosiFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
+      case 6: return <Image source={TarijaFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
+      case 7: return <Image source={ChuquisacaFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
+      case 8: return <Image source={BeniFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
+      case 9: return <Image source={PandoFlag} style={{ width: 40, height: 24 }} resizeMode="contain" />;
+      default: return null;
     }
   };
 
@@ -199,7 +188,6 @@ export default function RegisterScreen() {
     setFormData((prev) => ({ ...prev, [name]: value as never }));
   };
 
-  // Manejar cambio de teléfono con validación de longitud
   const handlePhoneChange = (text: string) => {
     const maxLength = getMaxPhoneLength();
     const numericText = text.replace(/[^0-9]/g, "");
@@ -209,12 +197,10 @@ export default function RegisterScreen() {
     }
   };
 
-  // Manejar cambio de email con validación en tiempo real
   const handleEmailChange = (text: string) => {
     handleChange("email", text.toLowerCase());
   };
 
-  // Colores de fortaleza
   const getPasswordStrengthColor = () => {
     if (passwordStrength === 0) return "#ef4444";
     if (passwordStrength === 1) return "#f97316";
@@ -235,10 +221,68 @@ export default function RegisterScreen() {
     return "";
   };
 
+  const handleTakePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permisos requeridos', 'Se necesitan permisos de cámara para tomar fotos');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.1,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0].base64) {
+        const base64data = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        setFormData(prev => ({ ...prev, photo: base64data }));
+        setSuccessMessage("Foto tomada correctamente");
+      }
+    } catch (error) {
+      console.error('Error al tomar foto:', error);
+      Alert.alert('Error', 'No se pudo tomar la foto');
+    }
+  };
+
+  const handleChoosePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permisos requeridos', 'Se necesitan permisos para acceder a la galería');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.1,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0].base64) {
+        const base64data = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        setFormData(prev => ({ ...prev, photo: base64data }));
+        setSuccessMessage("Foto seleccionada correctamente");
+      }
+    } catch (error) {
+      console.error('Error al seleccionar foto:', error);
+      Alert.alert('Error', 'No se pudo seleccionar la foto');
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setFormData(prev => ({ ...prev, photo: null }));
+    setSuccessMessage("Foto eliminada");
+  };
+
   const handleSubmit = async () => {
     if (isLoading) return;
 
-    // Validaciones
     const onlyLettersRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/;
     const onlyNumbersRegex = /^[0-9]+$/;
 
@@ -259,7 +303,6 @@ export default function RegisterScreen() {
       return;
     }
 
-    // Validación de email
     const emailValidation = isValidEmail(formData.email);
     if (!emailValidation.isValid) {
       setErrorMessage(emailValidation.message);
@@ -271,7 +314,6 @@ export default function RegisterScreen() {
       return;
     }
 
-    // Validación extendida de teléfono con códigos de país
     const maxLength = getMaxPhoneLength();
     if (maxLength && formData.phone.length !== maxLength) {
       setErrorMessage(`El teléfono para ${formData.phoneCode} debe tener exactamente ${maxLength} dígitos`);
@@ -297,10 +339,9 @@ export default function RegisterScreen() {
 
     setIsLoading(true);
     try {
-      // Combinar el código de país con el número de teléfono
       const fullPhone = formData.phoneCode + formData.phone;
       
-      console.log("Datos a enviar:", {
+      const submitData: any = {
         name: formData.name,
         lastName: formData.lastName,
         secondLastName: formData.secondLastName,
@@ -309,64 +350,52 @@ export default function RegisterScreen() {
         password: formData.password,
         City_id: formData.City_id,
         role: 3,
-      });
+      };
+
+      if (formData.photo) {
+        console.log("📸 Enviando foto - longitud:", formData.photo.length);
+        submitData.photo = formData.photo;
+      }
 
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formData.name,
-          lastName: formData.lastName,
-          secondLastName: formData.secondLastName,
-          email: formData.email,
-          phone: fullPhone,
-          password: formData.password,
-          City_id: formData.City_id,
-          role: 3,
-        }),
+        body: JSON.stringify(submitData),
       });
 
-      const contentType = response.headers.get("content-type");
-
       if (!response.ok) {
-        if (contentType && contentType.includes("application/json")) {
-          const data = await response.json();
-          throw new Error(data.message || `Error HTTP: ${response.status}`);
-        } else {
-          const text = await response.text();
-          throw new Error(text || `Error HTTP: ${response.status}`);
-        }
+        const errorText = await response.text();
+        throw new Error(errorText || `Error HTTP: ${response.status}`);
       }
 
-      if (contentType && contentType.includes("application/json")) {
-        const data = await response.json();
-        console.log("Respuesta del servidor:", data);
-        
-        setSuccessMessage("✅ Perfil creado exitosamente");
-        setFormData({
-          name: "",
-          lastName: "",
-          secondLastName: "",
-          email: "",
-          phoneCode: "+591",
-          phone: "",
-          password: "",
-          confirmPassword: "",
-          City_id: null,
-        });
+      const data = await response.json();
+      console.log("✅ Registro exitoso");
+      
+      setSuccessMessage("✅ Perfil creado exitosamente");
+      setFormData({
+        name: "",
+        lastName: "",
+        secondLastName: "",
+        email: "",
+        phoneCode: "+591",
+        phone: "",
+        password: "",
+        confirmPassword: "",
+        City_id: null,
+        photo: null,
+      });
 
-        setTimeout(() => router.push("/(tabs)/advertisement"), 1500);
-      } else {
-        throw new Error("Formato de respuesta inesperado del servidor");
-      }
+      setTimeout(() => router.push("/(tabs)/advertisement"), 1500);
     } catch (error: unknown) {
       let errorMsg = "No se pudo conectar con el servidor";
       if (error instanceof Error) {
-        console.error("Error completo:", error);
+        console.error("❌ Error:", error);
         if (error.message.includes("400") || error.message.toLowerCase().includes("email")) {
           errorMsg = "El correo electrónico ya está registrado";
         } else if (error.message.includes("500")) {
           errorMsg = "Error interno del servidor";
+        } else if (error.message.includes("Data too long")) {
+          errorMsg = "La imagen es demasiado grande. Intenta con una imagen más pequeña.";
         } else {
           errorMsg = error.message;
         }
@@ -386,7 +415,7 @@ export default function RegisterScreen() {
 
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-orange-50"
+      style={{ flex: 1, backgroundColor: '#fffbeb' }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
@@ -396,43 +425,93 @@ export default function RegisterScreen() {
             flexGrow: 1,
             minHeight: Platform.OS === "ios" ? "100%" : undefined,
           }}
-          className="p-5 pb-12"
+          style={{ padding: 20, paddingBottom: 48 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           alwaysBounceVertical={false}
         >
 
           {/* Header */}
-          <View className="w-full h-48 items-center justify-center mb-6 bg-orange-500 rounded-3xl px-5 py-5">
-            <Text className="text-3xl font-bold text-white">
+          <View style={{ 
+            width: '100%', 
+            height: 192, 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            marginBottom: 24,
+            backgroundColor: '#f97316',
+            borderRadius: 24,
+            padding: 20,
+          }}>
+            <Text style={{ fontSize: 28, fontWeight: 'bold', color: 'white', textAlign: 'center' }}>
               ¡Bienvenido!
             </Text>
-            <Text className="text-white text-base text-center mt-1">
+            <Text style={{ color: 'white', fontSize: 16, textAlign: 'center', marginTop: 4 }}>
               Completa tus datos para crear tu cuenta
             </Text>
 
-            {/* Logotipo */}
-            <Image
-              source={require("../app/images/LOGOTIPO.png")}
-              className="w-48 h-28 contain"
-            />
+            {/* Foto de perfil */}
+            <View style={{ position: 'relative', marginTop: 12 }}>
+              {formData.photo ? (
+                <Image 
+                  source={{ uri: formData.photo }} 
+                  style={{ width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: 'white' }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={{ 
+                  width: 80, 
+                  height: 80, 
+                  borderRadius: 40, 
+                  backgroundColor: 'rgba(255,255,255,0.2)', 
+                  borderWidth: 4, 
+                  borderColor: 'white',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Ionicons name="person" size={30} color="white" />
+                </View>
+              )}
+              
+              <View style={{ position: 'absolute', bottom: -8, flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity 
+                  onPress={handleTakePhoto}
+                  style={{ backgroundColor: 'white', padding: 8, borderRadius: 20, elevation: 4 }}
+                >
+                  <Ionicons name="camera" size={14} color="#f97316" />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={handleChoosePhoto}
+                  style={{ backgroundColor: 'white', padding: 8, borderRadius: 20, elevation: 4 }}
+                >
+                  <Ionicons name="image" size={14} color="#f97316" />
+                </TouchableOpacity>
+                {formData.photo && (
+                  <TouchableOpacity 
+                    onPress={handleRemovePhoto}
+                    style={{ backgroundColor: 'white', padding: 8, borderRadius: 20, elevation: 4 }}
+                  >
+                    <Ionicons name="trash" size={14} color="#ef4444" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
           </View>
 
           {/* Mensajes */}
           {successMessage && (
             <Animatable.View
               animation="fadeIn"
-              className="bg-orange-200 p-3 rounded-xl mb-4 border-l-4 border-l-orange-600"
+              style={{ backgroundColor: '#fed7aa', padding: 12, borderRadius: 12, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: '#ea580c' }}
             >
-              <Text className="text-orange-800 text-center font-medium">{successMessage}</Text>
+              <Text style={{ color: '#92400e', textAlign: 'center', fontWeight: '500' }}>{successMessage}</Text>
             </Animatable.View>
           )}
           {errorMessage && (
             <Animatable.View
               animation="shake"
-              className="bg-orange-200 p-3 rounded-xl mb-4 border-l-4 border-l-red-600"
+              style={{ backgroundColor: '#fed7aa', padding: 12, borderRadius: 12, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: '#dc2626' }}
             >
-              <Text className="text-red-700 text-center font-medium">{errorMessage}</Text>
+              <Text style={{ color: '#dc2626', textAlign: 'center', fontWeight: '500' }}>{errorMessage}</Text>
             </Animatable.View>
           )}
 
@@ -619,22 +698,20 @@ export default function RegisterScreen() {
               )}
             </TouchableOpacity>
 
-           {/* Botón volver */}
-          <TouchableOpacity
-            onPress={() => {
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.replace("/(tabs)/advertisement"); // 👈 envía al home
-              }
-            }}
-            className="py-3 border border-orange-400 rounded-xl bg-orange-100"
-          >
-            <Text className="text-orange-700 font-medium text-base text-center">
-              Volver
-            </Text>
-          </TouchableOpacity>
-
+            <TouchableOpacity
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace("/(tabs)/advertisement");
+                }
+              }}
+              className="py-3 border border-orange-400 rounded-xl bg-orange-100"
+            >
+              <Text className="text-orange-700 font-medium text-base text-center">
+                Volver
+              </Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </TouchableWithoutFeedback>

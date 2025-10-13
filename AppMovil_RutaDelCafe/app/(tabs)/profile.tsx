@@ -2,7 +2,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Picker } from "@react-native-picker/picker";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -21,9 +21,8 @@ import {
   View,
 } from "react-native";
 import * as Animatable from "react-native-animatable";
-import { withAuth } from "../../components/ui/withAuth";
 
-// Banderas locales
+// Banderas locales - Rutas corregidas
 const LaPazFlag = require("../images/Banderas/LaPaz.jpg");
 const CochabambaFlag = require("../images/Banderas/COCHABAMBA.jpg");
 const SantaCruzFlag = require("../images/Banderas/Santa_Cruz.png");
@@ -43,7 +42,7 @@ interface User {
   phone: string;
   City_id: number;
   cityName: string;
-  avatar: string;
+  photo: string;
 }
 
 interface EditedData {
@@ -55,7 +54,7 @@ interface EditedData {
   phone: string;
   City_id: number;
   cityName: string;
-  avatar: string;
+  photo: string;
   notifications: boolean;
 }
 
@@ -89,7 +88,8 @@ const phoneCodes = [
 
 function ProfileScreen() {
   const router = useRouter();
-  const tabBarHeight = useBottomTabBarHeight();
+  // ALTURA FIJA para el tab bar personalizado (96px según tu layout)
+  const tabBarHeight = 96;
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,7 +100,8 @@ function ProfileScreen() {
   const [alertType, setAlertType] = useState<"success" | "error">("success");
   const [showCityPicker, setShowCityPicker] = useState(false);
   const [showPhoneCodePicker, setShowPhoneCodePicker] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(true); // 🔥 NUEVO: control de autenticación
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [editedData, setEditedData] = useState<EditedData>({
     name: "",
@@ -111,7 +112,7 @@ function ProfileScreen() {
     phone: "",
     City_id: 0,
     cityName: "",
-    avatar: "",
+    photo: "",
     notifications: true,
   });
 
@@ -165,7 +166,6 @@ function ProfileScreen() {
     try {
       const token = await AsyncStorage.getItem("userToken");
       if (!token) {
-        // 🔥 NUEVO: Si no hay token, redirigir inmediatamente
         setIsAuthenticated(false);
         router.replace("/(tabs)/advertisement");
         return;
@@ -194,12 +194,11 @@ function ProfileScreen() {
         phone: phoneNumber,
         City_id: data.user.City_id || 0,
         cityName,
-        avatar: data.user.avatar || "",
+        photo: data.user.photo || "",
         notifications: true,
       });
     } catch {
       showAlert("error", "Error al cargar los datos del perfil");
-      // 🔥 NUEVO: En caso de error, verificar autenticación
       const token = await AsyncStorage.getItem("userToken");
       if (!token) {
         setIsAuthenticated(false);
@@ -304,9 +303,122 @@ function ProfileScreen() {
         phone: phoneNumber,
         City_id: user.City_id || 0,
         cityName,
-        avatar: user.avatar || "",
+        photo: user.photo || "",
         notifications: true,
       });
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('error', 'Se necesitan permisos de cámara para tomar fotos');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0].uri) {
+        await uploadPhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      showAlert('error', 'Error al tomar la foto');
+    }
+  };
+
+  const handleChoosePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('error', 'Se necesitan permisos para acceder a la galería');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0].uri) {
+        await uploadPhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      showAlert('error', 'Error al seleccionar la foto');
+    }
+  };
+
+  const uploadPhoto = async (uri: string) => {
+    setUploadingPhoto(true);
+    try {
+      const token = await AsyncStorage.getItem("userToken");
+      
+      // Convertir la imagen a base64
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      
+      return new Promise<void>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          try {
+            const base64data = reader.result as string;
+
+            const uploadResponse = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/users/profile/photo`, {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                photoUrl: base64data,
+              }),
+            });
+
+            if (!uploadResponse.ok) {
+              throw new Error("Error al subir la foto");
+            }
+
+            const result = await uploadResponse.json();
+            setEditedData({ ...editedData, photo: result.photoUrl });
+            showAlert("success", "Foto de perfil actualizada correctamente");
+            loadUserData();
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      showAlert("error", "Error al subir la foto");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    try {
+      const token = await AsyncStorage.getItem("userToken");
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/users/profile/photo`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) throw new Error("Error al eliminar la foto");
+
+      setEditedData({ ...editedData, photo: "" });
+      showAlert("success", "Foto de perfil eliminada correctamente");
+      loadUserData();
+    } catch (error) {
+      showAlert("error", "Error al eliminar la foto");
     }
   };
 
@@ -327,7 +439,7 @@ function ProfileScreen() {
             showAlert("success", "Cuenta eliminada correctamente");
             await AsyncStorage.removeItem("userToken");
             await AsyncStorage.removeItem("userData");
-            setIsAuthenticated(false); // 🔥 NUEVO: Actualizar estado
+            setIsAuthenticated(false);
             router.replace("/(tabs)/advertisement");
           } catch {
             showAlert("error", "Error al eliminar la cuenta");
@@ -346,7 +458,7 @@ function ProfileScreen() {
         onPress: async () => {
           await AsyncStorage.removeItem("userToken");
           await AsyncStorage.removeItem("userData");
-          setIsAuthenticated(false); // 🔥 NUEVO: Actualizar estado
+          setIsAuthenticated(false);
           router.replace("/(tabs)/advertisement");
         },
       },
@@ -368,7 +480,6 @@ function ProfileScreen() {
   const getSelectedCityLabel = () => cityItems.find((i) => i.value === editedData.City_id)?.label || "Selecciona una ciudad";
   const handleGoHome = () => router.replace("/(tabs)/advertisement");
 
-  // 🔥 NUEVO: Si no está autenticado, mostrar loading o redirigir
   if (!isAuthenticated) {
     return (
       <View className="flex-1 justify-center items-center bg-orange-50">
@@ -398,18 +509,69 @@ function ProfileScreen() {
           className="p-5"
           contentContainerStyle={{
             flexGrow: 1,
-            paddingBottom: tabBarHeight + 32, // ✅ deja visible todo
+            paddingBottom: tabBarHeight + 32, // ✅ Ahora usa la altura fija
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Header */}
-          <View className="w-full h-44 items-center justify-center mb-6 bg-orange-500 rounded-[40px] px-5 py-5">
-            <Ionicons name="person-circle-outline" size={80} color="white" />
-            <Text className="text-2xl font-bold text-white text-center">
-              {editedData.name} {editedData.lastName}
-            </Text>
-            <Text className="text-white text-sm text-center mt-1">{editedData.email}</Text>
+          {/* Header con Foto de Perfil */}
+          <View className="w-full h-60 items-center justify-center mb-6 bg-orange-500 rounded-[40px] px-5 py-5">
+            <View className="items-center">
+              {/* Avatar/Photo */}
+              <View className="relative mb-3">
+                {editedData.photo ? (
+                  <Image 
+                    source={{ uri: editedData.photo }} 
+                    className="w-24 h-24 rounded-full border-4 border-white"
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View className="w-24 h-24 rounded-full bg-white/20 border-4 border-white items-center justify-center">
+                    <Ionicons name="person" size={40} color="white" />
+                  </View>
+                )}
+                
+                {/* Botones de foto en modo edición */}
+                {editMode && (
+                  <View className="absolute -bottom-2 flex-row space-x-2">
+                    <TouchableOpacity 
+                      onPress={handleTakePhoto}
+                      disabled={uploadingPhoto}
+                      className="bg-white p-2 rounded-full shadow-lg"
+                    >
+                      <Ionicons name="camera" size={16} color="#f97316" />
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      onPress={handleChoosePhoto}
+                      disabled={uploadingPhoto}
+                      className="bg-white p-2 rounded-full shadow-lg"
+                    >
+                      <Ionicons name="image" size={16} color="#f97316" />
+                    </TouchableOpacity>
+                    {editedData.photo && (
+                      <TouchableOpacity 
+                        onPress={handleRemovePhoto}
+                        disabled={uploadingPhoto}
+                        className="bg-white p-2 rounded-full shadow-lg"
+                      >
+                        <Ionicons name="trash" size={16} color="#ef4444" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                
+                {uploadingPhoto && (
+                  <View className="absolute inset-0 bg-black/50 rounded-full items-center justify-center">
+                    <ActivityIndicator size="small" color="white" />
+                  </View>
+                )}
+              </View>
+
+              <Text className="text-2xl font-bold text-white text-center">
+                {editedData.name} {editedData.lastName}
+              </Text>
+              <Text className="text-white text-sm text-center mt-1">{editedData.email}</Text>
+            </View>
           </View>
 
           {/* Alertas */}
@@ -542,7 +704,6 @@ function ProfileScreen() {
             </View>
           </View>
 
-
           {/* Sección de Favoritos */}
           <TouchableOpacity
             onPress={() => router.push('/Place/favorites')}
@@ -663,4 +824,4 @@ function ProfileScreen() {
   );
 }
 
-export default withAuth(ProfileScreen);
+export default ProfileScreen;
