@@ -1,3 +1,4 @@
+// app/(tabs)/advertisement.tsx
 import { useRouter } from "expo-router";
 import {
   Image,
@@ -176,7 +177,7 @@ export default function AdvertisementScreen() {
         contentContainerStyle={{
           flexGrow: 1,
           paddingBottom: 20,
-          minHeight: 700, // Fijo para evitar que el contenido se mueva
+          minHeight: 700,
         }}
         className="mt-[120px] px-6"
         showsVerticalScrollIndicator={false}
@@ -220,12 +221,12 @@ export default function AdvertisementScreen() {
           </ScrollView>
         </View>
 
-        {/* Botones principales - ICONOS FIJOS */}
-        <View className="mt-2 flex-row justify-between px-4">
+        {/* Botones principales - 4 COLUMNAS AHORA */}
+        <View className="mt-2 flex-row flex-wrap justify-between px-2">
           {/* Ubicaciones */}
-          <View className="flex-1 items-center">
+          <View className="w-1/4 items-center mb-4">
             <TouchableOpacity
-              className="items-center flex-1"
+              className="items-center"
               onPress={() => router.push("/Place")}
             >
               <View className="bg-orange-100 p-3 rounded-full mb-2 items-center justify-center w-12 h-12">
@@ -240,9 +241,9 @@ export default function AdvertisementScreen() {
           </View>
 
           {/* Rutas */}
-          <View className="flex-1 items-center">
+          <View className="w-1/4 items-center mb-4">
             <TouchableOpacity
-              className="items-center flex-1"
+              className="items-center"
               onPress={handleRoutePress}
             >
               <View className="bg-orange-100 p-3 rounded-full mb-2 items-center justify-center w-12 h-12">
@@ -261,10 +262,27 @@ export default function AdvertisementScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Acerca de nosotros */}
-          <View className="flex-1 items-center">
+          {/* Cómo Llegar - NUEVO BOTÓN */}
+          <View className="w-1/4 items-center mb-4">
             <TouchableOpacity
-              className="items-center flex-1"
+              className="items-center"
+              onPress={() => router.push("/Place/all-places")}
+            >
+              <View className="bg-orange-100 p-3 rounded-full mb-2 items-center justify-center w-12 h-12">
+                <Image
+                  source={require("../app/images/navigation-icon.png")}
+                  style={{ width: 24, height: 24 }}
+                  resizeMode="contain"
+                />
+              </View>
+              <Text className="text-xs text-gray-700 font-medium text-center">Cómo Llegar</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Acerca de nosotros */}
+          <View className="w-1/4 items-center mb-4">
+            <TouchableOpacity
+              className="items-center"
               onPress={() => router.push("/about-us")}
             >
               <View className="bg-orange-100 p-3 rounded-full mb-2 items-center justify-center w-12 h-12">
@@ -274,7 +292,7 @@ export default function AdvertisementScreen() {
                   resizeMode="contain"
                 />
               </View>
-              <Text className="text-xs text-gray-700 font-medium text-center">Acerca de nosotros</Text>
+              <Text className="text-xs text-gray-700 font-medium text-center">Acerca de</Text>
             </TouchableOpacity>
           </View>
         </View>

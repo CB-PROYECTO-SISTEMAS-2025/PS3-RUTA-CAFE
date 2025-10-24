@@ -1,3 +1,4 @@
+// app/Place/create.tsx
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -44,10 +45,9 @@ const COUNTRY_CODES = [
   { code: '+34', name: 'España', maxLength: 9 },
 ];
 
-// Corregido según la estructura de la base de datos
 const DAYS_OF_WEEK = [
   { key: 'lunes', label: 'Lunes' },
-  { key: 'martes', label: 'Martes' }, // Corregido de 'maries' a 'martes'
+  { key: 'martes', label: 'Martes' },
   { key: 'miércoles', label: 'Miércoles' },
   { key: 'jueves', label: 'Jueves' },
   { key: 'viernes', label: 'Viernes' },
@@ -124,6 +124,60 @@ export default function CreatePlaceScreen() {
     }
   };
 
+    // Estados para errores - SOLO descripción
+  const [errors, setErrors] = useState({
+    description: '',
+  });
+
+  // Función para limpiar texto de descripción
+  const cleanDescriptionText = (text: string) => {
+    // Permite letras, espacios, acentos, ñ, y algunos caracteres básicos como , . ! ? -
+    const textRegex = /[a-zA-ZÀ-ÿ\u00f1\u00d1\s,.!?\-]/g;
+    const matches = text.match(textRegex);
+    return matches ? matches.join('') : '';
+  };
+
+  // Función para validar que descripción no sea solo números
+  const validateDescriptionNotOnlyNumbers = (text: string) => {
+    const onlyNumbersRegex = /^\d+$/;
+    
+    if (onlyNumbersRegex.test(text)) {
+      setErrors(prev => ({
+        ...prev,
+        description: 'No puede contener solo números'
+      }));
+      return false;
+    } else if (text.trim() === '') {
+      setErrors(prev => ({
+        ...prev,
+        description: 'Este campo es obligatorio'
+      }));
+      return false;
+    } else {
+      setErrors(prev => ({
+        ...prev,
+        description: ''
+      }));
+      return true;
+    }
+  };
+
+  // Función para manejar cambios en la descripción
+  const handleDescriptionChange = (text: string) => {
+    // Limpiamos el texto eliminando caracteres no permitidos
+    const cleanedText = cleanDescriptionText(text);
+    
+    // Actualizamos el estado con el texto limpio
+    setFormData(prev => ({
+      ...prev,
+      description: cleanedText
+    }));
+
+    // Validamos que no sea solo números
+    validateDescriptionNotOnlyNumbers(cleanedText);
+  };
+
+
   const loadApprovedRoutes = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -198,11 +252,6 @@ export default function CreatePlaceScreen() {
       isOpen: dayToCopy.isOpen
     })));
     Alert.alert('Horario aplicado', 'Se ha aplicado el mismo horario para todos los días');
-  };
-
-  const getCurrentCountryName = () => {
-    const country = COUNTRY_CODES.find(c => c.code === formData.countryCode);
-    return country ? `${country.name} (${country.code})` : 'Seleccionar país';
   };
 
   const handleMapClick = (event: any) => {
@@ -472,7 +521,7 @@ export default function CreatePlaceScreen() {
         .filter(daySchedule => daySchedule.isOpen)
         .map(daySchedule => ({
           dayOfWeek: daySchedule.dayOfWeek,
-          openTime: daySchedule.openTime + ':00', // Agregar segundos para formato time
+          openTime: daySchedule.openTime + ':00',
           closeTime: daySchedule.closeTime + ':00'
         }));
 
@@ -507,7 +556,6 @@ export default function CreatePlaceScreen() {
         method: 'POST',
         headers: { 
           Authorization: `Bearer ${token}`,
-          // No incluir Content-Type para FormData, React Native lo establece automáticamente con boundary
         },
         body: submitData,
       });
@@ -522,12 +570,19 @@ export default function CreatePlaceScreen() {
       }
 
       if (response.ok) {
-        Alert.alert('Éxito', 'Lugar creado correctamente', [
+        Alert.alert('Éxito', 'Lugar creado correctamente y enviado para aprobación', [
           {
             text: 'OK',
             onPress: () => {
+              // 🔹 REDIRIGIR SIEMPRE AL INDEX
               if (numericRouteId) {
-                router.replace({ pathname: '/Place', params: { routeId: String(numericRouteId) } });
+                router.replace({ 
+                  pathname: '/Place', 
+                  params: { 
+                    routeId: String(numericRouteId),
+                    routeName: routeName || 'Ruta'
+                  } 
+                });
               } else {
                 router.replace('/Place');
               }
@@ -640,7 +695,6 @@ export default function CreatePlaceScreen() {
     const openDays = schedule.filter(day => day.isOpen);
     if (openDays.length === 0) return 'Cerrado todos los días';
     
-    // Verificar si todos los días tienen el mismo horario
     const firstOpenDay = openDays[0];
     const allSameSchedule = openDays.every(day => 
       day.openTime === firstOpenDay.openTime && 
@@ -668,6 +722,9 @@ export default function CreatePlaceScreen() {
             En {lockedRouteName}
           </Text>
         )}
+        <Text className="text-orange-200 text-center mt-1 text-xs">
+          El lugar será creado en estado "Pendiente" hasta su aprobación
+        </Text>
       </View>
 
       <ScrollView className="flex-1 px-6 mt-6" showsVerticalScrollIndicator={false}>

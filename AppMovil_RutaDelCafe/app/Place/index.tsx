@@ -33,6 +33,7 @@ interface Place {
   route_id: number;
   route_name?: string;
   status: 'pendiente' | 'aprobada' | 'rechazada';
+  rejectionComment?: string;
   website?: string;
   phoneNumber?: string;
   image_url?: string;
@@ -49,15 +50,12 @@ interface UserData {
   id: number;
 }
 
-// Función para formatear el horario para mostrar en el bottom sheet
 const getScheduleSummary = (schedules: Schedule[]) => {
   if (!schedules || schedules.length === 0) {
     return 'Horario no disponible';
   }
 
   const openDays = schedules;
-  
-  // Verificar si todos los días tienen el mismo horario
   const firstOpenDay = openDays[0];
   const allSameSchedule = openDays.every(day => 
     day.openTime.substring(0, 5) === firstOpenDay.openTime.substring(0, 5) && 
@@ -71,7 +69,6 @@ const getScheduleSummary = (schedules: Schedule[]) => {
   return `${openDays.length} días con horario`;
 };
 
-// Función para formatear el nombre del día
 const formatDayName = (dayOfWeek: string) => {
   const days: { [key: string]: string } = {
     'monday': 'Lunes',
@@ -85,12 +82,10 @@ const formatDayName = (dayOfWeek: string) => {
   return days[dayOfWeek.toLowerCase()] || dayOfWeek;
 };
 
-// Función para formatear la hora (remover segundos si existen)
 const formatTime = (time: string) => {
   return time.substring(0, 5);
 };
 
-// Función para mostrar el horario completo
 const getFullSchedule = (schedules: Schedule[]) => {
   if (!schedules || schedules.length === 0) {
     return null;
@@ -116,13 +111,12 @@ export default function PlacesMapScreen() {
   const [places, setPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [userRole, setUserRole] = useState<number>(0); // 0 = visitante
+  const [userRole, setUserRole] = useState<number>(0);
   const [userId, setUserId] = useState<number>(0);
   const [mapKey, setMapKey] = useState(0);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false);
 
-  // Modal/bottom sheet
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
 
@@ -139,103 +133,113 @@ export default function PlacesMapScreen() {
   }, [numericRouteId]);
 
   useEffect(() => {
-    // Cuando los lugares cambian, forzar re-render del mapa
     if (places.length > 0) {
       setMapKey(prev => prev + 1);
     }
   }, [places]);
 
-  // 🔹 Cargar datos del usuario (si hay sesión)
-const loadUser = async () => {
-  try {
-    const userData = await AsyncStorage.getItem('userData');
-    if (userData) {
-      const user: UserData = JSON.parse(userData);
-      setUserRole(user.role || 3);
-      setUserId(user.id || 0);
-    } else {
-      // 🌐 Visitante sin login
+  const loadUser = async () => {
+    try {
+      const userData = await AsyncStorage.getItem('userData');
+      if (userData) {
+        const user: UserData = JSON.parse(userData);
+        setUserRole(user.role || 3);
+        setUserId(user.id || 0);
+      } else {
+        setUserRole(0);
+        setUserId(0);
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error);
       setUserRole(0);
-      setUserId(0);
     }
-  } catch (error) {
-    console.error('Error loading user data:', error);
-    setUserRole(0);
-  }
-};
+  };
 
-// 🔹 Obtener lugares desde backend (permite visitante)
-const fetchPlaces = async () => {
-  setLoading(true);
-  setMapLoaded(false);
-  setMapError(false);
+  const fetchPlaces = async () => {
+    setLoading(true);
+    setMapLoaded(false);
+    setMapError(false);
 
-  try {
-    const token = await AsyncStorage.getItem('userToken');
-    const headers: any = { 
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    };
-    
-    // 👇 Token opcional para visitantes
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      const headers: any = { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      let url = `${process.env.EXPO_PUBLIC_API_URL}/api/places`;
+      if (numericRouteId) {
+        url = `${process.env.EXPO_PUBLIC_API_URL}/api/places/route/${numericRouteId}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Error ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      const normalized = data
+        .map((p: any) => ({
+          ...p,
+          latitude: typeof p.latitude === 'string' ? parseFloat(p.latitude) : p.latitude,
+          longitude: typeof p.longitude === 'string' ? parseFloat(p.longitude) : p.longitude,
+        }))
+        .filter(
+          (p: any) =>
+            typeof p.latitude === 'number' &&
+            typeof p.longitude === 'number' &&
+            !isNaN(p.latitude) &&
+            !isNaN(p.longitude)
+        );
+
+      setPlaces(normalized);
+    } catch (error) {
+      console.error('❌ Error cargando lugares:', error);
+      Alert.alert('Error', 'No se pudieron cargar los lugares: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-
-    let url = `${process.env.EXPO_PUBLIC_API_URL}/api/places`;
-    if (numericRouteId) {
-      url = `${process.env.EXPO_PUBLIC_API_URL}/api/places/route/${numericRouteId}`;
-    }
-
-    console.log('🌐 Fetching places from:', url);
-    console.log('🔐 Token present:', !!token);
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Server response:', response.status, errorText);
-      throw new Error(`Error ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    console.log('✅ Places loaded:', data.length);
-
-    // 🔹 Normalizar coordenadas
-    const normalized = data
-      .map((p: any) => ({
-        ...p,
-        latitude: typeof p.latitude === 'string' ? parseFloat(p.latitude) : p.latitude,
-        longitude: typeof p.longitude === 'string' ? parseFloat(p.longitude) : p.longitude,
-      }))
-      .filter(
-        (p: any) =>
-          typeof p.latitude === 'number' &&
-          typeof p.longitude === 'number' &&
-          !isNaN(p.latitude) &&
-          !isNaN(p.longitude)
-      );
-
-    setPlaces(normalized);
-  } catch (error) {
-    console.error('❌ Error cargando lugares:', error);
-    Alert.alert('Error', 'No se pudieron cargar los lugares: ' + (error instanceof Error ? error.message : 'Error desconocido'));
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-};
-
-
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
     setMapLoaded(false);
     setMapError(false);
     fetchPlaces();
+  };
+
+  // 🔹 FUNCIÓN PARA VERIFICAR SI EL USUARIO TIENE LUGARES PENDIENTES
+  const userHasPendingPlaces = useMemo(() => {
+    if (!isAdmin) return false;
+    return places.some(place => place.createdBy === userId && place.status === 'pendiente');
+  }, [places, userId, isAdmin]);
+
+  const handleCreatePlace = () => {
+    if (userHasPendingPlaces) {
+      Alert.alert(
+        'Lugares Pendientes', 
+        'No puedes crear un nuevo lugar hasta que el administrador apruebe tus lugares pendientes.',
+        [{ text: 'Entendido', style: 'default' }]
+      );
+      return;
+    }
+    router.push({
+      pathname: '/Place/create',
+      params: numericRouteId
+        ? { routeId: String(numericRouteId), routeName: routeName }
+        : undefined,
+    });
   };
 
   const deletePlace = async (placeId: number) => {
@@ -262,7 +266,7 @@ const fetchPlaces = async () => {
 
               if (response.ok) {
                 Alert.alert('Éxito', 'Lugar eliminado correctamente');
-                fetchPlaces(); // Recargar la lista
+                fetchPlaces();
               } else {
                 throw new Error('Error al eliminar el lugar');
               }
@@ -296,7 +300,6 @@ const fetchPlaces = async () => {
       );
 
       if (response.ok) {
-        // Actualizar el estado local
         setPlaces(prevPlaces =>
           prevPlaces.map(place => {
             if (place.id === placeId) {
@@ -312,7 +315,6 @@ const fetchPlaces = async () => {
           })
         );
 
-        // Actualizar el lugar seleccionado si está abierto
         if (selectedPlace && selectedPlace.id === placeId) {
           setSelectedPlace(prev => prev ? {
             ...prev,
@@ -329,23 +331,19 @@ const fetchPlaces = async () => {
     }
   };
 
-  // === FILTRO SEGÚN ROL ===
-const visiblePlaces = useMemo(() => {
-  if (isAdmin) {
-    // Técnico: ve solo sus lugares (todos los estados)
-    return places.filter(p => p.createdBy === userId);
-  } else {
-    // Usuario logueado o visitante: ve solo lugares aprobados
-    return places.filter(p => p.status === 'aprobada');
-  }
-}, [isAdmin, places, userId]);
+  const visiblePlaces = useMemo(() => {
+    if (isAdmin) {
+      return places.filter(p => p.createdBy === userId);
+    } else {
+      return places.filter(p => p.status === 'aprobada');
+    }
+  }, [isAdmin, places, userId]);
 
   const resolvedRouteName =
     routeName ||
     (visiblePlaces.length > 0 ? visiblePlaces[0].route_name : undefined) ||
     (numericRouteId ? `Ruta #${numericRouteId}` : undefined);
 
-  // HTML Leaflet - SIMPLIFICADO y CORREGIDO
   const getMapHtml = () => {
     const placesData = visiblePlaces.map(p => ({
       id: p.id,
@@ -355,7 +353,6 @@ const visiblePlaces = useMemo(() => {
       desc: (p.description || '').slice(0, 80),
     }));
 
-    // Calcular centro del mapa
     let centerLat = -17.3939;
     let centerLng = -66.1568;
     let initialZoom = 12;
@@ -427,19 +424,15 @@ const visiblePlaces = useMemo(() => {
           
           function initMap() {
             try {
-              // Ocultar loading
               document.getElementById('loading').style.display = 'none';
               
-              // Inicializar mapa
               map = L.map('map').setView([${centerLat}, ${centerLng}], ${initialZoom});
               
-              // Añadir capa de tiles
               L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors',
                 maxZoom: 19
               }).addTo(map);
               
-              // Crear icono personalizado
               const coffeeIcon = L.divIcon({
                 className: 'coffee-pin',
                 html: '☕',
@@ -447,7 +440,6 @@ const visiblePlaces = useMemo(() => {
                 iconAnchor: [17, 17]
               });
               
-              // Añadir marcadores
               ${placesData.length > 0 ? `
                 const places = ${JSON.stringify(placesData)};
                 
@@ -472,19 +464,16 @@ const visiblePlaces = useMemo(() => {
                   markers.push(marker);
                 });
                 
-                // Ajustar vista para mostrar todos los marcadores
                 if (places.length > 1) {
                   const group = new L.featureGroup(markers);
                   map.fitBounds(group.getBounds().pad(0.1));
                 }
               ` : ''}
               
-              // Forzar redimensionado después de un delay
               setTimeout(() => {
                 map.invalidateSize();
               }, 100);
               
-              // Notificar que el mapa está listo
               if (window.ReactNativeWebView) {
                 window.ReactNativeWebView.postMessage('MAP_LOADED');
               }
@@ -498,14 +487,12 @@ const visiblePlaces = useMemo(() => {
             }
           }
           
-          // Inicializar cuando el DOM esté listo
           if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initMap);
           } else {
             initMap();
           }
           
-          // Función para redimensionar el mapa
           window.resizeMap = function() {
             if (map) {
               setTimeout(() => {
@@ -548,7 +535,6 @@ const visiblePlaces = useMemo(() => {
   };
 
   const onWebViewLoad = () => {
-    // Redimensionar después de cargar
     setTimeout(() => {
       if (webViewRef.current) {
         webViewRef.current.injectJavaScript(`
@@ -593,6 +579,19 @@ const visiblePlaces = useMemo(() => {
     }
   };
 
+  // 🔹 FUNCIÓN PARA MANEJAR BOTONES BLOQUEADOS
+  const handleBlockedAction = (place: Place, actionName: string) => {
+    if (place.status === 'rechazada') {
+      Alert.alert(
+        'Acción Bloqueada',
+        `No puedes ${actionName} un lugar que ha sido rechazado. Revisa el motivo del rechazo y contacta al administrador si necesitas más información.`,
+        [{ text: 'Entendido', style: 'default' }]
+      );
+      return true;
+    }
+    return false;
+  };
+
   if (loading) {
     return (
       <View className="flex-1 justify-center items-center bg-orange-50">
@@ -619,6 +618,21 @@ const visiblePlaces = useMemo(() => {
         </Text>
       </View>
 
+      {/* Alerta de lugares pendientes para técnicos */}
+      {isAdmin && userHasPendingPlaces && (
+        <View className="mx-6 mt-4 bg-orange-200 border border-orange-400 rounded-xl p-4">
+          <View className="flex-row items-center">
+            <Ionicons name="information-circle" size={24} color="#ea580c" />
+            <Text className="text-orange-800 font-bold ml-2 flex-1">
+              Tienes lugares pendientes de aprobación
+            </Text>
+          </View>
+          <Text className="text-orange-700 mt-2 text-sm">
+            No puedes crear nuevos lugares hasta que el administrador apruebe tus lugares pendientes.
+          </Text>
+        </View>
+      )}
+
       {/* Acciones superiores */}
       <View className="px-6 mt-4">
         <TouchableOpacity
@@ -633,16 +647,10 @@ const visiblePlaces = useMemo(() => {
         </TouchableOpacity>
 
         <View className="flex-row gap-2">
-          {isAdmin && (
+          {/* 🔹 BOTÓN DE CREAR - SOLO SE MUESTRA SI NO HAY LUGARES PENDIENTES */}
+          {isAdmin && !userHasPendingPlaces && (
             <TouchableOpacity
-              onPress={() =>
-                router.push({
-                  pathname: '/Place/create',
-                  params: numericRouteId
-                    ? { routeId: String(numericRouteId), routeName: resolvedRouteName }
-                    : undefined,
-                })
-              }
+              onPress={handleCreatePlace}
               className="flex-1 bg-orange-500 py-4 rounded-2xl shadow-lg flex-row items-center justify-center"
             >
               <Ionicons name="add-circle" size={24} color="white" />
@@ -650,10 +658,20 @@ const visiblePlaces = useMemo(() => {
             </TouchableOpacity>
           )}
 
+          {/* 🔹 BOTÓN BLOQUEADO - SE MUESTRA CUANDO HAY LUGARES PENDIENTES */}
+          {isAdmin && userHasPendingPlaces && (
+            <TouchableOpacity
+              className="flex-1 bg-orange-300 py-4 rounded-2xl shadow-lg flex-row items-center justify-center"
+              disabled={true}
+            >
+              <Ionicons name="add-circle" size={24} color="#9a3412" />
+              <Text className="text-orange-800 font-bold text-lg ml-2">Creación Bloqueada</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      {/* Mapa - VERSIÓN SIMPLIFICADA */}
+      {/* Mapa */}
       <View className="flex-1 mt-4 mx-6 rounded-2xl overflow-hidden border border-orange-200 shadow relative">
         {!mapLoaded && !mapError && (
           <View className="absolute inset-0 bg-orange-50 justify-center items-center z-10">
@@ -730,7 +748,9 @@ const visiblePlaces = useMemo(() => {
               </Text>
               <Text className="text-orange-600 text-center mt-2">
                 {isAdmin 
-                  ? 'Crea tu primer lugar para comenzar' 
+                  ? userHasPendingPlaces
+                    ? 'Tienes lugares pendientes de aprobación'
+                    : 'Crea tu primer lugar para comenzar'
                   : 'No hay lugares aprobados para mostrar'
                 }
               </Text>
@@ -775,6 +795,21 @@ const visiblePlaces = useMemo(() => {
                       {place.description}
                     </Text>
 
+                    {/* 🔹 MOSTRAR COMENTARIO DE RECHAZO SI EXISTE */}
+                    {place.status === 'rechazada' && place.rejectionComment && (
+                      <View className="bg-red-50 border border-red-200 rounded-xl p-3 mt-2">
+                        <View className="flex-row items-start">
+                          <Ionicons name="alert-circle-outline" size={16} color="#dc2626" />
+                          <Text className="text-red-800 font-bold ml-2 flex-1 text-sm">
+                            Motivo del rechazo:
+                          </Text>
+                        </View>
+                        <Text className="text-red-700 mt-1 text-xs">
+                          {place.rejectionComment}
+                        </Text>
+                      </View>
+                    )}
+
                     {/* Información adicional - Likes y Comentarios */}
                     <View className="flex-row mt-2 items-center">
                       <View className="flex-row items-center mr-4">
@@ -799,6 +834,7 @@ const visiblePlaces = useMemo(() => {
 
                 {/* Botones de acción */}
                 <View className="flex-row gap-2 mt-3">
+                  {/* 🔹 VER DETALLES - SIEMPRE DISPONIBLE */}
                   <TouchableOpacity
                     onPress={() => router.push(`/Place/details?id=${place.id}`)}
                     className="flex-1 bg-orange-100 py-2 rounded-xl border border-orange-300 flex-row items-center justify-center"
@@ -808,14 +844,32 @@ const visiblePlaces = useMemo(() => {
 
                   {isAdmin && (
                     <>
+                      {/* 🔹 EDITAR - BLOQUEADO SI ESTÁ RECHAZADO */}
                       <TouchableOpacity
-                        onPress={() => router.push(`/Place/edit?id=${place.id}`)}
-                        className="flex-1 bg-blue-100 py-2 rounded-xl border border-blue-300 flex-row items-center justify-center"
+                        onPress={() => {
+                          if (handleBlockedAction(place, 'editar')) return;
+                          router.push(`/Place/edit?id=${place.id}`);
+                        }}
+                        className={`flex-1 py-2 rounded-xl border flex-row items-center justify-center ${
+                          place.status === 'rechazada' 
+                            ? 'bg-gray-200 border-gray-400' 
+                            : 'bg-blue-100 border-blue-300'
+                        }`}
+                        disabled={place.status === 'rechazada'}
                       >
-                        <Ionicons name="create-outline" size={18} color="#3b82f6" />
-                        <Text className="text-blue-700 font-semibold ml-2">Editar</Text>
+                        <Ionicons 
+                          name="create-outline" 
+                          size={18} 
+                          color={place.status === 'rechazada' ? "#9ca3af" : "#3b82f6"} 
+                        />
+                        <Text className={`font-semibold ml-2 ${
+                          place.status === 'rechazada' ? 'text-gray-500' : 'text-blue-700'
+                        }`}>
+                          Editar
+                        </Text>
                       </TouchableOpacity>
 
+                      {/* 🔹 ELIMINAR - SIEMPRE DISPONIBLE PARA TÉCNICOS */}
                       <TouchableOpacity
                         onPress={() => deletePlace(place.id)}
                         className="flex-1 bg-red-100 py-2 rounded-xl border border-red-300 flex-row items-center justify-center"
@@ -826,34 +880,74 @@ const visiblePlaces = useMemo(() => {
                     </>
                   )}
 
-                   {isUser ? (
-    <>
-      <TouchableOpacity
-        onPress={() => toggleLike(place.id)}
-        className="flex-1 bg-pink-100 py-2 rounded-xl border border-pink-300 flex-row items-center justify-center"
-      >
-        <Ionicons name={place.user_liked ? "heart" : "heart-outline"} size={18} color="#ec4899" />
-        <Text className="text-pink-700 font-semibold ml-2">
-          {place.user_liked ? 'Quitar' : 'Like'}
-        </Text>
-      </TouchableOpacity>
+                  {isUser ? (
+                    <>
+                      {/* 🔹 LIKE - BLOQUEADO SI ESTÁ RECHAZADO */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (handleBlockedAction(place, 'dar like a')) return;
+                          toggleLike(place.id);
+                        }}
+                        className={`flex-1 py-2 rounded-xl border flex-row items-center justify-center ${
+                          place.status === 'rechazada' 
+                            ? 'bg-gray-200 border-gray-400' 
+                            : 'bg-pink-100 border-pink-300'
+                        }`}
+                        disabled={place.status === 'rechazada'}
+                      >
+                        <Ionicons 
+                          name={place.user_liked ? "heart" : "heart-outline"} 
+                          size={18} 
+                          color={place.status === 'rechazada' ? "#9ca3af" : "#ec4899"} 
+                        />
+                        <Text className={`font-semibold ml-2 ${
+                          place.status === 'rechazada' ? 'text-gray-500' : 'text-pink-700'
+                        }`}>
+                          {place.user_liked ? 'Quitar' : 'Like'}
+                        </Text>
+                      </TouchableOpacity>
 
-      <TouchableOpacity
-        onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
-        className="flex-1 bg-green-100 py-2 rounded-xl border border-green-300 flex-row items-center justify-center"
-      >
-        <Text className="text-green-700 font-semibold ml-2">Comentarios</Text>
-      </TouchableOpacity>
-    </>
-  ) : (
-    // Visitante: solo ver comentarios
-    <TouchableOpacity
-      onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
-      className="flex-1 bg-green-100 py-2 rounded-xl border border-green-300 flex-row items-center justify-center"
-    >
-      <Text className="text-green-700 font-semibold ml-2">Comentarios</Text>
-    </TouchableOpacity>
-  )}
+                      {/* 🔹 COMENTARIOS - BLOQUEADO SI ESTÁ RECHAZADO */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (handleBlockedAction(place, 'comentar')) return;
+                          router.push(`/Place/comments?id=${place.id}&name=${place.name}`);
+                        }}
+                        className={`flex-1 py-2 rounded-xl border flex-row items-center justify-center ${
+                          place.status === 'rechazada' 
+                            ? 'bg-gray-200 border-gray-400' 
+                            : 'bg-green-100 border-green-300'
+                        }`}
+                        disabled={place.status === 'rechazada'}
+                      >
+                        <Text className={`font-semibold ml-2 ${
+                          place.status === 'rechazada' ? 'text-gray-500' : 'text-green-700'
+                        }`}>
+                          Comentarios
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    // Visitante: solo ver comentarios (bloqueado si está rechazado)
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (handleBlockedAction(place, 'ver comentarios de')) return;
+                        router.push(`/Place/comments?id=${place.id}&name=${place.name}`);
+                      }}
+                      className={`flex-1 py-2 rounded-xl border flex-row items-center justify-center ${
+                        place.status === 'rechazada' 
+                          ? 'bg-gray-200 border-gray-400' 
+                          : 'bg-green-100 border-green-300'
+                      }`}
+                      disabled={place.status === 'rechazada'}
+                    >
+                      <Text className={`font-semibold ml-2 ${
+                        place.status === 'rechazada' ? 'text-gray-500' : 'text-green-700'
+                      }`}>
+                        Comentarios
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             ))
@@ -892,8 +986,23 @@ const visiblePlaces = useMemo(() => {
                     (numericRouteId ? `Ruta #${numericRouteId}` : '—')}
                 </Text>
 
+                {/* 🔹 MOSTRAR COMENTARIO DE RECHAZO EN EL MODAL */}
+                {selectedPlace.status === 'rechazada' && selectedPlace.rejectionComment && (
+                  <View className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3">
+                    <View className="flex-row items-start">
+                      <Ionicons name="alert-circle-outline" size={18} color="#dc2626" />
+                      <Text className="text-red-800 font-bold ml-2 flex-1">
+                        Motivo del rechazo:
+                      </Text>
+                    </View>
+                    <Text className="text-red-700 mt-1 text-sm">
+                      {selectedPlace.rejectionComment}
+                    </Text>
+                  </View>
+                )}
+
                 {/* Stats de likes y comentarios */}
-                {isUser && (
+                {isUser && selectedPlace.status !== 'rechazada' && (
                   <View className="flex-row mb-3">
                     <TouchableOpacity 
                       onPress={() => toggleLike(selectedPlace.id)}
@@ -967,7 +1076,7 @@ const visiblePlaces = useMemo(() => {
                     </Text>
                   </TouchableOpacity>
 
-                  {selectedPlace.phoneNumber ? (
+                  {selectedPlace.phoneNumber && selectedPlace.status !== 'rechazada' ? (
                     <TouchableOpacity
                       onPress={() => {
                         setInfoOpen(false);

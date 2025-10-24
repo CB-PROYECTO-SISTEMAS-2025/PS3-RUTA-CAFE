@@ -1,3 +1,4 @@
+// app/Place/edit.tsx
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -92,6 +93,10 @@ export default function EditPlaceScreen() {
   const [searchingLocation, setSearchingLocation] = useState(false);
   const [scheduleModalVisible, setScheduleModalVisible] = useState(false);
   const [editingDay, setEditingDay] = useState<number | null>(null);
+  const [errors, setErrors] = useState({
+    name: '',
+    description: '',
+  });
   const webViewRef = useRef<WebView>(null);
 
   const [formData, setFormData] = useState({
@@ -114,6 +119,39 @@ export default function EditPlaceScreen() {
       isOpen: true,
     }))
   );
+
+  // Función para limpiar texto de descripción
+  const cleanDescriptionText = (text: string) => {
+    // Permite letras, espacios, acentos, ñ, y algunos caracteres básicos como , . ! ? -
+    const textRegex = /[a-zA-ZÀ-ÿ\u00f1\u00d1\s,.!?\-]/g;
+    const matches = text.match(textRegex);
+    return matches ? matches.join('') : '';
+  };
+
+  // Función para validar que no sea solo números
+  const validateNotOnlyNumbers = (text: string, field: string) => {
+    const onlyNumbersRegex = /^\d+$/;
+    
+    if (onlyNumbersRegex.test(text)) {
+      setErrors(prev => ({
+        ...prev,
+        [field]: 'No puede contener solo números'
+      }));
+      return false;
+    } else if (text.trim() === '') {
+      setErrors(prev => ({
+        ...prev,
+        [field]: 'Este campo es obligatorio'
+      }));
+      return false;
+    } else {
+      setErrors(prev => ({
+        ...prev,
+        [field]: ''
+      }));
+      return true;
+    }
+  };
 
   // Nombre de ruta para el header cuando viene por param
   const lockedRouteName =
@@ -267,6 +305,10 @@ export default function EditPlaceScreen() {
       case 'name':
         filteredValue = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '');
         break;
+      case 'description':
+        // Limpiar texto de descripción
+        filteredValue = cleanDescriptionText(value);
+        break;
       case 'phoneNumber': {
         const selectedCountry = COUNTRY_CODES.find(c => c.code === formData.countryCode);
         filteredValue = value.replace(/[^0-9]/g, '');
@@ -283,6 +325,11 @@ export default function EditPlaceScreen() {
     }
 
     setFormData(prev => ({ ...prev, [field]: filteredValue }));
+
+    // Validar campos de texto
+    if (field === 'name' || field === 'description') {
+      validateNotOnlyNumbers(filteredValue, field);
+    }
   };
 
   const handleCountryChange = (code: string) => {
@@ -581,12 +628,17 @@ export default function EditPlaceScreen() {
   };
 
   const validateForm = () => {
+    // Limpiar errores previos
+    setErrors({ name: '', description: '' });
+
     if (!formData.name.trim()) {
       Alert.alert('Error', 'El nombre del lugar es obligatorio');
+      setErrors(prev => ({ ...prev, name: 'Este campo es obligatorio' }));
       return false;
     }
     if (!formData.description.trim()) {
       Alert.alert('Error', 'La descripción es obligatoria');
+      setErrors(prev => ({ ...prev, description: 'Este campo es obligatorio' }));
       return false;
     }
     if (!formData.latitude || !formData.longitude) {
@@ -602,6 +654,16 @@ export default function EditPlaceScreen() {
       return false;
     }
     
+    // Validar que no sean solo números
+    if (!validateNotOnlyNumbers(formData.name, 'name')) {
+      Alert.alert('Error', 'Por favor corrige los errores en el nombre del lugar');
+      return false;
+    }
+    if (!validateNotOnlyNumbers(formData.description, 'description')) {
+      Alert.alert('Error', 'Por favor corrige los errores en la descripción');
+      return false;
+    }
+
     const selectedCountry = COUNTRY_CODES.find(c => c.code === formData.countryCode);
     if (formData.phoneNumber) {
       if (!formData.phoneNumber.match(/^\d+$/)) {
@@ -870,10 +932,12 @@ export default function EditPlaceScreen() {
               </Text>
               <TextInput
                 className={`border-2 rounded-xl p-3 text-orange-900 ${
-                  field.required && !formData[field.key as keyof typeof formData] 
-                    ? 'border-red-300' 
-                    : 'border-orange-200'
-                }`}
+                  errors[field.key as keyof typeof errors] 
+                    ? 'border-red-500' 
+                    : field.required && !formData[field.key as keyof typeof formData] 
+                      ? 'border-red-300' 
+                      : 'border-orange-200'
+                } ${field.multiline ? 'h-32' : ''}`}
                 placeholder={field.placeholder}
                 value={formData[field.key as keyof typeof formData]}
                 onChangeText={(text) => handleInputChange(field.key, text)}
@@ -881,6 +945,11 @@ export default function EditPlaceScreen() {
                 numberOfLines={field.multiline ? 4 : 1}
                 textAlignVertical={field.multiline ? 'top' : 'center'}
               />
+              {errors[field.key as keyof typeof errors] ? (
+                <Text className="text-red-500 text-sm mt-1 ml-2">
+                  {errors[field.key as keyof typeof errors]}
+                </Text>
+              ) : null}
             </View>
           ))}
 
@@ -917,40 +986,30 @@ export default function EditPlaceScreen() {
             </Text>
           </View>
 
-          {/* Selector de Ruta */}
+          {/* Selector de Ruta - Solo visual, no interactivo */}
           <View className="mb-4">
-            <Text className="text-orange-800 font-semibold mb-2">Ruta *</Text>
+            <Text className="text-orange-800 font-semibold mb-2">Ruta Asignada</Text>
 
             {numericRouteId ? (
               <View className="border-2 border-green-300 bg-green-50 rounded-xl p-3">
                 <Text className="text-green-800 font-semibold">
                   {lockedRouteName}
                 </Text>
-                <Text className="text-green-600 text-xs mt-1">Ruta fija desde la pantalla anterior</Text>
+                <Text className="text-green-600 text-xs mt-1">Ruta asignada desde la pantalla anterior</Text>
               </View>
             ) : (
-              <View className="border-2 border-orange-200 rounded-xl max-h-40">
-                <ScrollView>
-                  {routes.map((route) => (
-                    <TouchableOpacity
-                      key={route.id}
-                      onPress={() => handleInputChange('route_id', route.id.toString())}
-                      className={`p-3 border-b border-orange-100 ${
-                        formData.route_id === route.id.toString() ? 'bg-orange-100' : ''
-                      }`}
-                    >
-                      <Text className="text-orange-900 font-medium">{route.name}</Text>
-                      <Text className="text-green-600 text-xs">✓ Aprobada</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+              <View className="border-2 border-orange-200 bg-orange-50 rounded-xl p-3">
+                {formData.route_id ? (
+                  <>
+                    <Text className="text-orange-800 font-semibold">
+                      {routes.find(r => r.id.toString() === formData.route_id)?.name || 'Ruta no encontrada'}
+                    </Text>
+                    <Text className="text-orange-600 text-xs mt-1">Ruta asignada al lugar</Text>
+                  </>
+                ) : (
+                  <Text className="text-orange-600">No se ha asignado una ruta</Text>
+                )}
               </View>
-            )}
-
-            {formData.route_id && !numericRouteId && (
-              <Text className="text-orange-600 text-sm mt-1">
-                Ruta seleccionada: {routes.find(r => r.id.toString() === formData.route_id)?.name}
-              </Text>
             )}
           </View>
 

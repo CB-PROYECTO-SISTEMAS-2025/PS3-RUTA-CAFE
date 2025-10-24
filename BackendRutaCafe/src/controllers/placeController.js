@@ -10,13 +10,13 @@ import {
   getSchedulesByPlaceId,
   deletePlaceSchedules,
   findPlacesByCityId,
-  findAllPendingPlaces
+  findAllPendingPlaces,
+  hasPendingPlaces
 } from "../models/placeModel.js";
 import pool, { SCHEMA } from "../config/db.js";
 import path from "path";
 import { findUserWithCity, getAllCities } from "../models/userModel.js";
 
-// genera URL pública absoluta si viene relativa
 const toPublicUrl = (req, maybeRelative) => {
   if (!maybeRelative) return "";
   if (maybeRelative.startsWith("http")) return maybeRelative;
@@ -28,6 +28,7 @@ export const createPlaceController = async (req, res) => {
     const { name, description, latitude, longitude, route_id, website, phoneNumber, schedules } = req.body;
     const createdBy = req.user?.id;
 
+    // 🔹 ELIMINAR LA VERIFICACIÓN DE LUGARES PENDIENTES - PERMITIR SIEMPRE CREAR
     console.log("📥 Datos recibidos:", {
       name, description, latitude, longitude, route_id, website, phoneNumber,
       schedules: schedules ? JSON.parse(schedules) : null
@@ -47,7 +48,6 @@ export const createPlaceController = async (req, res) => {
       return res.status(400).json({ message: "Tipos inválidos en latitude/longitude/route_id" });
     }
 
-    // Verificar existencia de la ruta
     const [rows] = await pool.query(
       `SELECT id FROM \`${SCHEMA}\`.route WHERE id = ?`,
       [routeIdNum]
@@ -61,7 +61,6 @@ export const createPlaceController = async (req, res) => {
       image_url = path.posix.join("/uploads/places", req.file.filename);
     }
 
-    // Crear el lugar
     const placeId = await createPlace({
       name,
       description,
@@ -74,7 +73,6 @@ export const createPlaceController = async (req, res) => {
       createdBy,
     });
 
-    // Procesar horarios si existen
     let createdSchedules = [];
     if (schedules) {
       try {
@@ -87,7 +85,6 @@ export const createPlaceController = async (req, res) => {
         }
       } catch (scheduleError) {
         console.error("❌ Error procesando horarios:", scheduleError);
-        // No hacemos return aquí para no bloquear la creación del lugar
       }
     }
 
@@ -106,7 +103,6 @@ export const createPlaceController = async (req, res) => {
 
 export const getPlacesController = async (req, res) => {
   try {
-    // 👇 Obtener userId del token si existe, sino null
     const userId = req.user?.id || null;
     console.log("➡️ getPlacesController user=", req.user);
 
@@ -114,7 +110,6 @@ export const getPlacesController = async (req, res) => {
     
     const places = await getAllPlaces(req.user || { id: null, role: 0 });
     
-    // Obtener horarios para cada lugar
     const placesWithSchedules = await Promise.all(
       places.map(async (place) => {
         const schedules = await getSchedulesByPlaceId(place.id);
@@ -133,16 +128,16 @@ export const getPlacesController = async (req, res) => {
   }
 };
 
+
 export const getPlacesByRouteController = async (req, res) => {
   try {
    const { routeId } = req.params;
-    // 👇 Obtener userId del token si existe, sino null
     const userId = req.user?.id || null;
     
     console.log(`📊 Cargando lugares de ruta ${routeId} para usuario: ${userId || 'visitante'}`);
     
     const places = await getPlacesByRoute(routeId, req.user || { id: null, role: 0 });
-    // Obtener horarios para cada lugar
+    
     const placesWithSchedules = await Promise.all(
       places.map(async (place) => {
         const schedules = await getSchedulesByPlaceId(place.id);
@@ -164,7 +159,6 @@ export const getPlacesByRouteController = async (req, res) => {
 export const getPlaceByIdController = async (req, res) => {
   try {
     const { id } = req.params;
-    // 👇 Obtener userId del token si existe, sino null
     const userId = req.user?.id || null;
     console.log("➡️ getPlacesController user=", req.user);
 
@@ -174,7 +168,6 @@ export const getPlaceByIdController = async (req, res) => {
     const place = await getPlaceById(id, userId);
     if (!place) return res.status(404).json({ message: "Lugar no encontrado" });
     
-    // Obtener horarios del lugar
     const schedules = await getSchedulesByPlaceId(id);
     
     place.image_url = place.image_url ? toPublicUrl(req, place.image_url) : "";
@@ -217,14 +210,11 @@ export const updatePlaceController = async (req, res) => {
     const updated = await updatePlace(id, updates, modifiedBy);
     if (!updated) return res.status(400).json({ message: "No se pudo actualizar el lugar" });
 
-    // Actualizar horarios si se enviaron
     let updatedSchedules = [];
     if (schedules) {
       try {
-        // Eliminar horarios existentes
         await deletePlaceSchedules(id);
         
-        // Crear nuevos horarios
         const schedulesData = JSON.parse(schedules);
         if (Array.isArray(schedulesData) && schedulesData.length > 0) {
           updatedSchedules = await createPlaceSchedules(id, schedulesData);
@@ -254,10 +244,8 @@ export const deletePlaceController = async (req, res) => {
     const existingPlace = await getPlaceById(id);
     if (!existingPlace) return res.status(404).json({ message: "Lugar no encontrado" });
 
-    // Eliminar horarios primero (por la foreign key)
     await deletePlaceSchedules(id);
     
-    // Luego eliminar el lugar
     const deleted = await deletePlace(id);
     if (!deleted) return res.status(400).json({ message: "No se pudo eliminar el lugar" });
 
@@ -267,7 +255,7 @@ export const deletePlaceController = async (req, res) => {
     res.status(500).json({ message: "Error interno del servidor" });
   }
 };
-// Obtener lugares pendientes de la ciudad del admin
+
 export const getPlacesByAdminCity = async (req, res) => {
   try {
     const adminId = req.user.id;
@@ -281,9 +269,8 @@ export const getPlacesByAdminCity = async (req, res) => {
       return res.status(400).json({ message: "El administrador no tiene ciudad asignada" });
     }
 
-    // Obtener lugares pendientes de usuarios de la misma ciudad
     const places = await findPlacesByCityId(admin.City_id);
-    // Convertir URLs de imágenes
+    
     const placesWithPublicUrls = places.map(place => ({
       ...place,
       image_url: place.image_url ? toPublicUrl(req, place.image_url) : ""
@@ -291,7 +278,7 @@ export const getPlacesByAdminCity = async (req, res) => {
 
     res.json({
       message: "Lugares obtenidos correctamente",
-      places,
+      places: placesWithPublicUrls,
       adminCity: {
         id: admin.City_id,
         name: admin.cityName || 'Ciudad no especificada'
@@ -303,7 +290,7 @@ export const getPlacesByAdminCity = async (req, res) => {
     res.status(500).json({ message: "Error en el servidor" });
   }
 };
-// Obtener lugares por ciudad específica
+
 export const getPlacesBySpecificCity = async (req, res) => {
   try {
     const { cityId } = req.params;
@@ -315,7 +302,7 @@ export const getPlacesBySpecificCity = async (req, res) => {
     const places = await findPlacesByCityId(cityId);
     const cities = await getAllCities();
     const selectedCity = cities.find(city => city.id == cityId);
-        // Convertir URLs de imágenes
+    
     const placesWithPublicUrls = places.map(place => ({
       ...place,
       image_url: place.image_url ? toPublicUrl(req, place.image_url) : ""
@@ -323,7 +310,7 @@ export const getPlacesBySpecificCity = async (req, res) => {
 
     res.json({
       message: `Lugares de ${selectedCity?.name || 'ciudad seleccionada'} obtenidos correctamente`,
-      places,
+      places: placesWithPublicUrls,
       selectedCity: selectedCity || { id: cityId, name: 'Ciudad no encontrada' }
     });
 
@@ -336,18 +323,18 @@ export const getPlacesBySpecificCity = async (req, res) => {
   }
 };
 
-// Obtener todos los lugares pendientes
 export const getPendingPlacesController = async (req, res) => {
   try {
     const places = await findAllPendingPlaces();
-     // Convertir URLs de imágenes
+    
     const placesWithPublicUrls = places.map(place => ({
       ...place,
       image_url: place.image_url ? toPublicUrl(req, place.image_url) : ""
     }));
+    
     res.json({
       message: "Lugares pendientes obtenidos correctamente",
-      places,
+      places: placesWithPublicUrls,
       filter: 'all'
     });
   } catch (error) {
@@ -356,7 +343,7 @@ export const getPendingPlacesController = async (req, res) => {
   }
 };
 
-// Aprobar o rechazar lugar
+// 🔹 APROBAR O RECHAZAR LUGAR (CON rejectionComment)
 export const approveRejectPlace = async (req, res) => {
   try {
     const { id } = req.params;
@@ -377,7 +364,8 @@ export const approveRejectPlace = async (req, res) => {
 
     const updates = { 
       status,
-      ...(status === 'rechazada' && { rejectionComment })
+      ...(status === 'rechazada' && { rejectionComment }),
+      ...(status === 'aprobada' && { rejectionComment: null })
     };
 
     const updated = await updatePlace(id, updates, modifiedBy);
@@ -392,5 +380,18 @@ export const approveRejectPlace = async (req, res) => {
   } catch (error) {
     console.error("Error al aprobar/rechazar lugar:", error);
     res.status(500).json({ message: "Error interno del servidor" });
+  }
+};
+
+// 🔹 VERIFICAR SI TIENE LUGARES PENDIENTES
+export const checkPendingPlaces = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const hasPending = await hasPendingPlaces(userId);
+    
+    res.json({ hasPending });
+  } catch (error) {
+    console.error('Error checking pending places:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
   }
 };

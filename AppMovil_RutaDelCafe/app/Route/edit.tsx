@@ -33,6 +33,10 @@ export default function EditRouteScreen() {
     description: '',
     image_url: '',
   });
+  const [errors, setErrors] = useState({
+    name: '',
+    description: '',
+  });
 
   useEffect(() => {
     if (id) {
@@ -66,6 +70,54 @@ export default function EditRouteScreen() {
     }
   };
 
+  // Función para limpiar texto (elimina caracteres no permitidos)
+  const cleanText = (text: string) => {
+    // Permite letras, espacios, acentos, ñ, y algunos caracteres básicos como , . ! ? -
+    const textRegex = /[a-zA-ZÀ-ÿ\u00f1\u00d1\s,.!?\-]/g;
+    const matches = text.match(textRegex);
+    return matches ? matches.join('') : '';
+  };
+
+  // Función para validar que no sea solo números
+  const validateNotOnlyNumbers = (text: string, field: string) => {
+    const onlyNumbersRegex = /^\d+$/;
+    
+    if (onlyNumbersRegex.test(text)) {
+      setErrors(prev => ({
+        ...prev,
+        [field]: 'No puede contener solo números'
+      }));
+      return false;
+    } else if (text.trim() === '') {
+      setErrors(prev => ({
+        ...prev,
+        [field]: 'Este campo es obligatorio'
+      }));
+      return false;
+    } else {
+      setErrors(prev => ({
+        ...prev,
+        [field]: ''
+      }));
+      return true;
+    }
+  };
+
+  // Función para manejar cambios en los campos con limpieza automática
+  const handleTextChange = (text: string, field: string) => {
+    // Limpiamos el texto eliminando caracteres no permitidos
+    const cleanedText = cleanText(text);
+    
+    // Actualizamos el estado con el texto limpio
+    setFormData(prev => ({
+      ...prev,
+      [field]: cleanedText
+    }));
+
+    // Validamos que no sea solo números
+    validateNotOnlyNumbers(cleanedText, field);
+  };
+
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -80,8 +132,34 @@ export default function EditRouteScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.description) {
-      Alert.alert('Error', 'Por favor completa todos los campos obligatorios');
+    // Limpiar espacios en blanco al inicio y final
+    const cleanedData = {
+      name: formData.name.trim(),
+      description: formData.description.trim(),
+      image_url: formData.image_url
+    };
+
+    // Validaciones antes de enviar
+    if (!cleanedData.name) {
+      Alert.alert('Error', 'Por favor ingresa un nombre para la ruta');
+      setErrors(prev => ({ ...prev, name: 'Este campo es obligatorio' }));
+      return;
+    }
+
+    if (!cleanedData.description) {
+      Alert.alert('Error', 'Por favor ingresa una descripción para la ruta');
+      setErrors(prev => ({ ...prev, description: 'Este campo es obligatorio' }));
+      return;
+    }
+
+    // Validar que no sea solo números
+    if (!validateNotOnlyNumbers(cleanedData.name, 'name')) {
+      Alert.alert('Error', 'Por favor corrige los errores en el nombre de la ruta');
+      return;
+    }
+
+    if (!validateNotOnlyNumbers(cleanedData.description, 'description')) {
+      Alert.alert('Error', 'Por favor corrige los errores en la descripción');
       return;
     }
 
@@ -94,13 +172,12 @@ export default function EditRouteScreen() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(cleanedData),
       });
 
       if (response.ok) {
         Alert.alert('Éxito', 'Ruta actualizada correctamente');
-        // router.back();
-         router.replace('/Route');
+        router.replace('/Route');
       } else {
         throw new Error('Error al actualizar la ruta');
       }
@@ -110,6 +187,12 @@ export default function EditRouteScreen() {
       setSaving(false);
     }
   };
+
+  // Verificar si el formulario es válido para habilitar/deshabilitar el botón
+  const isFormValid = formData.name.trim() && 
+                     formData.description.trim() && 
+                     !errors.name && 
+                     !errors.description;
 
   if (loading) {
     return (
@@ -157,25 +240,39 @@ export default function EditRouteScreen() {
         </View>
 
         {/* Nombre */}
-        <View className="mb-6">
+        <View className="mb-4">
           <Text className="text-orange-900 font-bold mb-2">Nombre de la Ruta *</Text>
           <TextInput
             value={formData.name}
-            onChangeText={(text) => setFormData({ ...formData, name: text })}
-            className="bg-white border border-orange-200 rounded-2xl px-4 py-3 text-orange-900"
+            onChangeText={(text) => handleTextChange(text, 'name')}
+            placeholder="Ej: Ruta de Antojos Paceños"
+            placeholderTextColor="#9ca3af"
+            className={`bg-white border rounded-2xl px-4 py-3 text-orange-900 ${
+              errors.name ? 'border-red-500' : 'border-orange-200'
+            }`}
           />
+          {errors.name ? (
+            <Text className="text-red-500 text-sm mt-1 ml-2">{errors.name}</Text>
+          ) : null}
         </View>
 
         {/* Descripción */}
-        <View className="mb-6">
+        <View className="mb-4">
           <Text className="text-orange-900 font-bold mb-2">Descripción *</Text>
           <TextInput
             value={formData.description}
-            onChangeText={(text) => setFormData({ ...formData, description: text })}
+            onChangeText={(text) => handleTextChange(text, 'description')}
+            placeholder="Describe tu ruta gastronómica..."
+            placeholderTextColor="#9ca3af"
             multiline
             numberOfLines={4}
-            className="bg-white border border-orange-200 rounded-2xl px-4 py-3 text-orange-900 h-32"
+            className={`bg-white border rounded-2xl px-4 py-3 text-orange-900 h-32 ${
+              errors.description ? 'border-red-500' : 'border-orange-200'
+            }`}
           />
+          {errors.description ? (
+            <Text className="text-red-500 text-sm mt-1 ml-2">{errors.description}</Text>
+          ) : null}
         </View>
 
         {/* Imagen */}
@@ -211,8 +308,12 @@ export default function EditRouteScreen() {
           
           <TouchableOpacity
             onPress={handleSubmit}
-            disabled={saving}
-            className="flex-1 bg-orange-500 py-4 rounded-2xl shadow-lg"
+            disabled={saving || !isFormValid}
+            className={`flex-1 py-4 rounded-2xl shadow-lg ${
+              saving || !isFormValid 
+                ? 'bg-orange-300' 
+                : 'bg-orange-500'
+            }`}
           >
             {saving ? (
               <ActivityIndicator color="white" />

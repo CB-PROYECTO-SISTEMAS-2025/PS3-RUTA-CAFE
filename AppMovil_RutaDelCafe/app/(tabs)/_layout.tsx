@@ -1,3 +1,4 @@
+// app/(tabs)/_layout.tsx
 import React from "react";
 import { Tabs } from "expo-router";
 import {
@@ -8,7 +9,6 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
 const ORANGE = "#f97316";
 const WHITE = "#ffffff";
@@ -60,17 +60,17 @@ function TabItem({
   );
 }
 
-/* ---------- TabBar plano ---------- */
-function MyTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+/* ---------- TabBar personalizado para Expo Router ---------- */
+function CustomTabBar({ state, descriptors, navigation }: any) {
   return (
     <View pointerEvents="box-none" style={styles.wrap}>
       <View style={styles.tabBg} />
 
       <View style={styles.row}>
-        {state.routes.map((route, index) => {
+        {state.routes.map((route: any, index: number) => {
           const { options } = descriptors[route.key];
           const focused = state.index === index;
-          const label = (options.title ?? route.name) as string;
+          const label = options.tabBarLabel || options.title || route.name;
 
           const iconName: keyof typeof Ionicons.glyphMap =
             route.name === "advertisement"
@@ -105,24 +105,67 @@ function MyTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
 export default function TabLayout() {
   return (
-    <Tabs tabBar={(p) => <MyTabBar {...p} />} screenOptions={{ headerShown: false }}>
-      <Tabs.Screen name="advertisement" options={{ title: "Home" }} />
-      <Tabs.Screen name="settings" options={{ title: "Ajustes" }} />
-      <Tabs.Screen name="explore" options={{ title: "Rutas" }} />
-      <Tabs.Screen name="profile" options={{ title: "Perfil" }} />
+    <Tabs 
+      tabBar={props => <CustomTabBar {...props} />} 
+      screenOptions={{ 
+        headerShown: false,
+        tabBarStyle: {
+          display: 'none' // Ocultamos el tab bar por defecto ya que usamos uno personalizado
+        }
+      }}
+    >
+      <Tabs.Screen 
+        name="advertisement" 
+        options={{ 
+          title: "Home",
+          tabBarLabel: "Home"
+        }} 
+      />
+      <Tabs.Screen 
+        name="settings" 
+        options={{ 
+          title: "Ajustes",
+          tabBarLabel: "Ajustes"
+        }} 
+      />
+      <Tabs.Screen 
+        name="explore" 
+        options={{ 
+          title: "Rutas",
+          tabBarLabel: "Rutas"
+        }} 
+      />
+      <Tabs.Screen 
+        name="profile" 
+        options={{ 
+          title: "Perfil",
+          tabBarLabel: "Perfil"
+        }} 
+      />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: "absolute", left: 0, right: 0, bottom: 0 },
+  wrap: { 
+    position: "absolute", 
+    left: 0, 
+    right: 0, 
+    bottom: 0,
+    backgroundColor: 'transparent'
+  },
   tabBg: {
     backgroundColor: ORANGE,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     height: TAB_HEIGHT,
     ...Platform.select({
-      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.12, shadowRadius: 6 },
+      ios: { 
+        shadowColor: "#000", 
+        shadowOffset: { width: 0, height: -3 }, 
+        shadowOpacity: 0.12, 
+        shadowRadius: 6 
+      },
       android: { elevation: 8 },
     }),
   },
@@ -137,8 +180,16 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: Platform.OS === "ios" ? 16 : 12,
   },
-  tabButton: { width: "100%", alignItems: "center", justifyContent: "flex-start", paddingTop: 6 },
-  iconWrapper: { alignItems: "center", justifyContent: "center" },
+  tabButton: { 
+    width: "100%", 
+    alignItems: "center", 
+    justifyContent: "flex-start", 
+    paddingTop: 6 
+  },
+  iconWrapper: { 
+    alignItems: "center", 
+    justifyContent: "center" 
+  },
   iconContainer: {
     width: 54,
     height: 54,
@@ -151,8 +202,17 @@ const styles = StyleSheet.create({
     marginTop: 6,
     textAlign: "center",
     ...Platform.select({
-      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.25, shadowRadius: 1 },
-      android: { textShadowColor: "rgba(0,0,0,0.3)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+      ios: { 
+        shadowColor: "#000", 
+        shadowOffset: { width: 0, height: 1 }, 
+        shadowOpacity: 0.25, 
+        shadowRadius: 1 
+      },
+      android: { 
+        textShadowColor: "rgba(0,0,0,0.3)", 
+        textShadowOffset: { width: 0, height: 1 }, 
+        textShadowRadius: 2 
+      },
     }),
   },
 });
