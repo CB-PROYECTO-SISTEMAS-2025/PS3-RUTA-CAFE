@@ -12,6 +12,7 @@ import {
   View,
   ActivityIndicator,
   Modal,
+  Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -57,6 +58,25 @@ const DAYS_OF_WEEK = [
   { key: 'domingo', label: 'Domingo' },
 ];
 
+const normalizeImageUrl = (url: string | null): string => {
+  if (!url) return '';
+  
+  // 🔴 CORRECCIÓN: Si es una URL local del servidor de desarrollo, convertir a ruta relativa
+  if (url.includes('192.168.0.14') || url.includes('localhost')) {
+    // Extraer solo la parte de la ruta después de /uploads/
+    const match = url.match(/\/uploads\/.+$/);
+    return match ? match[0] : url;
+  }
+  
+  // Si ya es una ruta relativa, mantenerla
+  if (url.startsWith('/uploads/')) {
+    return url;
+  }
+  
+  return url;
+};
+
+
 export default function CreatePlaceScreen() {
   const themed = useThemedStyles();
   const router = useRouter();
@@ -89,6 +109,7 @@ export default function CreatePlaceScreen() {
     countryCode: COUNTRY_CODES[0].code,
   });
 
+  const [additionalImages, setAdditionalImages] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<Schedule[]>(
     DAYS_OF_WEEK.map(day => ({
       dayOfWeek: day.key,
@@ -377,7 +398,8 @@ export default function CreatePlaceScreen() {
     }
   };
 
-  const pickImage = async () => {
+  // Funciones para manejar imágenes
+  const pickImage = async (isAdditional = false) => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -385,27 +407,53 @@ export default function CreatePlaceScreen() {
         aspect: [4, 3],
         quality: 0.8,
       });
+      
       if (!result.canceled) {
-        setFormData(prev => ({ ...prev, image_url: result.assets[0].uri }));
+        if (isAdditional) {
+          if (additionalImages.length >= 8) {
+            Alert.alert('Límite alcanzado', 'Solo puedes agregar hasta 8 imágenes adicionales');
+            return;
+          }
+          setAdditionalImages(prev => [...prev, result.assets[0].uri]);
+        } else {
+          setFormData(prev => ({ ...prev, image_url: result.assets[0].uri }));
+        }
       }
     } catch {
       Alert.alert('Error', 'No se pudo seleccionar la imagen');
     }
   };
 
-  const takePhoto = async () => {
+  const takePhoto = async (isAdditional = false) => {
     try {
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
       });
+      
       if (!result.canceled) {
-        setFormData(prev => ({ ...prev, image_url: result.assets[0].uri }));
+        if (isAdditional) {
+          if (additionalImages.length >= 8) {
+            Alert.alert('Límite alcanzado', 'Solo puedes agregar hasta 8 imágenes adicionales');
+            return;
+          }
+          setAdditionalImages(prev => [...prev, result.assets[0].uri]);
+        } else {
+          setFormData(prev => ({ ...prev, image_url: result.assets[0].uri }));
+        }
       }
     } catch {
       Alert.alert('Error', 'No se pudo tomar la foto');
     }
+  };
+
+  const removeAdditionalImage = (index: number) => {
+    setAdditionalImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const removeMainImage = () => {
+    setFormData(prev => ({ ...prev, image_url: '' }));
   };
 
   const validateForm = () => {
@@ -447,83 +495,115 @@ export default function CreatePlaceScreen() {
     return true;
   };
 
-  const handleSubmit = async () => {
-    if (!validateForm()) return;
+ const handleSubmit = async () => {
+  if (!validateForm()) return;
 
-    setLoading(true);
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        router.replace('/login');
-        return;
-      }
-
-      // Preparar datos para enviar
-      const submitData = new FormData();
-      submitData.append('name', formData.name.trim());
-      submitData.append('description', formData.description.trim());
-      submitData.append('latitude', formData.latitude);
-      submitData.append('longitude', formData.longitude);
-      submitData.append('route_id', formData.route_id);
-      submitData.append('website', formData.website || '');
-      submitData.append('phoneNumber', formData.countryCode + (formData.phoneNumber || ''));
-
-      // Horarios
-      const schedulesData = schedule
-        .filter(daySchedule => daySchedule.isOpen)
-        .map(daySchedule => ({
-          dayOfWeek: daySchedule.dayOfWeek,
-          openTime: daySchedule.openTime + ':00',
-          closeTime: daySchedule.closeTime + ':00'
-        }));
-      submitData.append('schedules', JSON.stringify(schedulesData));
-
-      // Imagen
-      if (formData.image_url) {
-        const filename = formData.image_url.split('/').pop();
-        const match = /\.(\w+)$/.exec(filename || '');
-        const type = match ? `image/${match[1]}` : 'image/jpeg';
-        submitData.append('image', {
-          uri: formData.image_url,
-          name: filename || 'image.jpg',
-          type,
-        } as any);
-      }
-
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: submitData,
-      });
-
-      const responseText = await response.text();
-      let responseData;
-      try { responseData = JSON.parse(responseText); } catch { responseData = { message: responseText || 'Error desconocido' }; }
-
-      if (response.ok) {
-        Alert.alert('Éxito', 'Lugar creado correctamente', [
-          {
-            text: 'OK',
-            onPress: () => {
-              if (numericRouteId) {
-                router.replace({ pathname: '/Place', params: { routeId: String(numericRouteId) } });
-              } else {
-                router.replace('/Place');
-              }
-            },
-          },
-        ]);
-      } else {
-        console.error('Error del servidor:', response.status, responseData);
-        throw new Error(responseData.message || `Error ${response.status} al crear el lugar`);
-      }
-    } catch (error) {
-      console.error('Error completo en handleSubmit:', error);
-      Alert.alert('Error', (error as Error).message || 'No se pudo crear el lugar. Intenta nuevamente.');
-    } finally {
-      setLoading(false);
+  setLoading(true);
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token) {
+      router.replace('/login');
+      return;
     }
-  };
+
+    // Preparar datos para enviar
+    const submitData = new FormData();
+    submitData.append('name', formData.name.trim());
+    submitData.append('description', formData.description.trim());
+    submitData.append('latitude', formData.latitude);
+    submitData.append('longitude', formData.longitude);
+    submitData.append('route_id', formData.route_id);
+    submitData.append('website', formData.website || '');
+    submitData.append('phoneNumber', formData.countryCode + (formData.phoneNumber || ''));
+
+    // Horarios
+    const schedulesData = schedule
+      .filter(daySchedule => daySchedule.isOpen)
+      .map(daySchedule => ({
+        dayOfWeek: daySchedule.dayOfWeek,
+        openTime: daySchedule.openTime + ':00',
+        closeTime: daySchedule.closeTime + ':00'
+      }));
+    submitData.append('schedules', JSON.stringify(schedulesData));
+
+    // 🔴 CORRECCIÓN: Imagen principal - solo enviar si hay imagen seleccionada
+    if (formData.image_url) {
+      const filename = formData.image_url.split('/').pop();
+      const match = /\.(\w+)$/.exec(filename || '');
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      submitData.append('image', {
+        uri: formData.image_url,
+        name: filename || 'image.jpg',
+        type,
+      } as any);
+    }
+
+    // Imágenes adicionales (hasta 8)
+    additionalImages.forEach((imageUri, index) => {
+      const filename = imageUri.split('/').pop();
+      const match = /\.(\w+)$/.exec(filename || '');
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      
+      submitData.append('additional_images', {
+        uri: imageUri,
+        name: `additional_${index}.${match ? match[1] : 'jpg'}`,
+        type,
+      } as any);
+    });
+
+    console.log('📤 Enviando datos al servidor...');
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places`, {
+      method: 'POST',
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        // 🔴 IMPORTANTE: No incluir Content-Type cuando se usa FormData
+        // El navegador lo establecerá automáticamente con el boundary correcto
+      },
+      body: submitData,
+    });
+
+    const responseText = await response.text();
+    let responseData;
+    try { 
+      responseData = JSON.parse(responseText); 
+    } catch { 
+      responseData = { message: responseText || 'Error desconocido' }; 
+    }
+
+    if (response.ok) {
+      Alert.alert('Éxito', 'Lugar creado correctamente', [
+        {
+          text: 'OK',
+          onPress: () => {
+            // 🔴 CORRECCIÓN: Forzar refresh de la lista
+            if (numericRouteId) {
+              router.replace({ 
+                pathname: '/Place', 
+                params: { 
+                  routeId: String(numericRouteId),
+                  refresh: Date.now() // Agregar timestamp para forzar refresh
+                } 
+              });
+            } else {
+              router.replace({ 
+                pathname: '/Place',
+                params: { refresh: Date.now() }
+              });
+            }
+          },
+        },
+      ]);
+    } else {
+      console.error('Error del servidor:', response.status, responseData);
+      throw new Error(responseData.message || `Error ${response.status} al crear el lugar`);
+    }
+  } catch (error) {
+    console.error('Error completo en handleSubmit:', error);
+    Alert.alert('Error', (error as Error).message || 'No se pudo crear el lugar. Intenta nuevamente.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const getLeafletMapHTML = () => {
     const initialLat = selectedLocation?.latitude || -17.3939;
@@ -778,12 +858,53 @@ export default function CreatePlaceScreen() {
             </Text>
           </View>
 
-          {/* Imagen */}
+          {/* Imagen Principal */}
           <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>Imagen del Lugar</Text>
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
+              Imagen Principal del Lugar
+            </Text>
+            <Text style={{ color: themed.muted as string, fontSize: 12, marginBottom: 8 }}>
+              Esta será la imagen destacada del lugar
+            </Text>
+            
+           {formData.image_url ? (
+            <View style={{ marginBottom: 8 }}>
+              <Image 
+                source={{ uri: formData.image_url.startsWith('/uploads/') 
+                  ? `${process.env.EXPO_PUBLIC_API_URL}${formData.image_url}`
+                  : formData.image_url 
+                }} 
+                style={{ 
+                  width: '100%', 
+                  height: 200, 
+                  borderRadius: 12,
+                  borderWidth: 2,
+                  borderColor: themed.accent as string
+                }} 
+                resizeMode="cover"
+              />
+                <TouchableOpacity
+                  onPress={removeMainImage}
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                    borderRadius: 20,
+                    width: 32,
+                    height: 32,
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Ionicons name="close" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <TouchableOpacity
-                onPress={pickImage}
+                onPress={() => pickImage(false)}
                 style={{
                   flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.border,
                   paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row'
@@ -794,7 +915,7 @@ export default function CreatePlaceScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={takePhoto}
+                onPress={() => takePhoto(false)}
                 style={{
                   flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.border,
                   paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row'
@@ -804,11 +925,116 @@ export default function CreatePlaceScreen() {
                 <Text style={{ color: themed.text, marginLeft: 8, fontWeight: '600' }}>Cámara</Text>
               </TouchableOpacity>
             </View>
+            
             {formData.image_url ? (
               <Text style={{ color: themed.successTextMuted as string, fontSize: 12, marginTop: 8 }}>
-                ✓ Imagen seleccionada
+                ✓ Imagen principal seleccionada
               </Text>
-            ) : null}
+            ) : (
+              <Text style={{ color: themed.muted as string, fontSize: 12, marginTop: 8 }}>
+                Opcional - Recomendado para mejor presentación
+              </Text>
+            )}
+          </View>
+
+          {/* Imágenes Adicionales */}
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
+              Imágenes Adicionales ({additionalImages.length}/8)
+            </Text>
+            <Text style={{ color: themed.muted as string, fontSize: 12, marginBottom: 8 }}>
+              Puedes agregar hasta 8 imágenes adicionales del lugar
+            </Text>
+
+                      {/* Grid de imágenes adicionales */}
+                      {additionalImages.length > 0 && (
+            <View style={{ marginBottom: 12 }}>
+              <View style={{ 
+                flexDirection: 'row', 
+                flexWrap: 'wrap', 
+                gap: 8,
+              }}>
+                {additionalImages.map((imageUri, index) => (
+                  <View key={index} style={{ position: 'relative', width: '31%' }}>
+                    <Image 
+                      source={{ uri: imageUri.startsWith('/uploads/') 
+                        ? `${process.env.EXPO_PUBLIC_API_URL}${imageUri}`
+                        : imageUri 
+                      }} 
+                      style={{ 
+                        width: '100%', 
+                        height: 80, 
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: themed.border
+                      }} 
+                      resizeMode="cover"
+                    />
+                      <TouchableOpacity
+                        onPress={() => removeAdditionalImage(index)}
+                        style={{
+                          position: 'absolute',
+                          top: 4,
+                          right: 4,
+                          backgroundColor: 'rgba(0,0,0,0.7)',
+                          borderRadius: 12,
+                          width: 24,
+                          height: 24,
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Ionicons name="close" size={14} color="#FFFFFF" />
+                      </TouchableOpacity>
+                      <Text style={{ 
+                        position: 'absolute', 
+                        bottom: 4, 
+                        left: 4, 
+                        backgroundColor: 'rgba(0,0,0,0.7)', 
+                        color: '#FFFFFF', 
+                        fontSize: 10, 
+                        paddingHorizontal: 4,
+                        borderRadius: 4
+                      }}>
+                        {index + 1}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {additionalImages.length < 8 && (
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity
+                  onPress={() => pickImage(true)}
+                  style={{
+                    flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.border,
+                    paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row'
+                  }}
+                >
+                  <Ionicons name="image-outline" size={20} color={themed.accent as string} />
+                  <Text style={{ color: themed.text, marginLeft: 8, fontWeight: '600' }}>Galería</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => takePhoto(true)}
+                  style={{
+                    flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.border,
+                    paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row'
+                  }}
+                >
+                  <Ionicons name="camera-outline" size={20} color={themed.accent as string} />
+                  <Text style={{ color: themed.text, marginLeft: 8, fontWeight: '600' }}>Cámara</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {additionalImages.length > 0 && (
+              <Text style={{ color: themed.successTextMuted as string, fontSize: 12, marginTop: 8 }}>
+                ✓ {additionalImages.length} imagen(es) adicional(es) seleccionada(s)
+              </Text>
+            )}
           </View>
 
           {/* Acciones */}

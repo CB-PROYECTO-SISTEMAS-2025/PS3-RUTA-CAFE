@@ -2,7 +2,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   ScrollView,
   Text,
@@ -12,9 +12,18 @@ import {
   Image,
   Linking,
   Alert,
+  Dimensions,
+  Modal,
 } from 'react-native';
 import WebView from 'react-native-webview';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
+
+interface Schedule {
+  id?: number;
+  dayOfWeek: string;
+  openTime: string;
+  closeTime: string;
+}
 
 interface Place {
   id: number;
@@ -25,18 +34,20 @@ interface Place {
   route_id: number;
   website?: string;
   phoneNumber?: string;
-  image_url?: string;
+
+  // Campos de imágenes actualizados
+  image_url?: string | null;
+  additional_images?: Array<{
+    id: number;
+    place_id: number;
+    image_url: string;
+    created_at: string;
+  }>;
+
   status: string;
   schedules?: Schedule[];
   is_favorite?: boolean;
   favorite_count?: number;
-}
-
-interface Schedule {
-  id: number;
-  dayOfWeek: string;
-  openTime: string;
-  closeTime: string;
 }
 
 const DAYS_OF_WEEK = [
@@ -49,6 +60,46 @@ const DAYS_OF_WEEK = [
   { key: 'domingo', label: 'Domingo' },
 ];
 
+// Normaliza cualquier forma de imágenes que venga del backend a string[]
+const normalizeImages = (p: Place): string[] => {
+  let imgs: string[] = [];
+  
+  // Imagen principal (puede ser null)
+  if (p.image_url) {
+    imgs.push(p.image_url);
+  }
+
+  // Imágenes adicionales del nuevo sistema
+  if (Array.isArray(p.additional_images)) {
+    const additionalUrls = p.additional_images
+      .map((img: any) => {
+        if (typeof img === 'string') return img;
+        return img?.image_url || img?.url || '';
+      })
+      .filter(Boolean);
+    imgs = [...imgs, ...additionalUrls];
+  }
+
+  // Backward compatibility con sistemas anteriores
+  if (!imgs.length && Array.isArray((p as any).images)) {
+    imgs = (p as any).images
+      .map((it: any) =>
+        typeof it === 'string' ? it : (it?.url || it?.image_url || it?.path || '')
+      )
+      .filter(Boolean);
+  }
+  if (!imgs.length && Array.isArray((p as any).images_urls)) {
+    imgs = (p as any).images_urls.filter(Boolean);
+  }
+  if (!imgs.length && Array.isArray((p as any).photos)) {
+    imgs = (p as any).photos
+      .map((it: any) => (typeof it === 'string' ? it : (it?.url || '')))
+      .filter(Boolean);
+  }
+
+  return imgs.slice(0, 9); // Máximo 9 imágenes (1 principal + 8 adicionales)
+};
+
 export default function PlaceDetailsScreen() {
   const themed = useThemedStyles();
   const router = useRouter();
@@ -56,6 +107,16 @@ export default function PlaceDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [place, setPlace] = useState<Place | null>(null);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  // carrusel
+  const screenWidth = Dimensions.get('window').width;
+  const [images, setImages] = useState<string[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+
+  // lightbox
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   const placeId = params.id ? (Array.isArray(params.id) ? params.id[0] : params.id) : null;
 
@@ -78,6 +139,15 @@ export default function PlaceDetailsScreen() {
       if (!response.ok) throw new Error('Error al cargar el lugar');
 
       const placeData = await response.json();
+      console.log('📱 Datos del lugar recibidos:', {
+        image_url: placeData.image_url,
+        additional_images_count: placeData.additional_images?.length || 0,
+        additional_images: placeData.additional_images
+      });
+
+      // Normaliza imágenes a array
+      const imgs = normalizeImages(placeData);
+      setImages(imgs);
 
       if (token) {
         const favRes = await fetch(
@@ -88,8 +158,8 @@ export default function PlaceDetailsScreen() {
           const fav = await favRes.json();
           setPlace({
             ...placeData,
-            is_favorite: fav.data.is_favorite,
-            favorite_count: fav.data.favorite_count || 0,
+            is_favorite: !!fav.data.is_favorite,
+            favorite_count: typeof fav.data.favorite_count === 'number' ? fav.data.favorite_count : 0,
           });
           return;
         }
@@ -124,7 +194,7 @@ export default function PlaceDetailsScreen() {
         prev
           ? {
               ...prev,
-              is_favorite: result.data.is_favorite,
+              is_favorite: !!result.data.is_favorite,
               favorite_count: result.data.is_favorite
                 ? (prev.favorite_count || 0) + 1
                 : Math.max((prev.favorite_count || 1) - 1, 0),
@@ -147,7 +217,7 @@ export default function PlaceDetailsScreen() {
 
   const handleWebsitePress = () => {
     if (!place?.website) return;
-    let url = place.website;
+    let url = place.website.trim();
     if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
     Linking.openURL(url).catch(() => Alert.alert('Error', 'No se pudo abrir el sitio web'));
   };
@@ -155,6 +225,7 @@ export default function PlaceDetailsScreen() {
   const handlePhonePress = () => {
     if (!place?.phoneNumber) return;
     const clean = place.phoneNumber.replace(/[^\d+]/g, '');
+    if (!clean) return;
     Linking.openURL(`tel:${clean}`).catch(() => Alert.alert('Error', 'No se pudo realizar la llamada'));
   };
 
@@ -187,13 +258,11 @@ export default function PlaceDetailsScreen() {
         <body><div class="e"><h3>Ubicación no disponible</h3><p>No hay coordenadas para mostrar el mapa</p></div></body></html>`;
     }
 
-    const escapedName = place.name.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const escapedDescription = place.description
-      .substring(0, 50)
-      .replace(/'/g, "\\'")
-      .replace(/"/g, '\\"')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    const escape = (s: string) =>
+      s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+    const escapedName = escape(place.name || '');
+    const escapedDescription = escape((place.description || '').substring(0, 50));
 
     return `
       <!DOCTYPE html>
@@ -230,6 +299,37 @@ export default function PlaceDetailsScreen() {
     return num.toFixed(6);
   };
 
+  const onScrollImages = (e: any) => {
+    const x = e.nativeEvent.contentOffset.x || 0;
+    const index = Math.round(x / screenWidth);
+    setCurrentIndex(index);
+  };
+
+  const openLightbox = (index: number) => {
+    setLightboxIndex(index);
+    setLightboxOpen(true);
+  };
+
+  const scrollTo = (index: number) => {
+    setCurrentIndex(index);
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ x: index * screenWidth, animated: true });
+    });
+  };
+
+  // Función para obtener información de imágenes
+  const getImageInfo = () => {
+    const hasMainImage = place?.image_url ? 1 : 0;
+    const additionalCount = place?.additional_images?.length || 0;
+    const totalImages = hasMainImage + additionalCount;
+    
+    return {
+      hasMainImage,
+      additionalCount,
+      totalImages
+    };
+  };
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: themed.background }}>
@@ -254,6 +354,8 @@ export default function PlaceDetailsScreen() {
     );
   }
 
+  const imageInfo = getImageInfo();
+
   return (
     <View style={{ flex: 1, backgroundColor: themed.background }}>
       {/* Header */}
@@ -275,7 +377,7 @@ export default function PlaceDetailsScreen() {
       </View>
 
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-        {/* Imagen + favoritos */}
+        {/* Carrusel de imágenes + favoritos */}
         <View style={{ paddingHorizontal: 24, marginTop: 16, position: 'relative' }}>
           <View
             style={{
@@ -290,15 +392,56 @@ export default function PlaceDetailsScreen() {
               shadowOffset: { width: 0, height: 2 },
             }}
           >
-            {place.image_url ? (
-              <Image source={{ uri: place.image_url }} style={{ width: '100%', height: 240 }} resizeMode="cover" />
+            {images.length > 0 ? (
+              <>
+                <ScrollView
+                  ref={scrollRef}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  onScroll={onScrollImages}
+                  scrollEventThrottle={16}
+                >
+                  {images.map((uri, idx) => (
+                    <TouchableOpacity key={`${uri}-${idx}`} activeOpacity={0.9} onPress={() => openLightbox(idx)}>
+                      <Image source={{ uri }} style={{ width: screenWidth - 48, height: 260 }} resizeMode="cover" />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                {/* Indicadores */}
+                <View style={{ position: 'absolute', bottom: 10, left: 0, right: 0, alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.25)', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 999 }}>
+                    {images.map((_, i) => (
+                      <View
+                        key={i}
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 999,
+                          marginHorizontal: 4,
+                          backgroundColor: i === currentIndex ? '#fff' : 'rgba(255,255,255,0.5)',
+                        }}
+                      />
+                    ))}
+                  </View>
+                </View>
+
+                {/* Contador de imágenes */}
+                <View style={{ position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+                    {currentIndex + 1} / {images.length}
+                  </Text>
+                </View>
+              </>
             ) : (
               <View style={{ width: '100%', height: 240, backgroundColor: themed.softBg, justifyContent: 'center', alignItems: 'center' }}>
                 <Ionicons name="image-outline" size={72} color={themed.accent as string} />
-                <Text style={{ color: themed.muted as string, marginTop: 8, fontWeight: '600' }}>Sin imagen disponible</Text>
+                <Text style={{ color: themed.muted as string, marginTop: 8, fontWeight: '600' }}>Sin imágenes disponibles</Text>
               </View>
             )}
 
+            {/* Botón favoritos */}
             <TouchableOpacity
               onPress={toggleFavorite}
               disabled={favoriteLoading}
@@ -311,6 +454,47 @@ export default function PlaceDetailsScreen() {
               )}
             </TouchableOpacity>
           </View>
+
+          {/* Información de imágenes */}
+          {imageInfo.totalImages > 0 && (
+            <View style={{ marginTop: 8, padding: 12, backgroundColor: themed.softBg, borderRadius: 12 }}>
+              <Text style={{ color: themed.text, fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
+                📷 {imageInfo.totalImages} imagen(es) - 
+                {imageInfo.hasMainImage ? ' 1 principal' : ''}
+                {imageInfo.additionalCount > 0 ? ` + ${imageInfo.additionalCount} adicional(es)` : ''}
+              </Text>
+            </View>
+          )}
+
+          {/* Miniaturas */}
+          {images.length > 1 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginTop: 10 }}
+            >
+              {images.map((uri, idx) => (
+                <TouchableOpacity
+                  key={`thumb-${uri}-${idx}`}
+                  onPress={() => scrollTo(idx)}
+                  style={{
+                    marginRight: 8,
+                    borderWidth: 2,
+                    borderColor: idx === currentIndex ? (themed.accent as string) : 'transparent',
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <Image source={{ uri }} style={{ width: 70, height: 70, borderRadius: 8 }} />
+                  {idx === 0 && place.image_url && (
+                    <View style={{ position: 'absolute', top: 4, left: 4, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 4, paddingVertical: 2, borderRadius: 4 }}>
+                      <Text style={{ color: '#fff', fontSize: 8, fontWeight: '700' }}>PRIN</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
         </View>
 
         {/* Info */}
@@ -486,6 +670,34 @@ export default function PlaceDetailsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Lightbox de imágenes */}
+      <Modal visible={lightboxOpen} transparent animationType="fade" onRequestClose={() => setLightboxOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
+          <View style={{ position: 'absolute', top: 40, right: 16, zIndex: 10 }}>
+            <TouchableOpacity onPress={() => setLightboxOpen(false)} style={{ padding: 8, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 999 }}>
+              <Ionicons name="close" size={26} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            contentOffset={{ x: lightboxIndex * screenWidth, y: 0 }}
+          >
+            {images.map((uri, idx) => (
+              <View key={`lb-${uri}-${idx}`} style={{ width: screenWidth, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+                <Image source={{ uri }} style={{ width: screenWidth, height: screenWidth, resizeMode: 'contain' }} />
+                <Text style={{ color: '#fff', textAlign: 'center', marginTop: 10 }}>
+                  {idx + 1} / {images.length} 
+                  {idx === 0 && place.image_url ? ' (Imagen Principal)' : ''}
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }

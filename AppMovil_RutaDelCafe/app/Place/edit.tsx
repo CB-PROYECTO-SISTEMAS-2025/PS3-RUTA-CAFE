@@ -12,6 +12,7 @@ import {
   View,
   ActivityIndicator,
   Modal,
+  Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -27,7 +28,13 @@ interface Place {
   route_id: number;
   website?: string;
   phoneNumber?: string;
-  image_url?: string;
+  image_url?: string | null;
+  additional_images?: Array<{
+    id: number;
+    place_id: number;
+    image_url: string;
+    created_at: string;
+  }>;
   status: string;
   schedules?: Schedule[];
 }
@@ -70,6 +77,25 @@ const DAYS_OF_WEEK = [
   { key: 'domingo', label: 'Domingo' },
 ];
 
+// Función para normalizar URLs de imágenes
+const normalizeImageUrl = (url: string | null | undefined): string => {
+  if (!url) return '';
+  
+  // 🔴 CORRECCIÓN: Si es una URL local del servidor de desarrollo, convertir a ruta relativa
+  if (url.includes('192.168.0.14') || url.includes('localhost')) {
+    // Extraer solo la parte de la ruta después de /uploads/
+    const match = url.match(/\/uploads\/.+$/);
+    return match ? match[0] : url;
+  }
+  
+  // Si ya es una ruta relativa, mantenerla
+  if (url.startsWith('/uploads/')) {
+    return url;
+  }
+  
+  return url;
+};
+
 export default function EditPlaceScreen() {
   const themed = useThemedStyles();
   const router = useRouter();
@@ -104,6 +130,7 @@ export default function EditPlaceScreen() {
     countryCode: COUNTRY_CODES[0].code,
   });
 
+  const [additionalImages, setAdditionalImages] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<Schedule[]>(
     DAYS_OF_WEEK.map(day => ({
       dayOfWeek: day.key,
@@ -112,6 +139,10 @@ export default function EditPlaceScreen() {
       isOpen: true,
     }))
   );
+  // NUEVOS estados para control de imágenes
+const [removedMainImage, setRemovedMainImage] = useState(false);
+const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
+
 
   const lockedRouteName =
     routeName ||
@@ -156,6 +187,7 @@ export default function EditPlaceScreen() {
       console.error('Error loading routes:', e);
     }
   };
+  
 
   const fetchPlace = async () => {
     try {
@@ -172,6 +204,12 @@ export default function EditPlaceScreen() {
       const placeData: Place = await response.json();
       setPlace(placeData);
 
+      console.log('📱 Datos del lugar recibidos en edición:', {
+        image_url: placeData.image_url,
+        additional_images_count: placeData.additional_images?.length || 0,
+        additional_images: placeData.additional_images
+      });
+
       // detectar código de país en phoneNumber
       let countryCode = COUNTRY_CODES[0].code;
       let phoneNumber = '';
@@ -185,6 +223,7 @@ export default function EditPlaceScreen() {
         }
       }
 
+      // 🔴 CORRECCIÓN: Usar normalizeImageUrl para las imágenes
       setFormData({
         name: placeData.name || '',
         description: placeData.description || '',
@@ -192,10 +231,18 @@ export default function EditPlaceScreen() {
         longitude: placeData.longitude?.toString() || '',
         route_id: placeData.route_id?.toString() || '',
         website: placeData.website || '',
-        phoneNumber,
-        image_url: placeData.image_url || '',
-        countryCode,
+        phoneNumber: phoneNumber || '',
+        image_url: normalizeImageUrl(placeData.image_url) || '',
+        countryCode: countryCode,
       });
+
+      // Cargar imágenes adicionales con normalización
+      if (placeData.additional_images && Array.isArray(placeData.additional_images)) {
+        const additionalUrls = placeData.additional_images
+          .map(img => normalizeImageUrl(img.image_url))
+          .filter(Boolean) as string[];
+        setAdditionalImages(additionalUrls);
+      }
 
       if (placeData.latitude && placeData.longitude) {
         setSelectedLocation({ latitude: placeData.latitude, longitude: placeData.longitude });
@@ -243,6 +290,72 @@ export default function EditPlaceScreen() {
 
   const handleCountryChange = (code: string) => setFormData(prev => ({ ...prev, countryCode: code }));
   const handleAcceptPhoneNumber = () => setShowCountryModal(false);
+
+  // Funciones para manejar imágenes
+  const pickImage = async (isAdditional = false) => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({ 
+        mediaTypes: ImagePicker.MediaTypeOptions.Images, 
+        allowsEditing: true, 
+        aspect: [4, 3], 
+        quality: 0.8 
+      });
+      
+      if (!result.canceled) {
+        if (isAdditional) {
+          if (additionalImages.length >= 8) {
+            Alert.alert('Límite alcanzado', 'Solo puedes agregar hasta 8 imágenes adicionales');
+            return;
+          }
+          setAdditionalImages(prev => [...prev, result.assets[0].uri]);
+        } else {
+          setFormData(prev => ({ ...prev, image_url: result.assets[0].uri }));
+        }
+      }
+    } catch { 
+      Alert.alert('Error', 'No se pudo seleccionar la imagen'); 
+    }
+  };
+
+  const takePhoto = async (isAdditional = false) => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({ 
+        allowsEditing: true, 
+        aspect: [4, 3], 
+        quality: 0.8 
+      });
+      
+      if (!result.canceled) {
+        if (isAdditional) {
+          if (additionalImages.length >= 8) {
+            Alert.alert('Límite alcanzado', 'Solo puedes agregar hasta 8 imágenes adicionales');
+            return;
+          }
+          setAdditionalImages(prev => [...prev, result.assets[0].uri]);
+        } else {
+          setFormData(prev => ({ ...prev, image_url: result.assets[0].uri }));
+        }
+      }
+    } catch { 
+      Alert.alert('Error', 'No se pudo tomar la foto'); 
+    }
+  };
+
+  const removeAdditionalImage = (index: number) => {
+  // si la imagen viene de BD, tendrá su id en place.additional_images[index]
+  const imgFromDb = place?.additional_images?.[index];
+  if (imgFromDb?.id) {
+    setDeletedAdditionalIds(prev => [...prev, imgFromDb.id]); // se borrará en backend
+  }
+  setAdditionalImages(prev => prev.filter((_, i) => i !== index));
+};
+
+
+ const removeMainImage = () => {
+  setRemovedMainImage(true);               // marca para borrar en backend
+  setFormData(prev => ({ ...prev, image_url: '' }));
+};
+
 
   const toggleDayOpen = (index: number) => setSchedule(prev => prev.map((d, i) => (i === index ? { ...d, isOpen: !d.isOpen } : d)));
   const updateScheduleTime = (index: number, field: 'openTime' | 'closeTime', value: string) =>
@@ -359,20 +472,6 @@ export default function EditPlaceScreen() {
     }
   };
 
-  const pickImage = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.8 });
-      if (!result.canceled) setFormData(prev => ({ ...prev, image_url: result.assets[0].uri }));
-    } catch { Alert.alert('Error', 'No se pudo seleccionar la imagen'); }
-  };
-
-  const takePhoto = async () => {
-    try {
-      const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [4, 3], quality: 0.8 });
-      if (!result.canceled) setFormData(prev => ({ ...prev, image_url: result.assets[0].uri }));
-    } catch { Alert.alert('Error', 'No se pudo tomar la foto'); }
-  };
-
   const validateForm = () => {
     if (!formData.name.trim()) { Alert.alert('Error', 'El nombre del lugar es obligatorio'); return false; }
     if (!formData.description.trim()) { Alert.alert('Error', 'La descripción es obligatoria'); return false; }
@@ -388,73 +487,143 @@ export default function EditPlaceScreen() {
     return true;
   };
 
-  const handleSubmit = async () => {
-    if (!validateForm()) return;
-    setUpdating(true);
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) { router.replace('/login'); return; }
+ const handleSubmit = async () => {
+  if (!validateForm()) return;
+  setUpdating(true);
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token) { router.replace('/login'); return; }
 
-      const submitData = new FormData();
-      submitData.append('name', formData.name.trim());
-      submitData.append('description', formData.description.trim());
-      submitData.append('latitude', parseFloat(formData.latitude).toString());
-      submitData.append('longitude', parseFloat(formData.longitude).toString());
-      submitData.append('route_id', formData.route_id);
-      submitData.append('website', formData.website || '');
+    const submitData = new FormData();
 
-      const fullPhone = formData.phoneNumber ? `${formData.countryCode}${formData.phoneNumber}` : '';
-      submitData.append('phoneNumber', fullPhone);
+    // 🔒 SOLO enviar campos válidos para la base de datos
+    submitData.append('name', formData.name.trim());
+    submitData.append('description', formData.description.trim());
+    submitData.append('latitude', parseFloat(formData.latitude).toString());
+    submitData.append('longitude', parseFloat(formData.longitude).toString());
+    submitData.append('route_id', formData.route_id);
+    submitData.append('website', formData.website || '');
 
-      const schedulesData = schedule
-        .filter(d => d.isOpen)
-        .map(d => ({ dayOfWeek: d.dayOfWeek, openTime: d.openTime + ':00', closeTime: d.closeTime + ':00' }));
+    const fullPhone = formData.phoneNumber
+      ? `${formData.countryCode}${formData.phoneNumber}`
+      : '';
+    submitData.append('phoneNumber', fullPhone);
 
-      submitData.append('schedules', JSON.stringify(schedulesData));
+    const schedulesData = schedule
+      .filter(d => d.isOpen)
+      .map(d => ({
+        dayOfWeek: d.dayOfWeek,
+        openTime: d.openTime + ':00',
+        closeTime: d.closeTime + ':00',
+      }));
 
-      if (formData.image_url) {
-        if (formData.image_url.startsWith('file://')) {
-          const filename = formData.image_url.split('/').pop();
-          const match = /\.(\w+)$/.exec(filename || '');
-          const type = match ? `image/${match[1]}` : 'image/jpeg';
-          submitData.append('image', { uri: formData.image_url, name: filename || `place_${id}_image.jpg`, type } as any);
-        } else {
-          submitData.append('image_url', formData.image_url);
-        }
-      }
+    submitData.append('schedules', JSON.stringify(schedulesData));
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${id}`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}` },
-        body: submitData,
-      });
+    // ✅ Flags de imágenes
+    submitData.append('remove_main_image', removedMainImage ? '1' : '0');
 
-      const text = await response.text();
-      let data;
-      try { data = JSON.parse(text); } catch { throw new Error('Respuesta inválida del servidor'); }
-
-      if (response.ok) {
-        Alert.alert('Éxito', 'Lugar actualizado correctamente', [
-          {
-            text: 'OK',
-            onPress: () => {
-              if (numericRouteId) {
-                router.push({ pathname: '/Place', params: { routeId: String(numericRouteId) } });
-              } else {
-                router.push({ pathname: '/Place', params: { id } });
-              }
-            },
-          },
-        ]);
-      } else {
-        throw new Error(data.message || `Error ${response.status}: ${response.statusText}`);
-      }
-    } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Error desconocido al actualizar el lugar');
-    } finally {
-      setUpdating(false);
+    if (deletedAdditionalIds.length > 0) {
+      submitData.append(
+        'deleted_additional_image_ids',
+        JSON.stringify(deletedAdditionalIds)
+      );
     }
-  };
+
+    // 🔴 Imagen principal: solo si es NUEVA (file://)
+    if (formData.image_url && formData.image_url.startsWith('file://')) {
+      const filename = formData.image_url.split('/').pop();
+      const match = /\.(\w+)$/.exec(filename || '');
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+      submitData.append('image', {
+        uri: formData.image_url,
+        name: filename || `place_${id}_image.jpg`,
+        type,
+      } as any);
+    }
+
+    // 🔴 Imágenes adicionales: solo adjuntar NUEVAS (file://)
+    const newAdditionalImages = additionalImages.filter(img =>
+      img.startsWith('file://')
+    );
+
+    newAdditionalImages.forEach((imageUri, index) => {
+      const filename = imageUri.split('/').pop();
+      const match = /\.(\w+)$/.exec(filename || '');
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+      submitData.append('additional_images', {
+        uri: imageUri,
+        name: `additional_${index}.${match ? match[1] : 'jpg'}`,
+        type,
+      } as any);
+    });
+
+    // 🚀 Enviar
+    const response = await fetch(
+      `${process.env.EXPO_PUBLIC_API_URL}/api/places/${id}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // No setear Content-Type; RN lo maneja con boundary
+        },
+        body: submitData,
+      }
+    );
+
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error('Respuesta inválida del servidor');
+    }
+
+    if (response.ok) {
+      Alert.alert('Éxito', 'Lugar actualizado correctamente', [
+        {
+          text: 'OK',
+          onPress: () => {
+            // 🔁 Fallback para mantener el filtro de ruta al volver
+            const targetRouteId =
+              (numericRouteId ? String(numericRouteId) : null) ??
+              (place?.route_id ? String(place.route_id) : null) ??
+              (formData.route_id || null);
+
+            const params: Record<string, string> = {
+              refresh: Date.now().toString(),
+              forceRefresh: 'true',
+            };
+
+            if (targetRouteId) {
+              params.routeId = targetRouteId;
+              if (typeof routeName === 'string' && routeName) {
+                params.routeName = routeName;
+              }
+            }
+
+            router.replace({ pathname: '/Place', params });
+          },
+        },
+      ]);
+    } else {
+      throw new Error(
+        data.message || `Error ${response.status}: ${response.statusText}`
+      );
+    }
+  } catch (error) {
+    Alert.alert(
+      'Error',
+      error instanceof Error
+        ? error.message
+        : 'Error desconocido al actualizar el lugar'
+    );
+  } finally {
+    setUpdating(false);
+  }
+};
+
 
   const getLeafletMapHTML = () => {
     const initialLat = selectedLocation?.latitude || -17.3939;
@@ -634,28 +803,170 @@ export default function EditPlaceScreen() {
             <Text style={{ color: themed.muted as string, fontSize: 12, marginTop: 4 }}>Toque el campo para seleccionar país y número</Text>
           </View>
 
-          {/* Imagen */}
+          {/* Imagen Principal */}
           <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>Imagen del Lugar</Text>
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
+              Imagen Principal del Lugar
+            </Text>
+            <Text style={{ color: themed.muted as string, fontSize: 12, marginBottom: 8 }}>
+              Esta será la imagen destacada del lugar
+            </Text>
+            
+            {formData.image_url ? (
+              <View style={{ marginBottom: 8 }}>
+                <Image 
+                  source={{ uri: formData.image_url.startsWith('/uploads/') 
+                    ? `${process.env.EXPO_PUBLIC_API_URL}${formData.image_url}`
+                    : formData.image_url 
+                  }} 
+                  style={{ 
+                    width: '100%', 
+                    height: 200, 
+                    borderRadius: 12,
+                    borderWidth: 2,
+                    borderColor: themed.accent as string
+                  }} 
+                  resizeMode="cover"
+                />
+                <TouchableOpacity
+                  onPress={removeMainImage}
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                    borderRadius: 20,
+                    width: 32,
+                    height: 32,
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Ionicons name="close" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <TouchableOpacity
-                onPress={pickImage}
+                onPress={() => pickImage(false)}
                 style={{ flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.border, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' }}
               >
                 <Ionicons name="image-outline" size={20} color={themed.accent as string} />
                 <Text style={{ color: themed.text, marginLeft: 8, fontWeight: '600' }}>Galería</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={takePhoto}
+                onPress={() => takePhoto(false)}
                 style={{ flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.border, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' }}
               >
                 <Ionicons name="camera-outline" size={20} color={themed.accent as string} />
                 <Text style={{ color: themed.text, marginLeft: 8, fontWeight: '600' }}>Cámara</Text>
               </TouchableOpacity>
             </View>
+            
             {formData.image_url ? (
-              <Text style={{ color: themed.successTextMuted as string, fontSize: 12, marginTop: 8 }}>✓ Imagen seleccionada</Text>
-            ) : null}
+              <Text style={{ color: themed.successTextMuted as string, fontSize: 12, marginTop: 8 }}>
+                ✓ Imagen principal seleccionada
+              </Text>
+            ) : (
+              <Text style={{ color: themed.muted as string, fontSize: 12, marginTop: 8 }}>
+                Opcional - Recomendado para mejor presentación
+              </Text>
+            )}
+          </View>
+
+          {/* Imágenes Adicionales */}
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
+              Imágenes Adicionales ({additionalImages.length}/8)
+            </Text>
+            <Text style={{ color: themed.muted as string, fontSize: 12, marginBottom: 8 }}>
+              Puedes agregar hasta 8 imágenes adicionales del lugar
+            </Text>
+
+            {/* Grid de imágenes adicionales */}
+            {additionalImages.length > 0 && (
+              <View style={{ marginBottom: 12 }}>
+                <View style={{ 
+                  flexDirection: 'row', 
+                  flexWrap: 'wrap', 
+                  gap: 8,
+                }}>
+                  {additionalImages.map((imageUri, index) => (
+                    <View key={index} style={{ position: 'relative', width: '31%' }}>
+                      <Image 
+                        source={{ uri: imageUri.startsWith('/uploads/') 
+                          ? `${process.env.EXPO_PUBLIC_API_URL}${imageUri}`
+                          : imageUri 
+                        }} 
+                        style={{ 
+                          width: '100%', 
+                          height: 80, 
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: themed.border
+                        }} 
+                        resizeMode="cover"
+                      />
+                      <TouchableOpacity
+                        onPress={() => removeAdditionalImage(index)}
+                        style={{
+                          position: 'absolute',
+                          top: 4,
+                          right: 4,
+                          backgroundColor: 'rgba(0,0,0,0.7)',
+                          borderRadius: 12,
+                          width: 24,
+                          height: 24,
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Ionicons name="close" size={14} color="#FFFFFF" />
+                      </TouchableOpacity>
+                      <Text style={{ 
+                        position: 'absolute', 
+                        bottom: 4, 
+                        left: 4, 
+                        backgroundColor: 'rgba(0,0,0,0.7)', 
+                        color: '#FFFFFF', 
+                        fontSize: 10, 
+                        paddingHorizontal: 4,
+                        borderRadius: 4
+                      }}>
+                        {index + 1}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {additionalImages.length < 8 && (
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity
+                  onPress={() => pickImage(true)}
+                  style={{ flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.border, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' }}
+                >
+                  <Ionicons name="image-outline" size={20} color={themed.accent as string} />
+                  <Text style={{ color: themed.text, marginLeft: 8, fontWeight: '600' }}>Galería</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => takePhoto(true)}
+                  style={{ flex: 1, backgroundColor: themed.softBg, borderWidth: 1, borderColor: themed.border, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' }}
+                >
+                  <Ionicons name="camera-outline" size={20} color={themed.accent as string} />
+                  <Text style={{ color: themed.text, marginLeft: 8, fontWeight: '600' }}>Cámara</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {additionalImages.length > 0 && (
+              <Text style={{ color: themed.successTextMuted as string, fontSize: 12, marginTop: 8 }}>
+                ✓ {additionalImages.length} imagen(es) adicional(es) seleccionada(s)
+              </Text>
+            )}
           </View>
 
           {/* Acciones */}

@@ -1,7 +1,6 @@
-// src/routes/placeRoutes.js
 import express from "express";
 import { maybeAuth } from "../middlewares/maybeAuth.js";
-import { verifyToken,verifyAdmin } from "../middlewares/authMiddleware.js";
+import { verifyToken, verifyAdmin } from "../middlewares/authMiddleware.js";
 import {
   createPlaceController,
   getPlacesController,
@@ -43,12 +42,23 @@ const upload = multer({
 
 const router = express.Router();
 
-router.post("/", verifyToken, upload.single("image"), createPlaceController);
+// Actualizar para manejar múltiples archivos
+router.post("/", verifyToken, upload.fields([
+  { name: "image", maxCount: 1 },
+  { name: "additional_images", maxCount: 8 }
+]), createPlaceController);
+
 // 🟢 GET públicos (visitante o logueado)
 router.get("/", maybeAuth, getPlacesController);
 router.get("/route/:routeId", maybeAuth, getPlacesByRouteController);
 router.get("/:id", maybeAuth, getPlaceByIdController);
-router.put("/:id", verifyToken, upload.single("image"), updatePlaceController);
+
+// Actualizar para manejar múltiples archivos
+router.put("/:id", verifyToken, upload.fields([
+  { name: "image", maxCount: 1 },
+  { name: "additional_images", maxCount: 8 }
+]), updatePlaceController);
+
 router.delete("/:id", verifyToken, deletePlaceController);
 
 // Rutas de administración para lugares pendientes

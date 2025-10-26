@@ -17,6 +17,47 @@ export const createPlace = async ({
   return result.insertId;
 };
 
+// Crear imágenes adicionales para un lugar
+export const createPlaceImages = async (placeId, imageUrls) => {
+  const createdImages = [];
+  
+  for (const imageUrl of imageUrls) {
+    const [result] = await pool.query(
+      `INSERT INTO \`${SCHEMA}\`.place_images 
+       (place_id, image_url, created_at) 
+       VALUES (?, ?, NOW())`,
+      [placeId, imageUrl]
+    );
+    
+    createdImages.push({
+      id: result.insertId,
+      place_id: placeId,
+      image_url: imageUrl,
+      created_at: new Date()
+    });
+  }
+  
+  return createdImages;
+};
+
+// Obtener imágenes por lugar
+export const getImagesByPlaceId = async (placeId) => {
+  const [rows] = await pool.query(
+    `SELECT * FROM \`${SCHEMA}\`.place_images WHERE place_id = ? ORDER BY created_at ASC`,
+    [placeId]
+  );
+  return rows;
+};
+
+// Eliminar imágenes de un lugar
+export const deletePlaceImages = async (placeId) => {
+  const [result] = await pool.query(
+    `DELETE FROM \`${SCHEMA}\`.place_images WHERE place_id = ?`,
+    [placeId]
+  );
+  return result.affectedRows;
+};
+
 // Crear horarios para un lugar
 export const createPlaceSchedules = async (placeId, schedules) => {
   const createdSchedules = [];
@@ -64,7 +105,6 @@ export const deletePlaceSchedules = async (placeId) => {
 
 // src/models/placeModel.js
 export const getAllPlaces = async (user = null) => {
-  // Soporta user como objeto { id, role } o como userId directo
   let userId = null;
   let role = 0;
 
@@ -121,7 +161,6 @@ export const getAllPlaces = async (user = null) => {
 
 // src/models/placeModel.js
 export const getPlacesByRoute = async (routeId, user = null) => {
-  // user puede ser { id, role } o un userId directo
   let userId = null;
   let role = 0;
 
@@ -175,7 +214,6 @@ export const getPlacesByRoute = async (routeId, user = null) => {
   const [rows] = await pool.query(query, params);
   return rows;
 };
-
 
 export const getPlaceById = async (id, userId = null) => {
   let query = `
@@ -278,10 +316,30 @@ export const getApprovedPlaces = async (userId = null) => {
   return rows;
 };
 
-// Actualizar lugar
 export const updatePlace = async (id, updates, modifiedBy) => {
-  const fields = Object.keys(updates).map((k) => `${k} = ?`).join(", ");
-  const values = [...Object.values(updates), modifiedBy, id];
+  // 🔴 CORRECCIÓN: Filtrar solo los campos que existen en la tabla
+  const allowedFields = [
+    'name', 'description', 'latitude', 'longitude', 'route_id', 
+    'website', 'phoneNumber', 'image_url', 'status', 'rejectionComment'
+  ];
+  
+  const filteredUpdates = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (allowedFields.includes(key)) {
+      filteredUpdates[key] = value;
+    }
+  }
+  
+  // Si no hay campos válidos para actualizar, retornar 0
+  if (Object.keys(filteredUpdates).length === 0) {
+    console.log('⚠️ No hay campos válidos para actualizar');
+    return 0;
+  }
+  
+  const fields = Object.keys(filteredUpdates).map((k) => `${k} = ?`).join(", ");
+  const values = [...Object.values(filteredUpdates), modifiedBy, id];
+
+  console.log('📝 Ejecutando UPDATE con:', { fields, values });
 
   const [result] = await pool.query(
     `UPDATE \`${SCHEMA}\`.place SET ${fields}, modifiedAt = NOW(), modifiedBy = ? WHERE id = ?`,
@@ -298,6 +356,7 @@ export const deletePlace = async (id) => {
   );
   return result.affectedRows;
 };
+
 // Obtener lugares por ID de ciudad (a través del usuario creador)
 export const findPlacesByCityId = async (cityId) => {
   const [rows] = await pool.query(
@@ -322,18 +381,20 @@ export const findPlacesByCityId = async (cityId) => {
     [cityId]
   );
 
-  // Obtener horarios para cada lugar
-  const placesWithSchedules = await Promise.all(
+  // Obtener horarios e imágenes para cada lugar
+  const placesWithDetails = await Promise.all(
     rows.map(async (place) => {
       const schedules = await getSchedulesByPlaceId(place.id);
+      const images = await getImagesByPlaceId(place.id);
       return {
         ...place,
-        schedules
+        schedules,
+        additional_images: images
       };
     })
   );
 
-  return placesWithSchedules;
+  return placesWithDetails;
 };
 
 // Obtener todos los lugares pendientes
@@ -359,16 +420,18 @@ export const findAllPendingPlaces = async () => {
     ORDER BY p.createdAt DESC`
   );
 
-  // Obtener horarios para cada lugar
-  const placesWithSchedules = await Promise.all(
+  // Obtener horarios e imágenes para cada lugar
+  const placesWithDetails = await Promise.all(
     rows.map(async (place) => {
       const schedules = await getSchedulesByPlaceId(place.id);
+      const images = await getImagesByPlaceId(place.id);
       return {
         ...place,
-        schedules
+        schedules,
+        additional_images: images
       };
     })
   );
 
-  return placesWithSchedules;
+  return placesWithDetails;
 };

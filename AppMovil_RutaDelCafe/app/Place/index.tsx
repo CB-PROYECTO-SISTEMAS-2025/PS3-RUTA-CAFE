@@ -13,6 +13,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Dimensions,
 } from 'react-native';
 import WebView from 'react-native-webview';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
@@ -35,7 +36,13 @@ interface Place {
   status: 'pendiente' | 'aprobada' | 'rechazada';
   website?: string;
   phoneNumber?: string;
-  image_url?: string;
+  image_url?: string | null;
+  additional_images?: Array<{
+    id: number;
+    place_id: number;
+    image_url: string;
+    created_at: string;
+  }>;
   createdAt: string;
   createdBy?: number;
   schedules?: Schedule[];
@@ -83,19 +90,48 @@ const formatTime = (time: string) => time.substring(0, 5);
 const getFullSchedule = (schedules: Schedule[]) => {
   if (!schedules || schedules.length === 0) return null;
   return schedules.map((s) => (
-    <View key={s.id} className="flex-row justify-between py-1">
-      <Text className="text-orange-700 text-sm font-medium">{formatDayName(s.dayOfWeek)}</Text>
-      <Text className="text-orange-600 text-sm">
+    <View key={s.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+      <Text style={{ color: '#ea580c', fontSize: 14, fontWeight: '600' }}>{formatDayName(s.dayOfWeek)}</Text>
+      <Text style={{ color: '#ea580c', fontSize: 14 }}>
         {formatTime(s.openTime)} - {formatTime(s.closeTime)}
       </Text>
     </View>
   ));
 };
 
+// Normaliza imágenes para mostrar en la lista
+const normalizeImages = (p: Place): string[] => {
+  let imgs: string[] = [];
+  
+  // Imagen principal (puede ser null)
+  if (p.image_url) {
+    imgs.push(p.image_url);
+  }
+
+  // Imágenes adicionales del nuevo sistema
+  if (Array.isArray(p.additional_images)) {
+    const additionalUrls = p.additional_images
+      .map((img: any) => {
+        if (typeof img === 'string') return img;
+        return img?.image_url || img?.url || '';
+      })
+      .filter(Boolean);
+    imgs = [...imgs, ...additionalUrls];
+  }
+
+  return imgs.slice(0, 3); // Mostrar máximo 3 imágenes en la lista
+};
+
 export default function PlacesMapScreen() {
   const themed = useThemedStyles();
   const router = useRouter();
-  const { routeId, routeName } = useLocalSearchParams<{ routeId?: string; routeName?: string }>();
+  const { routeId, routeName, refresh, forceRefresh } = useLocalSearchParams<{ 
+    routeId?: string; 
+    routeName?: string; 
+    refresh?: string;
+    forceRefresh?: string;
+  }>();
+  
   const numericRouteId = useMemo(() => (routeId ? Number(routeId) : undefined), [routeId]);
 
   const [places, setPlaces] = useState<Place[]>([]);
@@ -109,18 +145,23 @@ export default function PlacesMapScreen() {
 
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [imagesModalOpen, setImagesModalOpen] = useState(false);
+  const [currentPlaceImages, setCurrentPlaceImages] = useState<string[]>([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   const webViewRef = useRef<WebView>(null);
   const isAdmin = userRole === 2;
   const isUser = userRole === 3;
 
+  const screenWidth = Dimensions.get('window').width;
+
   useEffect(() => {
     loadUser();
   }, []);
 
-  useEffect(() => {
+   useEffect(() => {
     fetchPlaces();
-  }, [numericRouteId]);
+  }, [numericRouteId, refresh, forceRefresh]);
 
   useEffect(() => {
     if (places.length > 0) setMapKey((p) => p + 1);
@@ -166,6 +207,13 @@ export default function PlacesMapScreen() {
         throw new Error(`Error ${response.status}: ${errorText}`);
       }
       const data = await response.json();
+
+      console.log('📱 Datos de lugares recibidos:', data.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        image_url: p.image_url,
+        additional_images_count: p.additional_images?.length || 0
+      })));
 
       const normalized = data
         .map((p: any) => ({
@@ -266,6 +314,18 @@ export default function PlacesMapScreen() {
       Alert.alert('Error', 'No se pudo actualizar el like');
       console.error(error);
     }
+  };
+
+  // Función para abrir el modal de imágenes
+  const openImagesModal = (place: Place) => {
+    const images = normalizeImages(place);
+    if (images.length === 0) {
+      Alert.alert('Sin imágenes', 'Este lugar no tiene imágenes disponibles');
+      return;
+    }
+    setCurrentPlaceImages(images);
+    setCurrentImageIndex(0);
+    setImagesModalOpen(true);
   };
 
   // visibilidad por rol (misma lógica)
@@ -430,13 +490,13 @@ export default function PlacesMapScreen() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'aprobada':
-        return 'bg-green-100 text-green-800 border-green-300';
+        return { bg: '#ecfdf5', text: '#166534', border: '#86efac' };
       case 'pendiente':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+        return { bg: '#fef3c7', text: '#854d0e', border: '#facc15' };
       case 'rechazada':
-        return 'bg-red-100 text-red-800 border-red-300';
+        return { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' };
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-300';
+        return { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' };
     }
   };
 
@@ -453,6 +513,19 @@ export default function PlacesMapScreen() {
     }
   };
 
+  // Función para obtener información de imágenes de un lugar
+  const getPlaceImageInfo = (place: Place) => {
+    const hasMainImage = place.image_url ? 1 : 0;
+    const additionalCount = place.additional_images?.length || 0;
+    const totalImages = hasMainImage + additionalCount;
+    
+    return {
+      hasMainImage,
+      additionalCount,
+      totalImages
+    };
+  };
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: themed.background }}>
@@ -466,8 +539,17 @@ export default function PlacesMapScreen() {
     <View style={{ flex: 1, backgroundColor: themed.background }}>
       {/* Header */}
       <View
-        className="px-6 py-4 rounded-b-3xl shadow-lg"
-        style={{ backgroundColor: themed.accent as string }}
+        style={{ 
+          backgroundColor: themed.accent as string,
+          paddingHorizontal: 24, 
+          paddingVertical: 16,
+          borderBottomLeftRadius: 24,
+          borderBottomRightRadius: 24,
+          shadowColor: '#000',
+          shadowOpacity: 0.15,
+          shadowRadius: 6,
+          shadowOffset: { width: 0, height: 2 }
+        }}
       >
         <Text style={{ color: '#fff', fontSize: 20, fontWeight: '800', textAlign: 'center' }}>
           {numericRouteId ? 'Sitios de la Ruta' : 'Mapa de Sitios'}
@@ -541,11 +623,13 @@ export default function PlacesMapScreen() {
 
       {/* Mapa */}
       <View
-        className="rounded-2xl overflow-hidden border shadow relative"
         style={{
           flex: 1,
           marginTop: 16,
           marginHorizontal: 24,
+          borderRadius: 16,
+          overflow: 'hidden',
+          borderWidth: 1,
           borderColor: themed.border,
           backgroundColor: themed.card,
         }}
@@ -605,15 +689,21 @@ export default function PlacesMapScreen() {
         </View>
 
         <ScrollView
-          className="flex-1"
-          style={{ paddingHorizontal: 24 }}
+          style={{ flex: 1, paddingHorizontal: 24 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           showsVerticalScrollIndicator={false}
         >
           {visiblePlaces.length === 0 ? (
             <View
-              className="rounded-2xl p-8 items-center justify-center"
-              style={{ backgroundColor: themed.card, borderWidth: 1, borderColor: themed.border }}
+              style={{ 
+                backgroundColor: themed.card, 
+                borderWidth: 1, 
+                borderColor: themed.border,
+                borderRadius: 16,
+                padding: 32,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
             >
               <Ionicons name="map-outline" size={48} color={themed.accent as string} />
               <Text style={{ color: themed.text, fontSize: 16, fontWeight: '700', marginTop: 12, textAlign: 'center' }}>
@@ -624,147 +714,321 @@ export default function PlacesMapScreen() {
               </Text>
             </View>
           ) : (
-            visiblePlaces.map((place) => (
-              <View
-                key={place.id}
-                className="rounded-2xl p-4 mb-3 border shadow-sm"
-                style={{ backgroundColor: themed.card, borderColor: themed.border }}
-              >
-                <View className="flex-row">
-                  {place.image_url ? (
-                    <Image source={{ uri: place.image_url }} className="w-20 h-20 rounded-xl mr-3" />
-                  ) : (
-                    <View className="w-20 h-20 rounded-xl mr-3" style={{ backgroundColor: themed.softBg, alignItems: 'center', justifyContent: 'center' }}>
-                      <Ionicons name="image-outline" size={28} color={themed.accent as string} />
-                    </View>
-                  )}
-
-                  <View style={{ flex: 1 }}>
-                    <View className="flex-row justify-between items-start">
-                      <Text style={{ color: themed.text, fontWeight: '800', fontSize: 16, paddingRight: 8 }} numberOfLines={1}>
-                        {place.name}
-                      </Text>
-                      <View className={`px-2 py-1 rounded-full border ${getStatusColor(place.status)}`}>
-                        <Text className="text-xs font-semibold">{getStatusText(place.status)}</Text>
-                      </View>
-                    </View>
-
-                    <Text style={{ color: themed.muted as string, fontSize: 12, marginTop: 2 }}>
-                      {new Date(place.createdAt).toLocaleDateString()} · {place.route_name || 'Sin ruta'}
-                    </Text>
-
-                    <Text style={{ color: themed.text, fontSize: 13, marginTop: 4 }} numberOfLines={2}>
-                      {place.description}
-                    </Text>
-
-                    <View className="flex-row mt-2 items-center">
-                      <View className="flex-row items-center mr-4">
-                        <Ionicons
-                          name={place.user_liked ? 'heart' : 'heart-outline'}
-                          size={14}
-                          color={place.user_liked ? '#ef4444' : (themed.accent as string)}
+            visiblePlaces.map((place) => {
+              const images = normalizeImages(place);
+              const imageInfo = getPlaceImageInfo(place);
+              
+              return (
+                <View
+                  key={place.id}
+                  style={{ 
+                    backgroundColor: themed.card, 
+                    borderColor: themed.border,
+                    borderWidth: 1,
+                    borderRadius: 16,
+                    padding: 16,
+                    marginBottom: 12,
+                    shadowColor: '#000',
+                    shadowOpacity: 0.05,
+                    shadowRadius: 4,
+                    shadowOffset: { width: 0, height: 2 }
+                  }}
+                >
+                  <View style={{ flexDirection: 'row' }}>
+                    {/* Imágenes del lugar */}
+                    {images.length > 0 ? (
+                      <TouchableOpacity 
+                        onPress={() => openImagesModal(place)}
+                        style={{ width: 80, height: 80, marginRight: 12 }}
+                      >
+                        <Image 
+                          source={{ uri: images[0] }} 
+                          style={{ width: 80, height: 80, borderRadius: 12 }} 
+                          resizeMode="cover"
                         />
-                        <Text style={{ color: themed.muted as string, fontSize: 12, marginLeft: 4 }}>
-                          {place.likes_count || 0}
-                        </Text>
+                        {imageInfo.totalImages > 1 && (
+                          <View style={{
+                            position: 'absolute',
+                            bottom: 4,
+                            right: 4,
+                            backgroundColor: 'rgba(0,0,0,0.7)',
+                            paddingHorizontal: 6,
+                            paddingVertical: 2,
+                            borderRadius: 8
+                          }}>
+                            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>
+                              +{imageInfo.totalImages - 1}
+                            </Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={{ 
+                        width: 80, 
+                        height: 80, 
+                        borderRadius: 12, 
+                        marginRight: 12,
+                        backgroundColor: themed.softBg, 
+                        alignItems: 'center', 
+                        justifyContent: 'center' 
+                      }}>
+                        <Ionicons name="image-outline" size={28} color={themed.accent as string} />
                       </View>
-                      <View className="flex-row items-center">
-                        <Ionicons name="chatbubble-outline" size={14} color={themed.accent as string} />
-                        <Text style={{ color: themed.muted as string, fontSize: 12, marginLeft: 4 }}>
-                          {place.comments_count || 0}
+                    )}
+
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <Text style={{ color: themed.text, fontWeight: '800', fontSize: 16, paddingRight: 8 }} numberOfLines={1}>
+                          {place.name}
                         </Text>
+                        <View style={{ 
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                          borderRadius: 999,
+                          borderWidth: 1,
+                          backgroundColor: getStatusColor(place.status).bg,
+                          borderColor: getStatusColor(place.status).border
+                        }}>
+                          <Text style={{ 
+                            color: getStatusColor(place.status).text,
+                            fontSize: 12,
+                            fontWeight: '700'
+                          }}>
+                            {getStatusText(place.status)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={{ color: themed.muted as string, fontSize: 12, marginTop: 2 }}>
+                        {new Date(place.createdAt).toLocaleDateString()} · {place.route_name || 'Sin ruta'}
+                      </Text>
+
+                      <Text style={{ color: themed.text, fontSize: 13, marginTop: 4 }} numberOfLines={2}>
+                        {place.description}
+                      </Text>
+
+                      {/* Información de imágenes */}
+                      {imageInfo.totalImages > 0 && (
+                        <Text style={{ color: themed.muted as string, fontSize: 11, marginTop: 4 }}>
+                          📷 {imageInfo.totalImages} imagen(es)
+                          {imageInfo.hasMainImage && imageInfo.additionalCount > 0 ? 
+                            ` (1 principal + ${imageInfo.additionalCount} adicionales)` : ''}
+                        </Text>
+                      )}
+
+                      <View style={{ flexDirection: 'row', marginTop: 8, alignItems: 'center' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 16 }}>
+                          <Ionicons
+                            name={place.user_liked ? 'heart' : 'heart-outline'}
+                            size={14}
+                            color={place.user_liked ? '#ef4444' : (themed.accent as string)}
+                          />
+                          <Text style={{ color: themed.muted as string, fontSize: 12, marginLeft: 4 }}>
+                            {place.likes_count || 0}
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Ionicons name="chatbubble-outline" size={14} color={themed.accent as string} />
+                          <Text style={{ color: themed.muted as string, fontSize: 12, marginLeft: 4 }}>
+                            {place.comments_count || 0}
+                          </Text>
+                        </View>
                       </View>
                     </View>
                   </View>
-                </View>
 
-                {/* Acciones */}
-                <View className="flex-row gap-2 mt-3">
-                  <TouchableOpacity
-                    onPress={() => router.push(`/Place/details?id=${place.id}`)}
-                    className="flex-1 bg-orange-100 py-2 rounded-xl border border-orange-300 flex-row items-center justify-center"
-                    style={{ backgroundColor: themed.softBg, borderColor: themed.border }}
-                  >
-                    <Text style={{ color: themed.text, fontWeight: '700' }}>Ver detalles</Text>
-                  </TouchableOpacity>
+                  {/* Acciones */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                    <TouchableOpacity
+                      onPress={() => router.push(`/Place/details?id=${place.id}`)}
+                      style={{
+                        flex: 1,
+                        backgroundColor: themed.softBg,
+                        paddingVertical: 8,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: themed.border,
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <Text style={{ color: themed.text, fontWeight: '700' }}>Ver detalles</Text>
+                    </TouchableOpacity>
 
-                  {isAdmin && (
-                    <>
-                      <TouchableOpacity
-                        onPress={() => router.push(`/Place/edit?id=${place.id}`)}
-                        className="flex-1 bg-blue-100 py-2 rounded-xl border border-blue-300 flex-row items-center justify-center"
-                        style={{ backgroundColor: themed.softBg, borderColor: themed.border }}
-                      >
-                        <Ionicons name="create-outline" size={18} color="#3b82f6" />
-                        <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>Editar</Text>
-                      </TouchableOpacity>
+                    {isAdmin && (
+                      <>
+                        <TouchableOpacity
+                          onPress={() => router.push(`/Place/edit?id=${place.id}`)}
+                          style={{
+                            flex: 1,
+                            backgroundColor: themed.softBg,
+                            paddingVertical: 8,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: themed.border,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Ionicons name="create-outline" size={18} color="#3b82f6" />
+                          <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>Editar</Text>
+                        </TouchableOpacity>
 
-                      <TouchableOpacity
-                        onPress={() => deletePlace(place.id)}
-                        className="flex-1 bg-red-100 py-2 rounded-xl border border-red-300 flex-row items-center justify-center"
-                        style={{ backgroundColor: themed.softBg, borderColor: themed.border }}
-                      >
-                        <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                        <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>Eliminar</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
+                        <TouchableOpacity
+                          onPress={() => deletePlace(place.id)}
+                          style={{
+                            flex: 1,
+                            backgroundColor: themed.softBg,
+                            paddingVertical: 8,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: themed.border,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                          <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>Eliminar</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
 
-                  {isUser ? (
-                    <>
-                      <TouchableOpacity
-                        onPress={() => toggleLike(place.id)}
-                        className="flex-1 bg-pink-100 py-2 rounded-xl border border-pink-300 flex-row items-center justify-center"
-                        style={{ backgroundColor: themed.softBg, borderColor: themed.border }}
-                      >
-                        <Ionicons name={place.user_liked ? 'heart' : 'heart-outline'} size={18} color="#ec4899" />
-                        <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>
-                          {place.user_liked ? 'Quitar' : 'Like'}
-                        </Text>
-                      </TouchableOpacity>
+                    {isUser ? (
+                      <>
+                        <TouchableOpacity
+                          onPress={() => toggleLike(place.id)}
+                          style={{
+                            flex: 1,
+                            backgroundColor: themed.softBg,
+                            paddingVertical: 8,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: themed.border,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Ionicons name={place.user_liked ? 'heart' : 'heart-outline'} size={18} color="#ec4899" />
+                          <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>
+                            {place.user_liked ? 'Quitar' : 'Like'}
+                          </Text>
+                        </TouchableOpacity>
 
+                        <TouchableOpacity
+                          onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
+                          style={{
+                            flex: 1,
+                            backgroundColor: themed.successBg,
+                            paddingVertical: 8,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: themed.successBorder,
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Text style={{ color: themed.successText as string, fontWeight: '700' }}>Comentarios</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : (
                       <TouchableOpacity
                         onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
-                        className="flex-1 bg-green-100 py-2 rounded-xl border border-green-300 flex-row items-center justify-center"
-                        style={{ backgroundColor: themed.successBg, borderColor: themed.successBorder }}
+                        style={{
+                          flex: 1,
+                          backgroundColor: themed.successBg,
+                          paddingVertical: 8,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: themed.successBorder,
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
                       >
-                        <Text style={{ color: themed.successText as string, fontWeight: '700', marginLeft: 8 }}>Comentarios</Text>
+                        <Text style={{ color: themed.successText as string, fontWeight: '700' }}>Comentarios</Text>
                       </TouchableOpacity>
-                    </>
-                  ) : (
-                    <TouchableOpacity
-                      onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
-                      className="flex-1 bg-green-100 py-2 rounded-xl border border-green-300 flex-row items-center justify-center"
-                      style={{ backgroundColor: themed.successBg, borderColor: themed.successBorder }}
-                    >
-                      <Text style={{ color: themed.successText as string, fontWeight: '700', marginLeft: 8 }}>Comentarios</Text>
-                    </TouchableOpacity>
-                  )}
+                    )}
+                  </View>
                 </View>
-              </View>
-            ))
+              );
+            })
           )}
         </ScrollView>
       </View>
 
-      {/* Bottom sheet */}
+      {/* Modal de imágenes */}
+      <Modal visible={imagesModalOpen} transparent animationType="fade" onRequestClose={() => setImagesModalOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' }}>
+          <TouchableOpacity 
+            style={{ position: 'absolute', top: 40, right: 16, zIndex: 10 }}
+            onPress={() => setImagesModalOpen(false)}
+          >
+            <Ionicons name="close" size={32} color="#fff" />
+          </TouchableOpacity>
+
+          {currentPlaceImages.length > 0 && (
+            <>
+              <Image 
+                source={{ uri: currentPlaceImages[currentImageIndex] }} 
+                style={{ width: screenWidth - 32, height: screenWidth - 32, borderRadius: 16 }}
+                resizeMode="contain"
+              />
+              
+              <Text style={{ color: '#fff', marginTop: 16, fontSize: 16 }}>
+                {currentImageIndex + 1} / {currentPlaceImages.length}
+              </Text>
+
+              {currentPlaceImages.length > 1 && (
+                <View style={{ flexDirection: 'row', marginTop: 16, gap: 16 }}>
+                  <TouchableOpacity
+                    onPress={() => setCurrentImageIndex(prev => Math.max(0, prev - 1))}
+                    disabled={currentImageIndex === 0}
+                    style={{ padding: 12, opacity: currentImageIndex === 0 ? 0.5 : 1 }}
+                  >
+                    <Ionicons name="chevron-back" size={24} color="#fff" />
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    onPress={() => setCurrentImageIndex(prev => Math.min(currentPlaceImages.length - 1, prev + 1))}
+                    disabled={currentImageIndex === currentPlaceImages.length - 1}
+                    style={{ padding: 12, opacity: currentImageIndex === currentPlaceImages.length - 1 ? 0.5 : 1 }}
+                  >
+                    <Ionicons name="chevron-forward" size={24} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
+          )}
+        </View>
+      </Modal>
+
+      {/* Bottom sheet (sin cambios) */}
       <Modal visible={infoOpen} transparent animationType="slide" onRequestClose={() => setInfoOpen(false)}>
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' }}>
           <View
-            className="rounded-t-3xl p-4 border-t max-h-3/4"
-            style={{ backgroundColor: themed.card, borderColor: themed.border }}
+            style={{ 
+              backgroundColor: themed.card, 
+              borderTopColor: themed.border,
+              borderTopWidth: 1,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              padding: 16,
+              maxHeight: '75%'
+            }}
           >
-            <View className="items-center mb-2">
+            <View style={{ alignItems: 'center', marginBottom: 8 }}>
               <View style={{ width: 48, height: 6, backgroundColor: themed.border, borderRadius: 999 }} />
             </View>
 
             {selectedPlace && (
               <>
-                <View className="flex-row items-center justify-between mb-2">
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <Text style={{ color: themed.text, fontSize: 20, fontWeight: '800', paddingRight: 8, flex: 1 }}>
                     {selectedPlace.name}
                   </Text>
-                  <TouchableOpacity onPress={() => setInfoOpen(false)} className="p-1">
+                  <TouchableOpacity onPress={() => setInfoOpen(false)} style={{ padding: 4 }}>
                     <Ionicons name="close" size={22} color={themed.accent as string} />
                   </TouchableOpacity>
                 </View>
@@ -775,8 +1039,8 @@ export default function PlacesMapScreen() {
                 </Text>
 
                 {isUser && (
-                  <View className="flex-row mb-3">
-                    <TouchableOpacity onPress={() => toggleLike(selectedPlace.id)} className="flex-row items-center mr-6">
+                  <View style={{ flexDirection: 'row', marginBottom: 12 }}>
+                    <TouchableOpacity onPress={() => toggleLike(selectedPlace.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
                       <Ionicons
                         name={selectedPlace.user_liked ? 'heart' : 'heart-outline'}
                         size={20}
@@ -791,7 +1055,7 @@ export default function PlacesMapScreen() {
                         setInfoOpen(false);
                         router.push(`/Place/comments?id=${selectedPlace.id}&name=${selectedPlace.name}`);
                       }}
-                      className="flex-row items-center"
+                      style={{ flexDirection: 'row', alignItems: 'center' }}
                     >
                       <Ionicons name="chatbubble-outline" size={20} color={themed.accent as string} />
                       <Text style={{ color: themed.text, fontWeight: '600', marginLeft: 6 }}>
@@ -802,17 +1066,34 @@ export default function PlacesMapScreen() {
                 )}
 
                 {selectedPlace.schedules && selectedPlace.schedules.length > 0 && (
-                  <View className="mb-3 rounded-xl p-3 border" style={{ backgroundColor: themed.softBg, borderColor: themed.border }}>
+                  <View style={{ 
+                    marginBottom: 12, 
+                    borderRadius: 12, 
+                    padding: 12, 
+                    borderWidth: 1, 
+                    backgroundColor: themed.softBg, 
+                    borderColor: themed.border 
+                  }}>
                     <Text style={{ color: themed.text, fontWeight: '800', fontSize: 13, marginBottom: 6 }}>🕒 Horario de atención</Text>
                     {getFullSchedule(selectedPlace.schedules)}
                   </View>
                 )}
 
-                <View className="flex-row items-center mb-3">
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
                   {selectedPlace.image_url ? (
-                    <Image source={{ uri: selectedPlace.image_url }} className="w-20 h-20 rounded-xl mr-3" />
+                    <TouchableOpacity onPress={() => openImagesModal(selectedPlace)}>
+                      <Image source={{ uri: selectedPlace.image_url }} style={{ width: 80, height: 80, borderRadius: 12, marginRight: 12 }} />
+                    </TouchableOpacity>
                   ) : (
-                    <View className="w-20 h-20 rounded-xl mr-3" style={{ backgroundColor: themed.softBg, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ 
+                      width: 80, 
+                      height: 80, 
+                      borderRadius: 12, 
+                      marginRight: 12,
+                      backgroundColor: themed.softBg, 
+                      alignItems: 'center', 
+                      justifyContent: 'center' 
+                    }}>
                       <Ionicons name="image-outline" size={28} color={themed.accent as string} />
                     </View>
                   )}
@@ -821,14 +1102,21 @@ export default function PlacesMapScreen() {
                   </Text>
                 </View>
 
-                <View className="flex-row gap-2 mb-3">
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
                   <TouchableOpacity
                     onPress={() => {
                       setInfoOpen(false);
                       router.push(`/Place/details?id=${selectedPlace.id}`);
                     }}
-                    className="flex-1 py-3 rounded-xl border items-center"
-                    style={{ backgroundColor: themed.softBg, borderColor: themed.border }}
+                    style={{
+                      flex: 1,
+                      backgroundColor: themed.softBg,
+                      paddingVertical: 12,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: themed.border,
+                      alignItems: 'center'
+                    }}
                   >
                     <Ionicons name={selectedPlace.website ? 'globe-outline' : 'eye-outline'} size={20} color={themed.accent as string} />
                     <Text style={{ color: themed.text, fontWeight: '700', marginTop: 4 }}>
@@ -842,8 +1130,15 @@ export default function PlacesMapScreen() {
                         setInfoOpen(false);
                         router.push(`/Place/details?id=${selectedPlace.id}`);
                       }}
-                      className="flex-1 py-3 rounded-xl border items-center"
-                      style={{ backgroundColor: themed.softBg, borderColor: themed.border }}
+                      style={{
+                        flex: 1,
+                        backgroundColor: themed.softBg,
+                        paddingVertical: 12,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: themed.border,
+                        alignItems: 'center'
+                      }}
                     >
                       <Ionicons name="call-outline" size={20} color={themed.accent as string} />
                       <Text style={{ color: themed.text, fontWeight: '700', marginTop: 4 }}>Contactar</Text>
@@ -856,8 +1151,14 @@ export default function PlacesMapScreen() {
                     setInfoOpen(false);
                     router.push(`/Place/details?id=${selectedPlace.id}`);
                   }}
-                  className="py-4 rounded-2xl flex-row items-center justify-center"
-                  style={{ backgroundColor: themed.accent as string }}
+                  style={{
+                    paddingVertical: 16,
+                    borderRadius: 16,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: themed.accent as string
+                  }}
                 >
                   <Ionicons name="information-circle-outline" size={22} color="#fff" />
                   <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16, marginLeft: 8 }}>Abrir ficha completa</Text>
