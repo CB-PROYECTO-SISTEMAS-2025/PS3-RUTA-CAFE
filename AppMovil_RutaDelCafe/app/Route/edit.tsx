@@ -1,3 +1,4 @@
+// app/Route/edit.tsx
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -19,100 +20,223 @@ interface Route {
   id: number;
   name: string;
   description: string;
-  status: string;
-  image_url: string;
+  status: 'aprobada' | 'rechazada' | 'pendiente' | string;
+  image_url: string | null;
 }
+
+// 🔧 Normaliza URLs que vengan con host local para que funcionen en producción
+const normalizeImageUrl = (url?: string | null) => {
+  if (!url) return '';
+  // si ya es relativa, mantener
+  if (url.startsWith('/uploads/')) return `${process.env.EXPO_PUBLIC_API_URL}${url}`;
+  // si viene con host de dev, convertir a relativa si detectamos /uploads/
+  if (url.includes('192.168.') || url.includes('localhost')) {
+    const m = url.match(/\/uploads\/.+$/);
+    return m ? `${process.env.EXPO_PUBLIC_API_URL}${m[0]}` : url;
+  }
+  return url;
+};
 
 export default function EditRouteScreen() {
   const router = useRouter();
-  const themed = useThemedStyles(); // 🎨 tema
+  const themed = useThemedStyles();
   const { id } = useLocalSearchParams();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [route, setRoute] = useState<Route | null>(null);
+  const [routeData, setRouteData] = useState<Route | null>(null);
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    image_url: '',
+    image_url: '', // puede ser file:// o URL http(s)
   });
 
-  useEffect(() => {
-    if (id) {
-      fetchRoute();
+  const [errors, setErrors] = useState({
+    name: '',
+    description: '',
+  });
+
+  // 🎯 Limpia texto: letras, espacios, acentos, ñ y signos básicos , . ! ? -
+  const cleanText = (text: string) => {
+    const re = /[a-zA-ZÀ-ÿ\u00f1\u00d1\s,.!?\-]/g;
+    const matches = text.match(re);
+    return matches ? matches.join('') : '';
+  };
+
+  // ✅ Valida que no sea solo números y que no esté vacío
+  const validateNotOnlyNumbers = (text: string, field: 'name' | 'description') => {
+    const onlyNumbers = /^\d+$/;
+    if (onlyNumbers.test(text)) {
+      setErrors((p) => ({ ...p, [field]: 'No puede contener solo números' }));
+      return false;
     }
+    if (text.trim() === '') {
+      setErrors((p) => ({ ...p, [field]: 'Este campo es obligatorio' }));
+      return false;
+    }
+    setErrors((p) => ({ ...p, [field]: '' }));
+    return true;
+  };
+
+  // 🧼 Maneja cambios con limpieza + validación
+  const handleTextChange = (text: string, field: 'name' | 'description') => {
+    const cleaned = cleanText(text);
+    setFormData((p) => ({ ...p, [field]: cleaned }));
+    validateNotOnlyNumbers(cleaned, field);
+  };
+
+  // 📥 Carga inicial
+  useEffect(() => {
+    if (id) fetchRoute();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchRoute = async () => {
+    setLoading(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes/${id}`, {
+      if (!token) {
+        router.replace('/login');
+        return;
+      }
+
+      const url = `${process.env.EXPO_PUBLIC_API_URL}/api/routes/${id}`;
+      console.log('🔎 GET =>', url);
+
+      const resp = await fetch(url, {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (response.ok) {
-        const routeData = await response.json();
-        setRoute(routeData);
-        setFormData({
-          name: routeData.name,
-          description: routeData.description,
-          image_url: routeData.image_url || '',
-        });
-      } else {
+      const text = await resp.text();
+      console.log('📊 HTTP Status =>', resp.status);
+      console.log('📨 Respuesta =>', text);
+
+      let data: Route;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Respuesta inválida del servidor');
+      }
+
+      if (!resp.ok) {
         throw new Error('Error al cargar la ruta');
       }
-    } catch {
+
+      setRouteData(data);
+      setFormData({
+        name: data.name || '',
+        description: data.description || '',
+        image_url: normalizeImageUrl(data.image_url),
+      });
+    } catch (e) {
       Alert.alert('Error', 'No se pudo cargar la ruta');
     } finally {
       setLoading(false);
     }
   };
 
+  // 🖼️ Selector de imagen - mantiene tu flujo (opcional)
   const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      setFormData({ ...formData, image_url: result.assets[0].uri });
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+      if (!result.canceled) {
+        setFormData((p) => ({ ...p, image_url: result.assets[0].uri }));
+      }
+    } catch {
+      Alert.alert('Error', 'No se pudo seleccionar la imagen');
     }
   };
 
+  // ✅ Botón habilitado solo si todo está válido
+  const isFormValid =
+    formData.name.trim() &&
+    formData.description.trim() &&
+    !errors.name &&
+    !errors.description;
+
+  // 💾 Guardar
   const handleSubmit = async () => {
-    if (!formData.name || !formData.description) {
-      Alert.alert('Error', 'Por favor completa todos los campos obligatorios');
+    // Trim de campos
+    const cleanedData = {
+      name: formData.name.trim(),
+      description: formData.description.trim(),
+      image_url: formData.image_url, // mantenemos string (URL o file://). Si tu backend soporta multipart, te doy variante.
+    };
+
+    // Validaciones previas
+    if (!cleanedData.name) {
+      setErrors((p) => ({ ...p, name: 'Este campo es obligatorio' }));
+      Alert.alert('Error', 'Por favor ingresa un nombre para la ruta');
+      return;
+    }
+    if (!cleanedData.description) {
+      setErrors((p) => ({ ...p, description: 'Este campo es obligatorio' }));
+      Alert.alert('Error', 'Por favor ingresa una descripción para la ruta');
+      return;
+    }
+    if (!validateNotOnlyNumbers(cleanedData.name, 'name')) {
+      Alert.alert('Error', 'Por favor corrige los errores en el nombre de la ruta');
+      return;
+    }
+    if (!validateNotOnlyNumbers(cleanedData.description, 'description')) {
+      Alert.alert('Error', 'Por favor corrige los errores en la descripción');
       return;
     }
 
     setSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes/${id}`, {
+      if (!token) {
+        router.replace('/login');
+        return;
+      }
+
+      const url = `${process.env.EXPO_PUBLIC_API_URL}/api/routes/${id}`;
+      console.log('📝 PUT =>', url);
+      console.log('📦 Payload =>', cleanedData);
+
+      // Enviamos como JSON (si quieres subir archivo real, te paso variante con FormData)
+      const resp = await fetch(url, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(cleanedData),
       });
 
-      if (response.ok) {
-        Alert.alert('Éxito', 'Ruta actualizada correctamente');
-        router.replace('/Route');
-      } else {
-        throw new Error('Error al actualizar la ruta');
+      const text = await resp.text();
+      console.log('📊 HTTP Status =>', resp.status);
+      console.log('📨 Respuesta =>', text);
+
+      if (!resp.ok) {
+        // intenta parsear por si viene message
+        try {
+          const data = JSON.parse(text);
+          throw new Error(data.message || 'Error al actualizar la ruta');
+        } catch {
+          throw new Error('Error al actualizar la ruta');
+        }
       }
-    } catch {
-      Alert.alert('Error', 'No se pudo actualizar la ruta');
+
+      Alert.alert('Éxito', 'Ruta actualizada correctamente', [
+        { text: 'OK', onPress: () => router.replace('/Route') },
+      ]);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'No se pudo actualizar la ruta');
     } finally {
       setSaving(false);
     }
   };
 
-  // 🎨 pill de estado según tema
+  // 🎨 Pildora de estado (tema-aware)
   const statusStyles = (status: string) => {
     if (status === 'aprobada') {
       return {
@@ -128,50 +252,41 @@ export default function EditRouteScreen() {
         text: themed.isDark ? '#fecaca' : '#7f1d1d',
       };
     }
+    // pendiente u otro
     return {
-      bg: themed.isDark ? '#341a05' : '#ffedd5',
-      border: '#f59e0b',
-      text: themed.isDark ? '#fde68a' : '#7c2d12',
+        bg: themed.isDark ? '#341a05' : '#ffedd5',
+        border: '#f59e0b',
+        text: themed.isDark ? '#fde68a' : '#7c2d12',
     };
   };
 
   if (loading) {
     return (
       <View
-        style={{
-          flex: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-          backgroundColor: themed.background,
-        }}
+        style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: themed.background }}
       >
         <ActivityIndicator size="large" color={themed.accent as string} />
-        <Text style={{ color: themed.accent, marginTop: 16 }}>Cargando ruta...</Text>
+        <Text style={{ color: themed.accent as string, marginTop: 12 }}>Cargando ruta...</Text>
       </View>
     );
   }
 
-  if (!route) {
+  if (!routeData) {
     return (
       <View
-        style={{
-          flex: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-          backgroundColor: themed.background,
-        }}
+        style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: themed.background }}
       >
         <Text style={{ color: themed.text }}>Ruta no encontrada</Text>
       </View>
     );
   }
 
-  const pill = statusStyles(route.status);
+  const pill = statusStyles(routeData.status);
 
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: themed.background }}
-      contentContainerStyle={{ paddingHorizontal: 24 }}
+      contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
       showsVerticalScrollIndicator={false}
     >
       {/* Header */}
@@ -223,48 +338,49 @@ export default function EditRouteScreen() {
           }}
         >
           <Text style={{ color: pill.text, fontWeight: '700', textTransform: 'capitalize' }}>
-            {route.status}
+            {routeData.status}
           </Text>
         </View>
       </View>
 
       {/* Nombre */}
-      <View style={{ marginBottom: 16 }}>
-        <Text style={{ color: themed.text, fontWeight: 'bold', marginBottom: 8 }}>
-          Nombre de la Ruta *
-        </Text>
+      <View style={{ marginBottom: 12 }}>
+        <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>Nombre de la Ruta *</Text>
         <View
           style={{
             backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
-            borderColor: themed.border,
-            borderWidth: 1,
+            borderColor: errors.name ? (themed.danger as string) : (themed.border as string),
+            borderWidth: 1.5,
             borderRadius: 16,
           }}
         >
           <TextInput
             value={formData.name}
-            onChangeText={(text) => setFormData({ ...formData, name: text })}
+            onChangeText={(t) => handleTextChange(t, 'name')}
             placeholder="Ej. Sabores del Centro"
             placeholderTextColor={themed.muted as string}
             style={{ color: themed.text, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }}
           />
         </View>
+        {errors.name ? (
+          <Text style={{ color: themed.danger as string, marginTop: 6 }}>{errors.name}</Text>
+        ) : null}
       </View>
 
       {/* Descripción */}
-      <View style={{ marginBottom: 16 }}>
-        <Text style={{ color: themed.text, fontWeight: 'bold', marginBottom: 8 }}>Descripción *</Text>
+      <View style={{ marginBottom: 12 }}>
+        <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>Descripción *</Text>
         <View
           style={{
             backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
-            borderColor: themed.border,
-            borderWidth: 1,
+            borderColor: errors.description ? (themed.danger as string) : (themed.border as string),
+            borderWidth: 1.5,
             borderRadius: 16,
           }}
         >
           <TextInput
             value={formData.description}
-            onChangeText={(text) => setFormData({ ...formData, description: text })}
+            onChangeText={(t) => handleTextChange(t, 'description')}
             multiline
             numberOfLines={4}
             placeholder="Cuenta de qué va tu ruta…"
@@ -279,18 +395,21 @@ export default function EditRouteScreen() {
             }}
           />
         </View>
+        {errors.description ? (
+          <Text style={{ color: themed.danger as string, marginTop: 6 }}>{errors.description}</Text>
+        ) : null}
       </View>
 
       {/* Imagen */}
       <View style={{ marginBottom: 16 }}>
-        <Text style={{ color: themed.text, fontWeight: 'bold', marginBottom: 8 }}>Imagen</Text>
+        <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>Imagen</Text>
         <TouchableOpacity
           onPress={pickImage}
           style={{
             height: 160,
             backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
             borderColor: themed.border,
-            borderWidth: 1,
+            borderWidth: 1.5,
             borderRadius: 16,
             alignItems: 'center',
             justifyContent: 'center',
@@ -299,20 +418,20 @@ export default function EditRouteScreen() {
         >
           {formData.image_url ? (
             <Image
-              source={{ uri: formData.image_url }}
+              source={{ uri: formData.image_url.startsWith('file://') ? formData.image_url : normalizeImageUrl(formData.image_url) }}
               style={{ width: '100%', height: '100%' }}
               resizeMode="cover"
             />
           ) : (
             <View style={{ alignItems: 'center' }}>
               <Ionicons name="image-outline" size={48} color={themed.accent as string} />
-              <Text style={{ color: themed.muted, marginTop: 6 }}>Seleccionar imagen</Text>
+              <Text style={{ color: themed.muted as string, marginTop: 6 }}>Seleccionar imagen</Text>
             </View>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Botones */}
+      {/* Acciones */}
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 28 }}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -327,12 +446,12 @@ export default function EditRouteScreen() {
             justifyContent: 'center',
           }}
         >
-          <Text style={{ color: themed.accent, fontWeight: '700' }}>Cancelar</Text>
+          <Text style={{ color: themed.accent as string, fontWeight: '700' }}>Cancelar</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={handleSubmit}
-          disabled={saving}
+          disabled={saving || !isFormValid}
           style={{
             flex: 1,
             backgroundColor: themed.accent as string,
@@ -340,7 +459,7 @@ export default function EditRouteScreen() {
             borderRadius: 16,
             alignItems: 'center',
             justifyContent: 'center',
-            opacity: saving ? 0.9 : 1,
+            opacity: saving || !isFormValid ? 0.6 : 1,
             elevation: 3,
           }}
         >

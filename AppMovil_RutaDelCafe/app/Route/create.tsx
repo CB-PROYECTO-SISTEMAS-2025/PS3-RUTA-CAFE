@@ -1,3 +1,4 @@
+// app/Route/create.tsx
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -17,16 +18,51 @@ import { useThemedStyles } from '../../hooks/useThemedStyles';
 
 export default function CreateRouteScreen() {
   const router = useRouter();
-  const themed = useThemedStyles(); // 🎨 Tema oscuro/claro
+  const themed = useThemedStyles();
+
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     image_url: '',
   });
+  const [errors, setErrors] = useState({
+    name: '',
+    description: '',
+  });
 
+  // --- Utilidades de limpieza/validación ---
+  // Permite letras, espacios, acentos, ñ y signos básicos , . ! ? -
+  const cleanText = (text: string) => {
+    const textRegex = /[a-zA-ZÀ-ÿ\u00f1\u00d1\s,.!?\-]/g;
+    const matches = text.match(textRegex);
+    return matches ? matches.join('') : '';
+  };
+
+  // Valida que no sea solo números y que no esté vacío
+  const validateNotOnlyNumbers = (text: string, field: 'name' | 'description') => {
+    const onlyNumbersRegex = /^\d+$/;
+    if (onlyNumbersRegex.test(text)) {
+      setErrors((prev) => ({ ...prev, [field]: 'No puede contener solo números' }));
+      return false;
+    } else if (text.trim() === '') {
+      setErrors((prev) => ({ ...prev, [field]: 'Este campo es obligatorio' }));
+      return false;
+    } else {
+      setErrors((prev) => ({ ...prev, [field]: '' }));
+      return true;
+    }
+  };
+
+  // Maneja cambios aplicando limpieza y validando
+  const handleTextChange = (text: string, field: 'name' | 'description') => {
+    const cleaned = cleanText(text);
+    setFormData((prev) => ({ ...prev, [field]: cleaned }));
+    validateNotOnlyNumbers(cleaned, field);
+  };
+
+  // --- Imagen principal opcional ---
   const pickImage = async () => {
-    // ✅ Mantengo tu lógica
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'images',
       allowsEditing: true,
@@ -35,13 +71,36 @@ export default function CreateRouteScreen() {
     });
 
     if (!result.canceled) {
-      setFormData({ ...formData, image_url: result.assets[0].uri });
+      setFormData((prev) => ({ ...prev, image_url: result.assets[0].uri }));
     }
   };
 
+  // --- Envío ---
   const handleSubmit = async () => {
-    if (!formData.name || !formData.description) {
-      Alert.alert('Error', 'Por favor completa todos los campos obligatorios');
+    // Trim de los campos obligatorios
+    const cleanedData = {
+      name: formData.name.trim(),
+      description: formData.description.trim(),
+      image_url: formData.image_url,
+    };
+
+    // Validaciones previas
+    if (!cleanedData.name) {
+      Alert.alert('Error', 'Por favor ingresa un nombre para la ruta');
+      setErrors((prev) => ({ ...prev, name: 'Este campo es obligatorio' }));
+      return;
+    }
+    if (!cleanedData.description) {
+      Alert.alert('Error', 'Por favor ingresa una descripción para la ruta');
+      setErrors((prev) => ({ ...prev, description: 'Este campo es obligatorio' }));
+      return;
+    }
+    if (!validateNotOnlyNumbers(cleanedData.name, 'name')) {
+      Alert.alert('Error', 'Por favor corrige los errores en el nombre de la ruta');
+      return;
+    }
+    if (!validateNotOnlyNumbers(cleanedData.description, 'description')) {
+      Alert.alert('Error', 'Por favor corrige los errores en la descripción');
       return;
     }
 
@@ -53,41 +112,37 @@ export default function CreateRouteScreen() {
         return;
       }
 
-      console.log('🌐 Enviando petición a:', `${process.env.EXPO_PUBLIC_API_URL}/api/routes`);
-      console.log('📦 Datos enviados:', {
-        name: formData.name,
-        description: formData.description,
-        image_url: formData.image_url,
-      });
+      // Logs útiles para depurar
+      console.log('🌐 POST =>', `${process.env.EXPO_PUBLIC_API_URL}/api/routes`);
+      console.log('📦 Payload =>', cleanedData);
 
+      // Envío como JSON (si el backend soporta subir archivo como multipart, se puede adaptar)
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name: formData.name,
-          description: formData.description,
-          image_url: formData.image_url,
-        }),
+        body: JSON.stringify(cleanedData),
       });
 
       const responseText = await response.text();
-      console.log('📊 Status de respuesta:', response.status);
-      console.log('📨 Respuesta del servidor:', responseText);
+      console.log('📊 HTTP Status =>', response.status);
+      console.log('📨 Respuesta =>', responseText);
 
-      let responseData;
+      let responseData: any;
       try {
         responseData = JSON.parse(responseText);
       } catch (jsonError) {
         console.error('❌ Error parseando JSON:', jsonError);
         throw new Error(`El servidor devolvió: ${responseText.substring(0, 100)}...`);
+        // Si tu backend devuelve texto plano, adapta esto.
       }
 
       if (response.ok) {
-        Alert.alert('Éxito', 'Ruta creada correctamente');
-        router.replace('/Route');
+        Alert.alert('Éxito', 'Ruta creada correctamente', [
+          { text: 'OK', onPress: () => router.replace('/Route') },
+        ]);
       } else {
         throw new Error(responseData.message || `Error (${response.status})`);
       }
@@ -98,6 +153,13 @@ export default function CreateRouteScreen() {
       setLoading(false);
     }
   };
+
+  // Habilita el botón sólo si está todo válido
+  const isFormValid =
+    formData.name.trim() &&
+    formData.description.trim() &&
+    !errors.name &&
+    !errors.description;
 
   return (
     <ScrollView
@@ -131,45 +193,48 @@ export default function CreateRouteScreen() {
       {/* Formulario */}
       <View style={{ paddingHorizontal: 24, marginTop: 20 }}>
         {/* Nombre */}
-        <View style={{ marginBottom: 16 }}>
+        <View style={{ marginBottom: 12 }}>
           <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
             Nombre de la Ruta *
           </Text>
           <View
             style={{
               backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
-              borderColor: themed.border,
-              borderWidth: 1,
+              borderColor: errors.name ? (themed.danger as string) : (themed.border as string),
+              borderWidth: 1.5,
               borderRadius: 16,
             }}
           >
             <TextInput
               value={formData.name}
-              onChangeText={(text) => setFormData({ ...formData, name: text })}
+              onChangeText={(t) => handleTextChange(t, 'name')}
               placeholder="Ej: Ruta de Antojos Paceños"
               placeholderTextColor={themed.muted as string}
               style={{ color: themed.text, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }}
             />
           </View>
+          {errors.name ? (
+            <Text style={{ color: themed.danger as string, marginTop: 6 }}>{errors.name}</Text>
+          ) : null}
         </View>
 
         {/* Descripción */}
-        <View style={{ marginBottom: 16 }}>
+        <View style={{ marginBottom: 12 }}>
           <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
             Descripción *
           </Text>
           <View
             style={{
               backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
-              borderColor: themed.border,
-              borderWidth: 1,
+              borderColor: errors.description ? (themed.danger as string) : (themed.border as string),
+              borderWidth: 1.5,
               borderRadius: 16,
               height: 128,
             }}
           >
             <TextInput
               value={formData.description}
-              onChangeText={(text) => setFormData({ ...formData, description: text })}
+              onChangeText={(t) => handleTextChange(t, 'description')}
               placeholder="Describe tu ruta gastronómica..."
               placeholderTextColor={themed.muted as string}
               multiline
@@ -184,9 +249,12 @@ export default function CreateRouteScreen() {
               }}
             />
           </View>
+          {errors.description ? (
+            <Text style={{ color: themed.danger as string, marginTop: 6 }}>{errors.description}</Text>
+          ) : null}
         </View>
 
-        {/* Imagen */}
+        {/* Imagen (opcional) */}
         <View style={{ marginBottom: 16 }}>
           <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
             Imagen (Opcional)
@@ -241,7 +309,7 @@ export default function CreateRouteScreen() {
 
           <TouchableOpacity
             onPress={handleSubmit}
-            disabled={loading}
+            disabled={loading || !isFormValid}
             style={{
               flex: 1,
               backgroundColor: themed.accent,
@@ -250,7 +318,7 @@ export default function CreateRouteScreen() {
               alignItems: 'center',
               justifyContent: 'center',
               elevation: 3,
-              opacity: loading ? 0.9 : 1,
+              opacity: loading || !isFormValid ? 0.6 : 1,
             }}
           >
             {loading ? (

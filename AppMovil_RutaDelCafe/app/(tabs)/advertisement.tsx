@@ -346,6 +346,36 @@ export default function AdvertisementScreen() {
         >
           ¡Bienvenido a La Ruta del Sabor!
         </Text>
+        
+
+
+        {/* Botón: Ver mapa de lugares (AllPlaces) */}
+<View style={{ marginTop: 12, alignItems: "center" }}>
+  <TouchableOpacity
+    onPress={() => router.push("/Place/all-places")}
+    activeOpacity={0.9}
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: themed.accent as string,
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: (themed.accent as string) + "55",
+      shadowColor: "#000",
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      elevation: 3,
+    }}
+  >
+    <Text style={{ color: "#FFFFFF", fontWeight: "bold", fontSize: 16 }}>
+      🗺️ Ver mapa de lugares
+    </Text>
+  </TouchableOpacity>
+</View>
+
 
         {/* Carrusel principal */}
         <View style={{ marginBottom: 24 }}>

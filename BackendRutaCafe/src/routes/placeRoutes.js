@@ -11,7 +11,8 @@ import {
   getPlacesByAdminCity,
   getPlacesBySpecificCity,
   getPendingPlacesController,
-  approveRejectPlace
+  approveRejectPlace,
+  checkPendingPlaces, // 👈 importar
 } from "../controllers/placeController.js";
 import multer from "multer";
 import fs from "fs";
@@ -42,7 +43,7 @@ const upload = multer({
 
 const router = express.Router();
 
-// Actualizar para manejar múltiples archivos
+// Crear (con imagen principal + adicionales)
 router.post("/", verifyToken, upload.fields([
   { name: "image", maxCount: 1 },
   { name: "additional_images", maxCount: 8 }
@@ -53,13 +54,16 @@ router.get("/", maybeAuth, getPlacesController);
 router.get("/route/:routeId", maybeAuth, getPlacesByRouteController);
 router.get("/:id", maybeAuth, getPlaceByIdController);
 
-// Actualizar para manejar múltiples archivos
+// Editar (con imagen principal + adicionales)
 router.put("/:id", verifyToken, upload.fields([
   { name: "image", maxCount: 1 },
   { name: "additional_images", maxCount: 8 }
 ]), updatePlaceController);
 
 router.delete("/:id", verifyToken, deletePlaceController);
+
+// ✅ Usuario consulta si tiene pendientes (para bloquear en cliente)
+router.get("/check/pending", verifyToken, checkPendingPlaces);
 
 // Rutas de administración para lugares pendientes
 router.get("/admin/pending", verifyAdmin, getPendingPlacesController);

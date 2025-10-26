@@ -19,6 +19,13 @@ import * as Location from 'expo-location';
 import WebView from 'react-native-webview';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 
+interface Schedule {
+  dayOfWeek: string;
+  openTime: string;
+  closeTime: string;
+  isOpen: boolean;
+}
+
 interface Place {
   id: number;
   name: string;
@@ -51,13 +58,6 @@ interface LocationResult {
   display_name: string;
 }
 
-interface Schedule {
-  dayOfWeek: string;
-  openTime: string;
-  closeTime: string;
-  isOpen: boolean;
-}
-
 const COUNTRY_CODES = [
   { code: '+591', name: 'Bolivia', maxLength: 8 },
   { code: '+54', name: 'Argentina', maxLength: 10 },
@@ -77,23 +77,22 @@ const DAYS_OF_WEEK = [
   { key: 'domingo', label: 'Domingo' },
 ];
 
-// Función para normalizar URLs de imágenes
+// Normaliza URLs de imágenes (local dev -> ruta relativa /uploads/...)
 const normalizeImageUrl = (url: string | null | undefined): string => {
   if (!url) return '';
-  
-  // 🔴 CORRECCIÓN: Si es una URL local del servidor de desarrollo, convertir a ruta relativa
-  if (url.includes('192.168.0.14') || url.includes('localhost')) {
-    // Extraer solo la parte de la ruta después de /uploads/
+  if (url.includes('192.168.') || url.includes('localhost')) {
     const match = url.match(/\/uploads\/.+$/);
     return match ? match[0] : url;
   }
-  
-  // Si ya es una ruta relativa, mantenerla
-  if (url.startsWith('/uploads/')) {
-    return url;
-  }
-  
+  if (url.startsWith('/uploads/')) return url;
   return url;
+};
+
+// Limpia texto de descripción, manteniendo letras, espacios, acentos y signos básicos
+const cleanDescriptionText = (text: string) => {
+  const textRegex = /[a-zA-ZÀ-ÿ\u00f1\u00d1\s,.!?\-]/g;
+  const matches = text.match(textRegex);
+  return matches ? matches.join('') : '';
 };
 
 export default function EditPlaceScreen() {
@@ -130,19 +129,15 @@ export default function EditPlaceScreen() {
     countryCode: COUNTRY_CODES[0].code,
   });
 
-  const [additionalImages, setAdditionalImages] = useState<string[]>([]);
-  const [schedule, setSchedule] = useState<Schedule[]>(
-    DAYS_OF_WEEK.map(day => ({
-      dayOfWeek: day.key,
-      openTime: '09:00',
-      closeTime: '18:00',
-      isOpen: true,
-    }))
-  );
-  // NUEVOS estados para control de imágenes
-const [removedMainImage, setRemovedMainImage] = useState(false);
-const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
+  const [errors, setErrors] = useState({ name: '', description: '' });
 
+  const [additionalImages, setAdditionalImages] = useState<string[]>([]);
+  const [removedMainImage, setRemovedMainImage] = useState(false);
+  const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
+
+  const [schedule, setSchedule] = useState<Schedule[]>(
+    DAYS_OF_WEEK.map(day => ({ dayOfWeek: day.key, openTime: '09:00', closeTime: '18:00', isOpen: true }))
+  );
 
   const lockedRouteName =
     routeName ||
@@ -187,7 +182,6 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
       console.error('Error loading routes:', e);
     }
   };
-  
 
   const fetchPlace = async () => {
     try {
@@ -204,13 +198,7 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
       const placeData: Place = await response.json();
       setPlace(placeData);
 
-      console.log('📱 Datos del lugar recibidos en edición:', {
-        image_url: placeData.image_url,
-        additional_images_count: placeData.additional_images?.length || 0,
-        additional_images: placeData.additional_images
-      });
-
-      // detectar código de país en phoneNumber
+      // Detectar código de país en phoneNumber
       let countryCode = COUNTRY_CODES[0].code;
       let phoneNumber = '';
       if (placeData.phoneNumber) {
@@ -223,7 +211,7 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
         }
       }
 
-      // 🔴 CORRECCIÓN: Usar normalizeImageUrl para las imágenes
+      // Form
       setFormData({
         name: placeData.name || '',
         description: placeData.description || '',
@@ -233,10 +221,10 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
         website: placeData.website || '',
         phoneNumber: phoneNumber || '',
         image_url: normalizeImageUrl(placeData.image_url) || '',
-        countryCode: countryCode,
+        countryCode,
       });
 
-      // Cargar imágenes adicionales con normalización
+      // Imágenes adicionales normalizadas
       if (placeData.additional_images && Array.isArray(placeData.additional_images)) {
         const additionalUrls = placeData.additional_images
           .map(img => normalizeImageUrl(img.image_url))
@@ -248,6 +236,7 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
         setSelectedLocation({ latitude: placeData.latitude, longitude: placeData.longitude });
       }
 
+      // Horarios
       if (placeData.schedules && Array.isArray(placeData.schedules)) {
         const loaded = DAYS_OF_WEEK.map(day => {
           const s = placeData.schedules!.find((x: any) => x.dayOfWeek === day.key);
@@ -265,13 +254,32 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
     }
   };
 
+  // Valida que no sea solo números & requerido
+  const validateNotOnlyNumbers = (text: string, field: 'name' | 'description') => {
+    const onlyNumbersRegex = /^\d+$/;
+    if (onlyNumbersRegex.test(text)) {
+      setErrors(prev => ({ ...prev, [field]: 'No puede contener solo números' }));
+      return false;
+    } else if (text.trim() === '') {
+      setErrors(prev => ({ ...prev, [field]: 'Este campo es obligatorio' }));
+      return false;
+    } else {
+      setErrors(prev => ({ ...prev, [field]: '' }));
+      return true;
+    }
+  };
+
   const handleInputChange = (field: string, value: string) => {
     if (numericRouteId && field === 'route_id') return;
 
     let filteredValue = value;
+
     switch (field) {
       case 'name':
         filteredValue = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '');
+        break;
+      case 'description':
+        filteredValue = cleanDescriptionText(value);
         break;
       case 'phoneNumber': {
         const sel = COUNTRY_CODES.find(c => c.code === formData.countryCode);
@@ -285,22 +293,27 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
         }
         break;
     }
+
     setFormData(prev => ({ ...prev, [field]: filteredValue }));
+
+    if (field === 'name' || field === 'description') {
+      validateNotOnlyNumbers(filteredValue, field as 'name' | 'description');
+    }
   };
 
   const handleCountryChange = (code: string) => setFormData(prev => ({ ...prev, countryCode: code }));
   const handleAcceptPhoneNumber = () => setShowCountryModal(false);
 
-  // Funciones para manejar imágenes
+  // Imágenes
   const pickImage = async (isAdditional = false) => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({ 
-        mediaTypes: ImagePicker.MediaTypeOptions.Images, 
-        allowsEditing: true, 
-        aspect: [4, 3], 
-        quality: 0.8 
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
       });
-      
+
       if (!result.canceled) {
         if (isAdditional) {
           if (additionalImages.length >= 8) {
@@ -310,21 +323,22 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
           setAdditionalImages(prev => [...prev, result.assets[0].uri]);
         } else {
           setFormData(prev => ({ ...prev, image_url: result.assets[0].uri }));
+          setRemovedMainImage(false); // si selecciona nueva principal, ya no está "removida"
         }
       }
-    } catch { 
-      Alert.alert('Error', 'No se pudo seleccionar la imagen'); 
+    } catch {
+      Alert.alert('Error', 'No se pudo seleccionar la imagen');
     }
   };
 
   const takePhoto = async (isAdditional = false) => {
     try {
-      const result = await ImagePicker.launchCameraAsync({ 
-        allowsEditing: true, 
-        aspect: [4, 3], 
-        quality: 0.8 
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
       });
-      
+
       if (!result.canceled) {
         if (isAdditional) {
           if (additionalImages.length >= 8) {
@@ -334,33 +348,36 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
           setAdditionalImages(prev => [...prev, result.assets[0].uri]);
         } else {
           setFormData(prev => ({ ...prev, image_url: result.assets[0].uri }));
+          setRemovedMainImage(false);
         }
       }
-    } catch { 
-      Alert.alert('Error', 'No se pudo tomar la foto'); 
+    } catch {
+      Alert.alert('Error', 'No se pudo tomar la foto');
     }
   };
 
   const removeAdditionalImage = (index: number) => {
-  // si la imagen viene de BD, tendrá su id en place.additional_images[index]
-  const imgFromDb = place?.additional_images?.[index];
-  if (imgFromDb?.id) {
-    setDeletedAdditionalIds(prev => [...prev, imgFromDb.id]); // se borrará en backend
-  }
-  setAdditionalImages(prev => prev.filter((_, i) => i !== index));
-};
+    const imgFromDb = place?.additional_images?.[index];
+    if (imgFromDb?.id) {
+      setDeletedAdditionalIds(prev => [...prev, imgFromDb.id]); // se borrará en backend
+    }
+    setAdditionalImages(prev => prev.filter((_, i) => i !== index));
+  };
 
+  const removeMainImage = () => {
+    setRemovedMainImage(true); // marca para borrar en backend
+    setFormData(prev => ({ ...prev, image_url: '' }));
+  };
 
- const removeMainImage = () => {
-  setRemovedMainImage(true);               // marca para borrar en backend
-  setFormData(prev => ({ ...prev, image_url: '' }));
-};
+  // Horarios
+  const toggleDayOpen = (index: number) =>
+    setSchedule(prev => prev.map((d, i) => (i === index ? { ...d, isOpen: !d.isOpen } : d)));
 
-
-  const toggleDayOpen = (index: number) => setSchedule(prev => prev.map((d, i) => (i === index ? { ...d, isOpen: !d.isOpen } : d)));
   const updateScheduleTime = (index: number, field: 'openTime' | 'closeTime', value: string) =>
     setSchedule(prev => prev.map((d, i) => (i === index ? { ...d, [field]: value } : d)));
+
   const openScheduleEditor = (index: number) => setEditingDay(index);
+
   const applySameSchedule = (index: number) => {
     const ref = schedule[index];
     setSchedule(prev => prev.map(d => ({ ...d, openTime: ref.openTime, closeTime: ref.closeTime, isOpen: ref.isOpen })));
@@ -380,6 +397,7 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
     return country ? `${country.name} (${country.code})` : 'Seleccionar país';
   };
 
+  // Mapa
   const handleMapClick = (event: any) => {
     try {
       const [lat, lng] = event.nativeEvent.data.split(',');
@@ -473,11 +491,31 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
   };
 
   const validateForm = () => {
-    if (!formData.name.trim()) { Alert.alert('Error', 'El nombre del lugar es obligatorio'); return false; }
-    if (!formData.description.trim()) { Alert.alert('Error', 'La descripción es obligatoria'); return false; }
+    // reset errores visibles
+    setErrors({ name: '', description: '' });
+
+    if (!formData.name.trim()) {
+      Alert.alert('Error', 'El nombre del lugar es obligatorio');
+      setErrors(prev => ({ ...prev, name: 'Este campo es obligatorio' }));
+      return false;
+    }
+    if (!formData.description.trim()) {
+      Alert.alert('Error', 'La descripción es obligatoria');
+      setErrors(prev => ({ ...prev, description: 'Este campo es obligatorio' }));
+      return false;
+    }
+    if (!validateNotOnlyNumbers(formData.name, 'name')) {
+      Alert.alert('Error', 'El nombre no puede ser solo números');
+      return false;
+    }
+    if (!validateNotOnlyNumbers(formData.description, 'description')) {
+      Alert.alert('Error', 'La descripción no puede ser solo números');
+      return false;
+    }
     if (!formData.latitude || !formData.longitude) { Alert.alert('Error', 'Debe seleccionar una ubicación en el mapa'); return false; }
     if (!formData.route_id) { Alert.alert('Error', 'Debe seleccionar una ruta'); return false; }
     if (formData.website && !formData.website.match(/^https?:\/\/.+\..+/)) { Alert.alert('Error', 'El sitio web debe ser una URL válida'); return false; }
+
     const sel = COUNTRY_CODES.find(c => c.code === formData.countryCode);
     if (formData.phoneNumber) {
       if (!formData.phoneNumber.match(/^\d+$/)) { Alert.alert('Error', 'El teléfono debe contener solo números'); return false; }
@@ -487,143 +525,106 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
     return true;
   };
 
- const handleSubmit = async () => {
-  if (!validateForm()) return;
-  setUpdating(true);
-  try {
-    const token = await AsyncStorage.getItem('userToken');
-    if (!token) { router.replace('/login'); return; }
-
-    const submitData = new FormData();
-
-    // 🔒 SOLO enviar campos válidos para la base de datos
-    submitData.append('name', formData.name.trim());
-    submitData.append('description', formData.description.trim());
-    submitData.append('latitude', parseFloat(formData.latitude).toString());
-    submitData.append('longitude', parseFloat(formData.longitude).toString());
-    submitData.append('route_id', formData.route_id);
-    submitData.append('website', formData.website || '');
-
-    const fullPhone = formData.phoneNumber
-      ? `${formData.countryCode}${formData.phoneNumber}`
-      : '';
-    submitData.append('phoneNumber', fullPhone);
-
-    const schedulesData = schedule
-      .filter(d => d.isOpen)
-      .map(d => ({
-        dayOfWeek: d.dayOfWeek,
-        openTime: d.openTime + ':00',
-        closeTime: d.closeTime + ':00',
-      }));
-
-    submitData.append('schedules', JSON.stringify(schedulesData));
-
-    // ✅ Flags de imágenes
-    submitData.append('remove_main_image', removedMainImage ? '1' : '0');
-
-    if (deletedAdditionalIds.length > 0) {
-      submitData.append(
-        'deleted_additional_image_ids',
-        JSON.stringify(deletedAdditionalIds)
-      );
-    }
-
-    // 🔴 Imagen principal: solo si es NUEVA (file://)
-    if (formData.image_url && formData.image_url.startsWith('file://')) {
-      const filename = formData.image_url.split('/').pop();
-      const match = /\.(\w+)$/.exec(filename || '');
-      const type = match ? `image/${match[1]}` : 'image/jpeg';
-
-      submitData.append('image', {
-        uri: formData.image_url,
-        name: filename || `place_${id}_image.jpg`,
-        type,
-      } as any);
-    }
-
-    // 🔴 Imágenes adicionales: solo adjuntar NUEVAS (file://)
-    const newAdditionalImages = additionalImages.filter(img =>
-      img.startsWith('file://')
-    );
-
-    newAdditionalImages.forEach((imageUri, index) => {
-      const filename = imageUri.split('/').pop();
-      const match = /\.(\w+)$/.exec(filename || '');
-      const type = match ? `image/${match[1]}` : 'image/jpeg';
-
-      submitData.append('additional_images', {
-        uri: imageUri,
-        name: `additional_${index}.${match ? match[1] : 'jpg'}`,
-        type,
-      } as any);
-    });
-
-    // 🚀 Enviar
-    const response = await fetch(
-      `${process.env.EXPO_PUBLIC_API_URL}/api/places/${id}`,
-      {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          // No setear Content-Type; RN lo maneja con boundary
-        },
-        body: submitData,
-      }
-    );
-
-    const text = await response.text();
-    let data;
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+    setUpdating(true);
     try {
-      data = JSON.parse(text);
-    } catch {
-      throw new Error('Respuesta inválida del servidor');
-    }
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) { router.replace('/login'); return; }
 
-    if (response.ok) {
-      Alert.alert('Éxito', 'Lugar actualizado correctamente', [
-        {
-          text: 'OK',
-          onPress: () => {
-            // 🔁 Fallback para mantener el filtro de ruta al volver
-            const targetRouteId =
-              (numericRouteId ? String(numericRouteId) : null) ??
-              (place?.route_id ? String(place.route_id) : null) ??
-              (formData.route_id || null);
+      const submitData = new FormData();
 
-            const params: Record<string, string> = {
-              refresh: Date.now().toString(),
-              forceRefresh: 'true',
-            };
+      // Campos
+      submitData.append('name', formData.name.trim());
+      submitData.append('description', formData.description.trim());
+      submitData.append('latitude', parseFloat(formData.latitude).toString());
+      submitData.append('longitude', parseFloat(formData.longitude).toString());
+      submitData.append('route_id', formData.route_id);
+      submitData.append('website', formData.website || '');
 
-            if (targetRouteId) {
-              params.routeId = targetRouteId;
-              if (typeof routeName === 'string' && routeName) {
-                params.routeName = routeName;
+      const fullPhone = formData.phoneNumber ? `${formData.countryCode}${formData.phoneNumber}` : '';
+      submitData.append('phoneNumber', fullPhone);
+
+      // Horarios (solo abiertos)
+      const schedulesData = schedule
+        .filter(d => d.isOpen)
+        .map(d => ({ dayOfWeek: d.dayOfWeek, openTime: d.openTime + ':00', closeTime: d.closeTime + ':00' }));
+      submitData.append('schedules', JSON.stringify(schedulesData));
+
+      // Flags de imágenes
+      submitData.append('remove_main_image', removedMainImage ? '1' : '0');
+
+      if (deletedAdditionalIds.length > 0) {
+        submitData.append('deleted_additional_image_ids', JSON.stringify(deletedAdditionalIds));
+      }
+
+      // Imagen principal -> solo si es nueva (file://)
+      if (formData.image_url && formData.image_url.startsWith('file://')) {
+        const filename = formData.image_url.split('/').pop();
+        const match = /\.(\w+)$/.exec(filename || '');
+        const type = match ? `image/${match[1]}` : 'image/jpeg';
+        submitData.append('image', {
+          uri: formData.image_url,
+          name: filename || `place_${id}_image.jpg`,
+          type,
+        } as any);
+      }
+
+      // Imágenes adicionales: adjuntar solo NUEVAS (file://)
+      const newAdditionalImages = additionalImages.filter(img => img.startsWith('file://'));
+      newAdditionalImages.forEach((imageUri, index) => {
+        const filename = imageUri.split('/').pop();
+        const match = /\.(\w+)$/.exec(filename || '');
+        const type = match ? `image/${match[1]}` : 'image/jpeg';
+        submitData.append('additional_images', {
+          uri: imageUri,
+          name: `additional_${index}.${match ? match[1] : 'jpg'}`,
+          type,
+        } as any);
+      });
+
+      // PUT
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${id}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` }, // No setear Content-Type con FormData
+        body: submitData,
+      });
+
+      const text = await response.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error('Respuesta inválida del servidor'); }
+
+      if (response.ok) {
+        Alert.alert('Éxito', 'Lugar actualizado correctamente', [
+          {
+            text: 'OK',
+            onPress: () => {
+              const targetRouteId =
+                (numericRouteId ? String(numericRouteId) : null) ??
+                (place?.route_id ? String(place.route_id) : null) ??
+                (formData.route_id || null);
+
+              const params: Record<string, string> = {
+                refresh: Date.now().toString(),
+                forceRefresh: 'true',
+              };
+              if (targetRouteId) {
+                params.routeId = targetRouteId;
+                if (typeof routeName === 'string' && routeName) params.routeName = routeName;
               }
-            }
-
-            router.replace({ pathname: '/Place', params });
+              router.replace({ pathname: '/Place', params });
+            },
           },
-        },
-      ]);
-    } else {
-      throw new Error(
-        data.message || `Error ${response.status}: ${response.statusText}`
-      );
+        ]);
+      } else {
+        throw new Error(data.message || `Error ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      Alert.alert('Error', error instanceof Error ? error.message : 'Error desconocido al actualizar el lugar');
+    } finally {
+      setUpdating(false);
     }
-  } catch (error) {
-    Alert.alert(
-      'Error',
-      error instanceof Error
-        ? error.message
-        : 'Error desconocido al actualizar el lugar'
-    );
-  } finally {
-    setUpdating(false);
-  }
-};
-
+  };
 
   const getLeafletMapHTML = () => {
     const initialLat = selectedLocation?.latitude || -17.3939;
@@ -641,7 +642,6 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
       <style>
         body{margin:0} #map{height:100vh;width:100%}
         .custom-icon{background:#ea580c;border:3px solid #fff;border-radius:50%;width:20px;height:20px;box-shadow:0 2px 6px rgba(0,0,0,.3)}
-        .current-location-icon{background:#2563eb;border:3px solid #fff;border-radius:50%;width:16px;height:16px;box-shadow:0 2px 6px rgba(0,0,0,.3)}
       </style></head>
       <body><div id="map"></div>
         <script>
@@ -695,17 +695,25 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
         <View style={{ backgroundColor: themed.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: themed.border, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } }}>
           <Text style={{ color: themed.text, fontWeight: '900', fontSize: 16, marginBottom: 12 }}>Información del Lugar</Text>
 
-          {[{ key: 'name', label: 'Nombre del Lugar', placeholder: 'Ej: Café Central', required: true },
-            { key: 'description', label: 'Descripción', placeholder: 'Descripción del lugar...', required: true, multiline: true }].map((field: any) => (
+          {/* Nombre & Descripción con errores */}
+          {[
+            { key: 'name', label: 'Nombre del Lugar', placeholder: 'Ej: Café Central', required: true, multiline: false },
+            { key: 'description', label: 'Descripción', placeholder: 'Descripción del lugar...', required: true, multiline: true },
+          ].map((field: any) => (
             <View key={field.key} style={{ marginBottom: 12 }}>
               <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
                 {field.label} {field.required ? '*' : ''}
               </Text>
               <TextInput
                 style={{
-                  borderWidth: 1.5, borderColor: themed.border, borderRadius: 12, padding: 12,
-                  color: themed.text, backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
-                  minHeight: field.multiline ? 100 : undefined, textAlignVertical: field.multiline ? 'top' : 'center'
+                  borderWidth: 1.5,
+                  borderColor: errors[field.key as 'name' | 'description'] ? (themed.danger as string) : themed.border,
+                  borderRadius: 12,
+                  padding: 12,
+                  color: themed.text,
+                  backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
+                  minHeight: field.multiline ? 100 : undefined,
+                  textAlignVertical: field.multiline ? 'top' : 'center',
                 }}
                 placeholder={field.placeholder}
                 placeholderTextColor={themed.muted as string}
@@ -714,6 +722,9 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
                 multiline={!!field.multiline}
                 numberOfLines={field.multiline ? 4 : 1}
               />
+              {errors[field.key as 'name' | 'description'] ? (
+                <Text style={{ color: themed.danger as string, marginTop: 6 }}>{errors[field.key as 'name' | 'description']}</Text>
+              ) : null}
             </View>
           ))}
 
@@ -805,27 +816,20 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
 
           {/* Imagen Principal */}
           <View style={{ marginBottom: 12 }}>
-            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
-              Imagen Principal del Lugar
-            </Text>
+            <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>Imagen Principal del Lugar</Text>
             <Text style={{ color: themed.muted as string, fontSize: 12, marginBottom: 8 }}>
               Esta será la imagen destacada del lugar
             </Text>
-            
+
             {formData.image_url ? (
               <View style={{ marginBottom: 8 }}>
-                <Image 
-                  source={{ uri: formData.image_url.startsWith('/uploads/') 
-                    ? `${process.env.EXPO_PUBLIC_API_URL}${formData.image_url}`
-                    : formData.image_url 
-                  }} 
-                  style={{ 
-                    width: '100%', 
-                    height: 200, 
-                    borderRadius: 12,
-                    borderWidth: 2,
-                    borderColor: themed.accent as string
-                  }} 
+                <Image
+                  source={{
+                    uri: formData.image_url.startsWith('/uploads/')
+                      ? `${process.env.EXPO_PUBLIC_API_URL}${formData.image_url}`
+                      : formData.image_url
+                  }}
+                  style={{ width: '100%', height: 200, borderRadius: 12, borderWidth: 2, borderColor: themed.accent as string }}
                   resizeMode="cover"
                 />
                 <TouchableOpacity
@@ -863,15 +867,11 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
                 <Text style={{ color: themed.text, marginLeft: 8, fontWeight: '600' }}>Cámara</Text>
               </TouchableOpacity>
             </View>
-            
+
             {formData.image_url ? (
-              <Text style={{ color: themed.successTextMuted as string, fontSize: 12, marginTop: 8 }}>
-                ✓ Imagen principal seleccionada
-              </Text>
+              <Text style={{ color: themed.successTextMuted as string, fontSize: 12, marginTop: 8 }}>✓ Imagen principal seleccionada</Text>
             ) : (
-              <Text style={{ color: themed.muted as string, fontSize: 12, marginTop: 8 }}>
-                Opcional - Recomendado para mejor presentación
-              </Text>
+              <Text style={{ color: themed.muted as string, fontSize: 12, marginTop: 8 }}>Opcional - Recomendado para mejor presentación</Text>
             )}
           </View>
 
@@ -884,28 +884,18 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
               Puedes agregar hasta 8 imágenes adicionales del lugar
             </Text>
 
-            {/* Grid de imágenes adicionales */}
             {additionalImages.length > 0 && (
               <View style={{ marginBottom: 12 }}>
-                <View style={{ 
-                  flexDirection: 'row', 
-                  flexWrap: 'wrap', 
-                  gap: 8,
-                }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {additionalImages.map((imageUri, index) => (
                     <View key={index} style={{ position: 'relative', width: '31%' }}>
-                      <Image 
-                        source={{ uri: imageUri.startsWith('/uploads/') 
-                          ? `${process.env.EXPO_PUBLIC_API_URL}${imageUri}`
-                          : imageUri 
-                        }} 
-                        style={{ 
-                          width: '100%', 
-                          height: 80, 
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: themed.border
-                        }} 
+                      <Image
+                        source={{
+                          uri: imageUri.startsWith('/uploads/')
+                            ? `${process.env.EXPO_PUBLIC_API_URL}${imageUri}`
+                            : imageUri
+                        }}
+                        style={{ width: '100%', height: 80, borderRadius: 8, borderWidth: 1, borderColor: themed.border }}
                         resizeMode="cover"
                       />
                       <TouchableOpacity
@@ -924,16 +914,18 @@ const [deletedAdditionalIds, setDeletedAdditionalIds] = useState<number[]>([]);
                       >
                         <Ionicons name="close" size={14} color="#FFFFFF" />
                       </TouchableOpacity>
-                      <Text style={{ 
-                        position: 'absolute', 
-                        bottom: 4, 
-                        left: 4, 
-                        backgroundColor: 'rgba(0,0,0,0.7)', 
-                        color: '#FFFFFF', 
-                        fontSize: 10, 
-                        paddingHorizontal: 4,
-                        borderRadius: 4
-                      }}>
+                      <Text
+                        style={{
+                          position: 'absolute',
+                          bottom: 4,
+                          left: 4,
+                          backgroundColor: 'rgba(0,0,0,0.7)',
+                          color: '#FFFFFF',
+                          fontSize: 10,
+                          paddingHorizontal: 4,
+                          borderRadius: 4
+                        }}
+                      >
                         {index + 1}
                       </Text>
                     </View>

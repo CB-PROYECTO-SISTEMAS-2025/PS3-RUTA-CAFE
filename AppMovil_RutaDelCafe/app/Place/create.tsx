@@ -60,22 +60,15 @@ const DAYS_OF_WEEK = [
 
 const normalizeImageUrl = (url: string | null): string => {
   if (!url) return '';
-  
-  // 🔴 CORRECCIÓN: Si es una URL local del servidor de desarrollo, convertir a ruta relativa
   if (url.includes('192.168.0.14') || url.includes('localhost')) {
-    // Extraer solo la parte de la ruta después de /uploads/
     const match = url.match(/\/uploads\/.+$/);
     return match ? match[0] : url;
   }
-  
-  // Si ya es una ruta relativa, mantenerla
   if (url.startsWith('/uploads/')) {
     return url;
   }
-  
   return url;
 };
-
 
 export default function CreatePlaceScreen() {
   const themed = useThemedStyles();
@@ -109,6 +102,10 @@ export default function CreatePlaceScreen() {
     countryCode: COUNTRY_CODES[0].code,
   });
 
+  // 🔒 Bloqueo por límite de pendientes
+  const [creationBlocked, setCreationBlocked] = useState(false);
+  const [pendingCount, setPendingCount] = useState<number>(0);
+
   const [additionalImages, setAdditionalImages] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<Schedule[]>(
     DAYS_OF_WEEK.map(day => ({
@@ -119,10 +116,85 @@ export default function CreatePlaceScreen() {
     }))
   );
 
-  // Cargar rutas aprobadas + permisos
+  // ===== Utilidades de auth/pendientes =====
+  const getAuthToken = async () => {
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token) {
+      router.replace('/login');
+      return null;
+    }
+    return token;
+  };
+
+  const getPendingStatus = async (): Promise<{ hasPending: boolean; pendingCount: number } | null> => {
+    try {
+      const token = await getAuthToken();
+      if (!token) return null;
+
+      const resp = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/check/pending`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!resp.ok) {
+        if (resp.status === 401 || resp.status === 403) router.replace('/login');
+        return null;
+      }
+
+      const data = await resp.json();
+      // { hasPending: boolean, pendingCount: number }
+      return data;
+    } catch (e) {
+      console.warn('No se pudo verificar pendientes:', e);
+      return null;
+    }
+  };
+
+  const ensureCreationAllowed = async (silent = false): Promise<boolean> => {
+    const status = await getPendingStatus();
+    if (!status) return true; // si falla la consulta, no bloqueamos
+
+    setPendingCount(status.pendingCount);
+    if (status.hasPending) {
+      setCreationBlocked(true);
+      if (!silent) {
+        Alert.alert(
+          'Límite alcanzado',
+          'Ya tienes un lugar en estado PENDIENTE. Primero espera su aprobación o elimínalo para crear uno nuevo.',
+          [
+            {
+              text: 'Ir a mis lugares',
+              onPress: () => {
+                if (numericRouteId) {
+                  router.replace({ pathname: '/Place', params: { routeId: String(numericRouteId) } });
+                } else {
+                  router.replace('/Place');
+                }
+              },
+            },
+            { text: 'Ok' },
+          ]
+        );
+      }
+      return false;
+    } else {
+      setCreationBlocked(false);
+      return true;
+    }
+  };
+
+  const preSubmitGuard = async (): Promise<boolean> => {
+    const ok = await ensureCreationAllowed(false);
+    return ok;
+  };
+  // =========================================
+
+  // Cargar rutas aprobadas + permisos + chequeo de pendientes
   useEffect(() => {
     loadApprovedRoutes();
     requestPermissions();
+    // chequeo silencioso al abrir
+    ensureCreationAllowed(true);
   }, []);
 
   // Si venimos con routeId, fijarlo en el formulario
@@ -136,7 +208,7 @@ export default function CreatePlaceScreen() {
     const { status: mediaStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
     const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
-    
+
     if (mediaStatus !== 'granted') {
       Alert.alert('Permiso necesario', 'Se necesita permiso para acceder a las imágenes.');
     }
@@ -198,13 +270,13 @@ export default function CreatePlaceScreen() {
 
   // Funciones para manejar el horario
   const toggleDayOpen = (index: number) => {
-    setSchedule(prev => prev.map((day, i) => 
+    setSchedule(prev => prev.map((day, i) =>
       i === index ? { ...day, isOpen: !day.isOpen } : day
     ));
   };
 
   const updateScheduleTime = (index: number, field: 'openTime' | 'closeTime', value: string) => {
-    setSchedule(prev => prev.map((day, i) => 
+    setSchedule(prev => prev.map((day, i) =>
       i === index ? { ...day, [field]: value } : day
     ));
   };
@@ -255,7 +327,6 @@ export default function CreatePlaceScreen() {
       map.setView([${latitude}, ${longitude}], 16);
       true;
     `;
-    
     if (webViewRef.current) {
       webViewRef.current.injectJavaScript(script);
     }
@@ -266,10 +337,10 @@ export default function CreatePlaceScreen() {
       Alert.alert('Búsqueda vacía', 'Por favor ingresa una dirección o lugar para buscar');
       return;
     }
-    
+
     setSearchingLocation(true);
     setShowResults(false);
-    
+
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&addressdetails=1`,
@@ -281,44 +352,48 @@ export default function CreatePlaceScreen() {
           }
         }
       );
-      
+
       if (!response.ok) {
         if (response.status === 403) {
           throw new Error('Acceso denegado al servicio de búsqueda. Intenta más tarde.');
         }
         throw new Error(`Error HTTP: ${response.status}`);
       }
-      
+
       const text = await response.text();
       let data;
       try {
         data = JSON.parse(text);
-      } catch (parseError) {
+      } catch {
         throw new Error('Error al procesar los resultados de búsqueda');
       }
-      
+
       if (data && Array.isArray(data) && data.length > 0) {
         setSearchResults(data);
         setShowResults(true);
-        
+
         const firstResult = data[0];
         const latitude = Number(parseFloat(firstResult.lat as any).toFixed(6));
         const longitude = Number(parseFloat(firstResult.lon as any).toFixed(6));
-        
+
         setSelectedLocation({ latitude, longitude });
         setFormData(prev => ({ ...prev, latitude: String(latitude), longitude: String(longitude) }));
-        
+
         placePinOnMap(latitude, longitude);
-        
-        Alert.alert('Ubicación encontrada', 
-          `Se ha colocado un pin en: ${firstResult.display_name}\n\nPuedes ajustar la ubicación tocando el mapa directamente.`);
+
+        Alert.alert(
+          'Ubicación encontrada',
+          `Se ha colocado un pin en: ${firstResult.display_name}\n\nPuedes ajustar la ubicación tocando el mapa directamente.`
+        );
       } else {
         Alert.alert('No se encontraron resultados', 'Intenta con términos de búsqueda más específicos');
         setShowResults(false);
       }
     } catch (error) {
-      Alert.alert('Error de búsqueda', 
-        (error as Error).message || 'No se pudo completar la búsqueda. Verifica tu conexión a internet e intenta nuevamente.');
+      Alert.alert(
+        'Error de búsqueda',
+        (error as Error).message || 'No se pudo completar la búsqueda. Verifica tu conexión a internet e intenta nuevamente.'
+      );
       setShowResults(false);
     } finally {
       setSearchingLocation(false);
@@ -332,18 +407,20 @@ export default function CreatePlaceScreen() {
     setFormData(prev => ({ ...prev, latitude: String(latitude), longitude: String(longitude) }));
     setSearchQuery(result.display_name);
     setShowResults(false);
-    
+
     placePinOnMap(latitude, longitude);
-    
-    Alert.alert('Ubicación seleccionada', 
-      `Se ha colocado un pin en: ${result.display_name}\n\nPuedes ajustar la ubicación tocando el mapa directamente.`);
+
+    Alert.alert(
+      'Ubicación seleccionada',
+      `Se ha colocado un pin en: ${result.display_name}\n\nPuedes ajustar la ubicación tocando el mapa directamente.`
+    );
   };
 
   const getCurrentLocation = async () => {
     try {
       setSearchingLocation(true);
       const { status } = await Location.getForegroundPermissionsAsync();
-      
+
       if (status !== 'granted') {
         Alert.alert('Permiso denegado', 'Se necesita permiso de ubicación para usar esta función');
         return;
@@ -354,22 +431,18 @@ export default function CreatePlaceScreen() {
       });
 
       const { latitude, longitude } = location.coords;
-      
+
       setSelectedLocation({ latitude, longitude });
-      setFormData(prev => ({ 
-        ...prev, 
-        latitude: String(Number(latitude.toFixed(6))), 
-        longitude: String(Number(longitude.toFixed(6))) 
+      setFormData(prev => ({
+        ...prev,
+        latitude: String(Number(latitude.toFixed(6))),
+        longitude: String(Number(longitude.toFixed(6)))
       }));
 
       placePinOnMap(latitude, longitude);
 
       try {
-        const reverseGeocode = await Location.reverseGeocodeAsync({
-          latitude,
-          longitude,
-        });
-
+        const reverseGeocode = await Location.reverseGeocodeAsync({ latitude, longitude });
         if (reverseGeocode.length > 0) {
           const address = reverseGeocode[0];
           const displayName = [
@@ -380,19 +453,19 @@ export default function CreatePlaceScreen() {
             address.region,
             address.country
           ].filter(Boolean).join(', ');
-          
           setSearchQuery(displayName || 'Ubicación actual');
         }
       } catch {
         setSearchQuery(`Lat: ${latitude.toFixed(4)}, Lng: ${longitude.toFixed(4)}`);
       }
 
-      Alert.alert('Ubicación actual', 
-        `Se ha colocado un pin en tu ubicación actual:\n\nLatitud: ${latitude.toFixed(6)}\nLongitud: ${longitude.toFixed(6)}\n\nPuedes ajustar la ubicación tocando el mapa directamente.`);
+      Alert.alert(
+        'Ubicación actual',
+        `Se ha colocado un pin en tu ubicación actual:\n\nLatitud: ${latitude.toFixed(6)}\nLongitud: ${longitude.toFixed(6)}\n\nPuedes ajustar la ubicación tocando el mapa directamente.`
+      );
 
     } catch {
-      Alert.alert('Error', 
-        'No se pudo obtener la ubicación actual. Verifica que el GPS esté activado e intenta nuevamente.');
+      Alert.alert('Error', 'No se pudo obtener la ubicación actual. Verifica que el GPS esté activado e intenta nuevamente.');
     } finally {
       setSearchingLocation(false);
     }
@@ -407,7 +480,7 @@ export default function CreatePlaceScreen() {
         aspect: [4, 3],
         quality: 0.8,
       });
-      
+
       if (!result.canceled) {
         if (isAdditional) {
           if (additionalImages.length >= 8) {
@@ -431,7 +504,7 @@ export default function CreatePlaceScreen() {
         aspect: [4, 3],
         quality: 0.8,
       });
-      
+
       if (!result.canceled) {
         if (isAdditional) {
           if (additionalImages.length >= 8) {
@@ -495,115 +568,132 @@ export default function CreatePlaceScreen() {
     return true;
   };
 
- const handleSubmit = async () => {
-  if (!validateForm()) return;
+  // ===== handleSubmit con guard + manejo 409 =====
+  const handleSubmit = async () => {
+    // Guard: ¿puede crear?
+    const allowed = await preSubmitGuard();
+    if (!allowed) return;
 
-  setLoading(true);
-  try {
-    const token = await AsyncStorage.getItem('userToken');
-    if (!token) {
-      router.replace('/login');
-      return;
-    }
+    if (!validateForm()) return;
 
-    // Preparar datos para enviar
-    const submitData = new FormData();
-    submitData.append('name', formData.name.trim());
-    submitData.append('description', formData.description.trim());
-    submitData.append('latitude', formData.latitude);
-    submitData.append('longitude', formData.longitude);
-    submitData.append('route_id', formData.route_id);
-    submitData.append('website', formData.website || '');
-    submitData.append('phoneNumber', formData.countryCode + (formData.phoneNumber || ''));
+    setLoading(true);
+    try {
+      const token = await getAuthToken();
+      if (!token) return;
 
-    // Horarios
-    const schedulesData = schedule
-      .filter(daySchedule => daySchedule.isOpen)
-      .map(daySchedule => ({
-        dayOfWeek: daySchedule.dayOfWeek,
-        openTime: daySchedule.openTime + ':00',
-        closeTime: daySchedule.closeTime + ':00'
-      }));
-    submitData.append('schedules', JSON.stringify(schedulesData));
+      // Preparar datos para enviar
+      const submitData = new FormData();
+      submitData.append('name', formData.name.trim());
+      submitData.append('description', formData.description.trim());
+      submitData.append('latitude', formData.latitude);
+      submitData.append('longitude', formData.longitude);
+      submitData.append('route_id', formData.route_id);
+      submitData.append('website', formData.website || '');
+      submitData.append('phoneNumber', formData.countryCode + (formData.phoneNumber || ''));
 
-    // 🔴 CORRECCIÓN: Imagen principal - solo enviar si hay imagen seleccionada
-    if (formData.image_url) {
-      const filename = formData.image_url.split('/').pop();
-      const match = /\.(\w+)$/.exec(filename || '');
-      const type = match ? `image/${match[1]}` : 'image/jpeg';
-      submitData.append('image', {
-        uri: formData.image_url,
-        name: filename || 'image.jpg',
-        type,
-      } as any);
-    }
+      // Horarios
+      const schedulesData = schedule
+        .filter(daySchedule => daySchedule.isOpen)
+        .map(daySchedule => ({
+          dayOfWeek: daySchedule.dayOfWeek,
+          openTime: daySchedule.openTime + ':00',
+          closeTime: daySchedule.closeTime + ':00'
+        }));
+      submitData.append('schedules', JSON.stringify(schedulesData));
 
-    // Imágenes adicionales (hasta 8)
-    additionalImages.forEach((imageUri, index) => {
-      const filename = imageUri.split('/').pop();
-      const match = /\.(\w+)$/.exec(filename || '');
-      const type = match ? `image/${match[1]}` : 'image/jpeg';
-      
-      submitData.append('additional_images', {
-        uri: imageUri,
-        name: `additional_${index}.${match ? match[1] : 'jpg'}`,
-        type,
-      } as any);
-    });
+      // Imagen principal (si existe)
+      if (formData.image_url) {
+        const filename = formData.image_url.split('/').pop();
+        const match = /\.(\w+)$/.exec(filename || '');
+        const type = match ? `image/${match[1]}` : 'image/jpeg';
+        submitData.append('image', {
+          uri: formData.image_url,
+          name: filename || 'image.jpg',
+          type,
+        } as any);
+      }
 
-    console.log('📤 Enviando datos al servidor...');
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places`, {
-      method: 'POST',
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        // 🔴 IMPORTANTE: No incluir Content-Type cuando se usa FormData
-        // El navegador lo establecerá automáticamente con el boundary correcto
-      },
-      body: submitData,
-    });
+      // Imágenes adicionales (hasta 8)
+      additionalImages.forEach((imageUri, index) => {
+        const filename = imageUri.split('/').pop();
+        const match = /\.(\w+)$/.exec(filename || '');
+        const type = match ? `image/${match[1]}` : 'image/jpeg';
 
-    const responseText = await response.text();
-    let responseData;
-    try { 
-      responseData = JSON.parse(responseText); 
-    } catch { 
-      responseData = { message: responseText || 'Error desconocido' }; 
-    }
+        submitData.append('additional_images', {
+          uri: imageUri,
+          name: `additional_${index}.${match ? match[1] : 'jpg'}`,
+          type,
+        } as any);
+      });
 
-    if (response.ok) {
-      Alert.alert('Éxito', 'Lugar creado correctamente', [
-        {
-          text: 'OK',
-          onPress: () => {
-            // 🔴 CORRECCIÓN: Forzar refresh de la lista
-            if (numericRouteId) {
-              router.replace({ 
-                pathname: '/Place', 
-                params: { 
-                  routeId: String(numericRouteId),
-                  refresh: Date.now() // Agregar timestamp para forzar refresh
-                } 
-              });
-            } else {
-              router.replace({ 
-                pathname: '/Place',
-                params: { refresh: Date.now() }
-              });
-            }
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }, // no incluir Content-Type con FormData
+        body: submitData,
+      });
+
+      const responseText = await response.text();
+      let responseData: any;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        responseData = { message: responseText || 'Error desconocido' };
+      }
+
+      if (response.ok) {
+        Alert.alert('Éxito', 'Lugar creado correctamente', [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (numericRouteId) {
+                router.replace({
+                  pathname: '/Place',
+                  params: { routeId: String(numericRouteId), refresh: Date.now() }
+                });
+              } else {
+                router.replace({ pathname: '/Place', params: { refresh: Date.now() } });
+              }
+            },
           },
-        },
-      ]);
-    } else {
-      console.error('Error del servidor:', response.status, responseData);
+        ]);
+        return;
+      }
+
+      // Manejo explícito del límite enviado por backend
+      if (response.status === 409 && responseData?.code === 'PENDING_LIMIT') {
+        setCreationBlocked(true);
+        setPendingCount(responseData.currentPending ?? pendingCount);
+
+        Alert.alert(
+          'No puedes crear más lugares',
+          responseData.message || 'Límite de lugares pendientes alcanzado.',
+          [
+            {
+              text: 'Ver mis lugares',
+              onPress: () => {
+                if (numericRouteId) {
+                  router.replace({ pathname: '/Place', params: { routeId: String(numericRouteId) } });
+                } else {
+                  router.replace('/Place');
+                }
+              }
+            },
+            { text: 'OK' }
+          ]
+        );
+        return;
+      }
+
+      // Otros errores
       throw new Error(responseData.message || `Error ${response.status} al crear el lugar`);
+    } catch (error: any) {
+      console.error('Error completo en handleSubmit:', error);
+      Alert.alert('Error', error?.message || 'No se pudo crear el lugar. Intenta nuevamente.');
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error('Error completo en handleSubmit:', error);
-    Alert.alert('Error', (error as Error).message || 'No se pudo crear el lugar. Intenta nuevamente.');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
+  // ===========================================
 
   const getLeafletMapHTML = () => {
     const initialLat = selectedLocation?.latitude || -17.3939;
@@ -663,7 +753,7 @@ export default function CreatePlaceScreen() {
     const openDays = schedule.filter(day => day.isOpen);
     if (openDays.length === 0) return 'Cerrado todos los días';
     const firstOpenDay = openDays[0];
-    const allSameSchedule = openDays.every(day => 
+    const allSameSchedule = openDays.every(day =>
       day.openTime === firstOpenDay.openTime && day.closeTime === firstOpenDay.closeTime
     );
     if (openDays.length === 7 && allSameSchedule) {
@@ -700,6 +790,19 @@ export default function CreatePlaceScreen() {
 
       <ScrollView style={{ flex: 1, paddingHorizontal: 24, marginTop: 16 }} showsVerticalScrollIndicator={false}>
         <View style={{ backgroundColor: themed.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: themed.border, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } }}>
+
+          {/* Aviso de bloqueo (opcional, visible si aplica) */}
+          {creationBlocked && (
+            <View style={{ backgroundColor: themed.softBg, borderColor: themed.accent, borderWidth: 1, padding: 12, borderRadius: 12, marginBottom: 12 }}>
+              <Text style={{ color: themed.accent as string, fontWeight: '700' }}>
+                No puedes crear más lugares: tienes {pendingCount} pendiente(s).
+              </Text>
+              <Text style={{ color: themed.muted as string, marginTop: 4, fontSize: 12 }}>
+                Debes esperar la aprobación o eliminar el pendiente actual.
+              </Text>
+            </View>
+          )}
+
           {/* Campos */}
           {[
             { key: 'name', label: 'Nombre del Lugar', placeholder: 'Ej: Café Central', required: true, multiline: false },
@@ -866,23 +969,24 @@ export default function CreatePlaceScreen() {
             <Text style={{ color: themed.muted as string, fontSize: 12, marginBottom: 8 }}>
               Esta será la imagen destacada del lugar
             </Text>
-            
-           {formData.image_url ? (
-            <View style={{ marginBottom: 8 }}>
-              <Image 
-                source={{ uri: formData.image_url.startsWith('/uploads/') 
-                  ? `${process.env.EXPO_PUBLIC_API_URL}${formData.image_url}`
-                  : formData.image_url 
-                }} 
-                style={{ 
-                  width: '100%', 
-                  height: 200, 
-                  borderRadius: 12,
-                  borderWidth: 2,
-                  borderColor: themed.accent as string
-                }} 
-                resizeMode="cover"
-              />
+
+            {formData.image_url ? (
+              <View style={{ marginBottom: 8 }}>
+                <Image
+                  source={{
+                    uri: formData.image_url.startsWith('/uploads/')
+                      ? `${process.env.EXPO_PUBLIC_API_URL}${formData.image_url}`
+                      : formData.image_url
+                  }}
+                  style={{
+                    width: '100%',
+                    height: 200,
+                    borderRadius: 12,
+                    borderWidth: 2,
+                    borderColor: themed.accent as string
+                  }}
+                  resizeMode="cover"
+                />
                 <TouchableOpacity
                   onPress={removeMainImage}
                   style={{
@@ -925,7 +1029,7 @@ export default function CreatePlaceScreen() {
                 <Text style={{ color: themed.text, marginLeft: 8, fontWeight: '600' }}>Cámara</Text>
               </TouchableOpacity>
             </View>
-            
+
             {formData.image_url ? (
               <Text style={{ color: themed.successTextMuted as string, fontSize: 12, marginTop: 8 }}>
                 ✓ Imagen principal seleccionada
@@ -946,30 +1050,31 @@ export default function CreatePlaceScreen() {
               Puedes agregar hasta 8 imágenes adicionales del lugar
             </Text>
 
-                      {/* Grid de imágenes adicionales */}
-                      {additionalImages.length > 0 && (
-            <View style={{ marginBottom: 12 }}>
-              <View style={{ 
-                flexDirection: 'row', 
-                flexWrap: 'wrap', 
-                gap: 8,
-              }}>
-                {additionalImages.map((imageUri, index) => (
-                  <View key={index} style={{ position: 'relative', width: '31%' }}>
-                    <Image 
-                      source={{ uri: imageUri.startsWith('/uploads/') 
-                        ? `${process.env.EXPO_PUBLIC_API_URL}${imageUri}`
-                        : imageUri 
-                      }} 
-                      style={{ 
-                        width: '100%', 
-                        height: 80, 
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: themed.border
-                      }} 
-                      resizeMode="cover"
-                    />
+            {/* Grid de imágenes adicionales */}
+            {additionalImages.length > 0 && (
+              <View style={{ marginBottom: 12 }}>
+                <View style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                }}>
+                  {additionalImages.map((imageUri, index) => (
+                    <View key={index} style={{ position: 'relative', width: '31%' }}>
+                      <Image
+                        source={{
+                          uri: imageUri.startsWith('/uploads/')
+                            ? `${process.env.EXPO_PUBLIC_API_URL}${imageUri}`
+                            : imageUri
+                        }}
+                        style={{
+                          width: '100%',
+                          height: 80,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: themed.border
+                        }}
+                        resizeMode="cover"
+                      />
                       <TouchableOpacity
                         onPress={() => removeAdditionalImage(index)}
                         style={{
@@ -986,13 +1091,13 @@ export default function CreatePlaceScreen() {
                       >
                         <Ionicons name="close" size={14} color="#FFFFFF" />
                       </TouchableOpacity>
-                      <Text style={{ 
-                        position: 'absolute', 
-                        bottom: 4, 
-                        left: 4, 
-                        backgroundColor: 'rgba(0,0,0,0.7)', 
-                        color: '#FFFFFF', 
-                        fontSize: 10, 
+                      <Text style={{
+                        position: 'absolute',
+                        bottom: 4,
+                        left: 4,
+                        backgroundColor: 'rgba(0,0,0,0.7)',
+                        color: '#FFFFFF',
+                        fontSize: 10,
                         paddingHorizontal: 4,
                         borderRadius: 4
                       }}>
@@ -1051,16 +1156,23 @@ export default function CreatePlaceScreen() {
 
             <TouchableOpacity
               onPress={handleSubmit}
-              disabled={loading}
+              disabled={loading || creationBlocked}
               style={{
-                flex: 1, backgroundColor: themed.accent, paddingVertical: 14, borderRadius: 12,
-                alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }
+                flex: 1,
+                backgroundColor: themed.accent,
+                opacity: (loading || creationBlocked) ? 0.7 : 1,
+                paddingVertical: 14,
+                borderRadius: 12,
+                alignItems: 'center',
+                shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }
               }}
             >
               {loading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>Crear Lugar</Text>
+                <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>
+                  {creationBlocked ? 'Bloqueado' : 'Crear Lugar'}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -1368,7 +1480,7 @@ export default function CreatePlaceScreen() {
               >
                 <Text style={{ color: themed.accent as string, fontWeight: '700' }}>Limpiar</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity onPress={handleAcceptPhoneNumber} style={{ flex: 1, backgroundColor: themed.accent as string, paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}>
                 <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>Aceptar</Text>
               </TouchableOpacity>

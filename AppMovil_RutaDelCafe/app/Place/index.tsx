@@ -34,6 +34,7 @@ interface Place {
   route_id: number;
   route_name?: string;
   status: 'pendiente' | 'aprobada' | 'rechazada';
+  rejectionComment?: string; // 🔥 NUEVO: Campo de comentario de rechazo
   website?: string;
   phoneNumber?: string;
   image_url?: string | null;
@@ -167,6 +168,25 @@ export default function PlacesMapScreen() {
     if (places.length > 0) setMapKey((p) => p + 1);
   }, [places]);
 
+  // 🔥 NUEVO: Verificar si el usuario tiene lugares pendientes
+  const userHasPendingPlaces = useMemo(() => {
+    if (!isAdmin) return false;
+    return places.some(place => place.createdBy === userId && place.status === 'pendiente');
+  }, [places, userId, isAdmin]);
+
+  // 🔥 NUEVO: Función para manejar acciones bloqueadas
+  const handleBlockedAction = (place: Place, actionName: string) => {
+    if (place.status === 'rechazada') {
+      Alert.alert(
+        'Acción Bloqueada',
+        `No puedes ${actionName} un lugar que ha sido rechazado. Revisa el motivo del rechazo y contacta al administrador si necesitas más información.`,
+        [{ text: 'Entendido', style: 'default' }]
+      );
+      return true;
+    }
+    return false;
+  };
+
   // user
   const loadUser = async () => {
     try {
@@ -212,7 +232,9 @@ export default function PlacesMapScreen() {
         id: p.id,
         name: p.name,
         image_url: p.image_url,
-        additional_images_count: p.additional_images?.length || 0
+        additional_images_count: p.additional_images?.length || 0,
+        status: p.status,
+        rejectionComment: p.rejectionComment // 🔥 NUEVO: Incluir comentario de rechazo
       })));
 
       const normalized = data
@@ -244,6 +266,22 @@ export default function PlacesMapScreen() {
     setMapLoaded(false);
     setMapError(false);
     fetchPlaces();
+  };
+
+  // 🔥 NUEVO: Manejo de creación de lugares con bloqueo
+  const handleCreatePlace = () => {
+    if (userHasPendingPlaces) {
+      Alert.alert(
+        'Lugares Pendientes', 
+        'No puedes crear un nuevo lugar hasta que el administrador apruebe tus lugares pendientes.',
+        [{ text: 'Entendido', style: 'default' }]
+      );
+      return;
+    }
+    router.push({
+      pathname: '/Place/create',
+      params: numericRouteId ? { routeId: String(numericRouteId), routeName: resolvedRouteName } : undefined,
+    });
   };
 
   const deletePlace = async (placeId: number) => {
@@ -562,6 +600,29 @@ export default function PlacesMapScreen() {
         </Text>
       </View>
 
+      {/* 🔥 NUEVO: Alerta de lugares pendientes para técnicos */}
+      {isAdmin && userHasPendingPlaces && (
+        <View style={{ 
+          marginHorizontal: 24, 
+          marginTop: 16,
+          backgroundColor: '#fed7aa', 
+          borderWidth: 1, 
+          borderColor: '#fdba74',
+          borderRadius: 12, 
+          padding: 12 
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="information-circle" size={24} color="#ea580c" />
+            <Text style={{ color: '#9a3412', fontWeight: '700', marginLeft: 8, flex: 1 }}>
+              Tienes lugares pendientes de aprobación
+            </Text>
+          </View>
+          <Text style={{ color: '#7c2d12', marginTop: 4, fontSize: 14 }}>
+            No puedes crear nuevos lugares hasta que el administrador apruebe tus lugares pendientes.
+          </Text>
+        </View>
+      )}
+
       {/* Acciones superiores */}
       <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
         <TouchableOpacity
@@ -591,14 +652,10 @@ export default function PlacesMapScreen() {
         </TouchableOpacity>
 
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {isAdmin && (
+          {/* 🔥 MODIFICADO: Botón de crear con bloqueo */}
+          {isAdmin && !userHasPendingPlaces && (
             <TouchableOpacity
-              onPress={() =>
-                router.push({
-                  pathname: '/Place/create',
-                  params: numericRouteId ? { routeId: String(numericRouteId), routeName: resolvedRouteName } : undefined,
-                })
-              }
+              onPress={handleCreatePlace}
               style={{
                 flex: 1,
                 backgroundColor: themed.accent as string,
@@ -616,6 +673,30 @@ export default function PlacesMapScreen() {
             >
               <Ionicons name="add-circle" size={24} color="#fff" />
               <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>Crear Lugar</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* 🔥 NUEVO: Botón bloqueado cuando hay lugares pendientes */}
+          {isAdmin && userHasPendingPlaces && (
+            <TouchableOpacity
+              style={{
+                flex: 1,
+                backgroundColor: '#fdba74',
+                paddingVertical: 16,
+                borderRadius: 16,
+                shadowColor: '#000',
+                shadowOpacity: 0.18,
+                shadowRadius: 6,
+                shadowOffset: { width: 0, height: 2 },
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+              }}
+              disabled={true}
+            >
+              <Ionicons name="add-circle" size={24} color="#9a3412" />
+              <Text style={{ color: '#9a3412', fontWeight: '800', fontSize: 16 }}>Creación Bloqueada</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -710,13 +791,19 @@ export default function PlacesMapScreen() {
                 No hay lugares disponibles
               </Text>
               <Text style={{ color: themed.muted as string, textAlign: 'center', marginTop: 6 }}>
-                {isAdmin ? 'Crea tu primer lugar para comenzar' : 'No hay lugares aprobados para mostrar'}
+                {isAdmin 
+                  ? userHasPendingPlaces
+                    ? 'Tienes lugares pendientes de aprobación'
+                    : 'Crea tu primer lugar para comenzar'
+                  : 'No hay lugares aprobados para mostrar'
+                }
               </Text>
             </View>
           ) : (
             visiblePlaces.map((place) => {
               const images = normalizeImages(place);
               const imageInfo = getPlaceImageInfo(place);
+              const statusColors = getStatusColor(place.status);
               
               return (
                 <View
@@ -786,11 +873,11 @@ export default function PlacesMapScreen() {
                           paddingVertical: 4,
                           borderRadius: 999,
                           borderWidth: 1,
-                          backgroundColor: getStatusColor(place.status).bg,
-                          borderColor: getStatusColor(place.status).border
+                          backgroundColor: statusColors.bg,
+                          borderColor: statusColors.border
                         }}>
                           <Text style={{ 
-                            color: getStatusColor(place.status).text,
+                            color: statusColors.text,
                             fontSize: 12,
                             fontWeight: '700'
                           }}>
@@ -806,6 +893,28 @@ export default function PlacesMapScreen() {
                       <Text style={{ color: themed.text, fontSize: 13, marginTop: 4 }} numberOfLines={2}>
                         {place.description}
                       </Text>
+
+                      {/* 🔥 NUEVO: Mostrar comentario de rechazo si existe */}
+                      {place.status === 'rechazada' && place.rejectionComment && (
+                        <View style={{ 
+                          backgroundColor: '#fef2f2', 
+                          borderWidth: 1, 
+                          borderColor: '#fecaca',
+                          borderRadius: 8, 
+                          padding: 8,
+                          marginTop: 4
+                        }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                            <Ionicons name="alert-circle-outline" size={14} color="#dc2626" />
+                            <Text style={{ color: '#991b1b', fontWeight: '700', marginLeft: 4, flex: 1, fontSize: 12 }}>
+                              Motivo del rechazo:
+                            </Text>
+                          </View>
+                          <Text style={{ color: '#7f1d1d', marginTop: 2, fontSize: 11 }}>
+                            {place.rejectionComment}
+                          </Text>
+                        </View>
+                      )}
 
                       {/* Información de imágenes */}
                       {imageInfo.totalImages > 0 && (
@@ -837,8 +946,9 @@ export default function PlacesMapScreen() {
                     </View>
                   </View>
 
-                  {/* Acciones */}
+                  {/* 🔥 MODIFICADO: Acciones con bloqueo para lugares rechazados */}
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                    {/* Ver detalles - SIEMPRE disponible */}
                     <TouchableOpacity
                       onPress={() => router.push(`/Place/details?id=${place.id}`)}
                       style={{
@@ -857,24 +967,40 @@ export default function PlacesMapScreen() {
 
                     {isAdmin && (
                       <>
+                        {/* Editar - BLOQUEADO si está rechazado */}
                         <TouchableOpacity
-                          onPress={() => router.push(`/Place/edit?id=${place.id}`)}
+                          onPress={() => {
+                            if (handleBlockedAction(place, 'editar')) return;
+                            router.push(`/Place/edit?id=${place.id}`);
+                          }}
                           style={{
                             flex: 1,
-                            backgroundColor: themed.softBg,
+                            backgroundColor: place.status === 'rechazada' ? '#e5e7eb' : themed.softBg,
                             paddingVertical: 8,
                             borderRadius: 12,
                             borderWidth: 1,
-                            borderColor: themed.border,
+                            borderColor: place.status === 'rechazada' ? '#9ca3af' : themed.border,
                             flexDirection: 'row',
                             alignItems: 'center',
                             justifyContent: 'center'
                           }}
+                          disabled={place.status === 'rechazada'}
                         >
-                          <Ionicons name="create-outline" size={18} color="#3b82f6" />
-                          <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>Editar</Text>
+                          <Ionicons 
+                            name="create-outline" 
+                            size={18} 
+                            color={place.status === 'rechazada' ? '#9ca3af' : '#3b82f6'} 
+                          />
+                          <Text style={{ 
+                            color: place.status === 'rechazada' ? '#9ca3af' : themed.text, 
+                            fontWeight: '700', 
+                            marginLeft: 8 
+                          }}>
+                            Editar
+                          </Text>
                         </TouchableOpacity>
 
+                        {/* Eliminar - SIEMPRE disponible para técnicos */}
                         <TouchableOpacity
                           onPress={() => deletePlace(place.id)}
                           style={{
@@ -897,57 +1023,90 @@ export default function PlacesMapScreen() {
 
                     {isUser ? (
                       <>
+                        {/* Like - BLOQUEADO si está rechazado */}
                         <TouchableOpacity
-                          onPress={() => toggleLike(place.id)}
+                          onPress={() => {
+                            if (handleBlockedAction(place, 'dar like a')) return;
+                            toggleLike(place.id);
+                          }}
                           style={{
                             flex: 1,
-                            backgroundColor: themed.softBg,
+                            backgroundColor: place.status === 'rechazada' ? '#e5e7eb' : themed.softBg,
                             paddingVertical: 8,
                             borderRadius: 12,
                             borderWidth: 1,
-                            borderColor: themed.border,
+                            borderColor: place.status === 'rechazada' ? '#9ca3af' : themed.border,
                             flexDirection: 'row',
                             alignItems: 'center',
                             justifyContent: 'center'
                           }}
+                          disabled={place.status === 'rechazada'}
                         >
-                          <Ionicons name={place.user_liked ? 'heart' : 'heart-outline'} size={18} color="#ec4899" />
-                          <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>
+                          <Ionicons 
+                            name={place.user_liked ? 'heart' : 'heart-outline'} 
+                            size={18} 
+                            color={place.status === 'rechazada' ? '#9ca3af' : '#ec4899'} 
+                          />
+                          <Text style={{ 
+                            color: place.status === 'rechazada' ? '#9ca3af' : themed.text, 
+                            fontWeight: '700', 
+                            marginLeft: 8 
+                          }}>
                             {place.user_liked ? 'Quitar' : 'Like'}
                           </Text>
                         </TouchableOpacity>
 
+                        {/* Comentarios - BLOQUEADO si está rechazado */}
                         <TouchableOpacity
-                          onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
+                          onPress={() => {
+                            if (handleBlockedAction(place, 'comentar')) return;
+                            router.push(`/Place/comments?id=${place.id}&name=${place.name}`);
+                          }}
                           style={{
                             flex: 1,
-                            backgroundColor: themed.successBg,
+                            backgroundColor: place.status === 'rechazada' ? '#e5e7eb' : themed.successBg,
                             paddingVertical: 8,
                             borderRadius: 12,
                             borderWidth: 1,
-                            borderColor: themed.successBorder,
+                            borderColor: place.status === 'rechazada' ? '#9ca3af' : themed.successBorder,
                             alignItems: 'center',
                             justifyContent: 'center'
                           }}
+                          disabled={place.status === 'rechazada'}
                         >
-                          <Text style={{ color: themed.successText as string, fontWeight: '700' }}>Comentarios</Text>
+                          <Text style={{ 
+                            color: place.status === 'rechazada' ? '#9ca3af' : (themed.successText as string), 
+                            fontWeight: '700' 
+                          }}>
+                            Comentarios
+                          </Text>
                         </TouchableOpacity>
                       </>
                     ) : (
+                      // Visitante: solo ver comentarios (BLOQUEADO si está rechazado)
                       <TouchableOpacity
-                        onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
+                        onPress={() => {
+                          if (handleBlockedAction(place, 'ver comentarios de')) return;
+                          router.push(`/Place/comments?id=${place.id}&name=${place.name}`);
+                        }}
                         style={{
                           flex: 1,
-                          backgroundColor: themed.successBg,
+                          backgroundColor: place.status === 'rechazada' ? '#e5e7eb' : themed.successBg,
                           paddingVertical: 8,
                           borderRadius: 12,
                           borderWidth: 1,
-                          borderColor: themed.successBorder,
+                          borderColor: place.status === 'rechazada' ? '#9ca3af' : themed.successBorder,
                           alignItems: 'center',
                           justifyContent: 'center'
                         }}
+                        disabled={place.status === 'rechazada'}
                       >
-                        <Text style={{ color: themed.successText as string, fontWeight: '700' }}>Comentarios</Text>
+                        <Text style={{ 
+                          color: place.status === 'rechazada' ? '#9ca3af' : (themed.successText as string), 
+                          fontWeight: '700' 
+                        }}>
+                          Comentarios
+                        </Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -1004,7 +1163,7 @@ export default function PlacesMapScreen() {
         </View>
       </Modal>
 
-      {/* Bottom sheet (sin cambios) */}
+      {/* Bottom sheet - MODIFICADO para mostrar comentario de rechazo */}
       <Modal visible={infoOpen} transparent animationType="slide" onRequestClose={() => setInfoOpen(false)}>
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' }}>
           <View
@@ -1038,7 +1197,29 @@ export default function PlacesMapScreen() {
                   {selectedPlace.route_name || resolvedRouteName || (numericRouteId ? `Ruta #${numericRouteId}` : '—')}
                 </Text>
 
-                {isUser && (
+                {/* 🔥 NUEVO: Mostrar comentario de rechazo en el modal */}
+                {selectedPlace.status === 'rechazada' && selectedPlace.rejectionComment && (
+                  <View style={{ 
+                    backgroundColor: '#fef2f2', 
+                    borderWidth: 1, 
+                    borderColor: '#fecaca',
+                    borderRadius: 12, 
+                    padding: 12,
+                    marginBottom: 12
+                  }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                      <Ionicons name="alert-circle-outline" size={18} color="#dc2626" />
+                      <Text style={{ color: '#991b1b', fontWeight: '700', marginLeft: 8, flex: 1 }}>
+                        Motivo del rechazo:
+                      </Text>
+                    </View>
+                    <Text style={{ color: '#7f1d1d', marginTop: 4, fontSize: 14 }}>
+                      {selectedPlace.rejectionComment}
+                    </Text>
+                  </View>
+                )}
+
+                {isUser && selectedPlace.status !== 'rechazada' && (
                   <View style={{ flexDirection: 'row', marginBottom: 12 }}>
                     <TouchableOpacity onPress={() => toggleLike(selectedPlace.id)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
                       <Ionicons
@@ -1124,7 +1305,7 @@ export default function PlacesMapScreen() {
                     </Text>
                   </TouchableOpacity>
 
-                  {selectedPlace.phoneNumber ? (
+                  {selectedPlace.phoneNumber && selectedPlace.status !== 'rechazada' ? (
                     <TouchableOpacity
                       onPress={() => {
                         setInfoOpen(false);

@@ -348,6 +348,18 @@ export const updatePlace = async (id, updates, modifiedBy) => {
   return result.affectedRows;
 };
 
+// ✅ Cuenta lugares en estado 'pendiente' del usuario
+export const countPendingPlacesByUser = async (userId) => {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS count 
+     FROM \`${SCHEMA}\`.place 
+     WHERE createdBy = ? AND status = 'pendiente'`,
+    [userId]
+  );
+  return rows[0]?.count ?? 0;
+};
+
+
 // Eliminar lugar
 export const deletePlace = async (id) => {
   const [result] = await pool.query(

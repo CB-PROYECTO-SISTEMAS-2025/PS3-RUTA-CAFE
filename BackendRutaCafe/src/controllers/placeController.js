@@ -12,7 +12,8 @@ import {
   getImagesByPlaceId,
   deletePlaceImages,
   findPlacesByCityId,
-  findAllPendingPlaces
+  findAllPendingPlaces,
+  countPendingPlacesByUser, // 👈 import del contador
 } from "../models/placeModel.js";
 import pool, { SCHEMA } from "../config/db.js";
 import path from "path";
@@ -65,8 +66,22 @@ export const createPlaceController = async (req, res) => {
       return res.status(400).json({ message: `La ruta ${routeIdNum} no existe` });
     }
 
-    // 🔴 CORRECCIÓN CRÍTICA: Procesar imagen principal usando req.files
-    let image_url = ""; // String vacío en lugar de null
+    // 🔒 Límite de sitios pendientes por usuario (por env, default 1)
+    const MAX_PENDING = parseInt(process.env.MAX_PENDING_PLACES_PER_USER || '1', 10);
+    if (createdBy && Number.isFinite(MAX_PENDING) && MAX_PENDING > 0) {
+      const pendingCount = await countPendingPlacesByUser(createdBy);
+      if (pendingCount >= MAX_PENDING) {
+        return res.status(409).json({
+          code: 'PENDING_LIMIT',
+          message: `No puedes crear más lugares. Límite de pendientes: ${MAX_PENDING}.`,
+          currentPending: pendingCount,
+          limit: MAX_PENDING
+        });
+      }
+    }
+
+    // Procesar imagen principal (multipart con upload.fields)
+    let image_url = "";
     if (req.files && req.files.image && req.files.image[0]) {
       image_url = path.posix.join("/uploads/places", req.files.image[0].filename);
       console.log("🖼️ Imagen principal procesada:", image_url);
@@ -80,9 +95,7 @@ export const createPlaceController = async (req, res) => {
       const files = Array.isArray(req.files.additional_images) 
         ? req.files.additional_images 
         : [req.files.additional_images];
-      
-      // Limitar a 8 imágenes máximo
-      const limitedFiles = files.slice(0, 8);
+      const limitedFiles = files.slice(0, 8); // máximo 8
       additionalImages = limitedFiles.map(file => 
         path.posix.join("/uploads/places", file.filename)
       );
@@ -99,19 +112,18 @@ export const createPlaceController = async (req, res) => {
       route_id: routeIdNum,
       website: (website || "").trim(),
       phoneNumber: (phoneNumber || "").trim(),
-      image_url, // Ahora será string vacío en lugar de null
+      image_url,
       createdBy,
     });
 
     console.log("✅ Lugar creado con ID:", placeId);
 
-    // Procesar horarios si existen
+    // Horarios
     let createdSchedules = [];
     if (schedules) {
       try {
         const schedulesData = JSON.parse(schedules);
         console.log("📅 Procesando horarios:", schedulesData);
-        
         if (Array.isArray(schedulesData) && schedulesData.length > 0) {
           createdSchedules = await createPlaceSchedules(placeId, schedulesData);
           console.log("✅ Horarios creados:", createdSchedules.length);
@@ -121,7 +133,7 @@ export const createPlaceController = async (req, res) => {
       }
     }
 
-    // Crear imágenes adicionales si existen
+    // Imágenes adicionales
     let createdImages = [];
     if (additionalImages.length > 0) {
       try {
@@ -187,14 +199,13 @@ export const getPlacesController = async (req, res) => {
 
 export const getPlacesByRouteController = async (req, res) => {
   try {
-   const { routeId } = req.params;
+    const { routeId } = req.params;
     const userId = req.user?.id || null;
     
     console.log(`📊 Cargando lugares de ruta ${routeId} para usuario: ${userId || 'visitante'}`);
     
     const places = await getPlacesByRoute(routeId, req.user || { id: null, role: 0 });
     
-    // Obtener horarios e imágenes para cada lugar
     const placesWithDetails = await Promise.all(
       places.map(async (place) => {
         const schedules = await getSchedulesByPlaceId(place.id);
@@ -224,13 +235,11 @@ export const getPlaceByIdController = async (req, res) => {
     const userId = req.user?.id || null;
     console.log("➡️ getPlacesController user=", req.user);
 
-    
     console.log(`📊 Cargando lugar ${id} para usuario: ${userId || 'visitante'}`);
     
     const place = await getPlaceById(id, userId);
     if (!place) return res.status(404).json({ message: "Lugar no encontrado" });
     
-    // Obtener horarios e imágenes del lugar
     const schedules = await getSchedulesByPlaceId(id);
     const images = await getImagesByPlaceId(id);
     
@@ -252,7 +261,6 @@ export const updatePlaceController = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // vienen como multipart/form-data
     const {
       schedules,                        // string JSON opcional
       remove_main_image,                // '1'|'0' o 'true'|'false'
@@ -271,7 +279,6 @@ export const updatePlaceController = async (req, res) => {
       deleted_additional_image_ids
     });
 
-    // 🔒 Filtramos SOLO campos válidos de la tabla place
     const allowedFields = [
       'name', 'description', 'latitude', 'longitude', 'route_id',
       'website', 'phoneNumber', 'image_url', 'status', 'rejectionComment'
@@ -281,7 +288,6 @@ export const updatePlaceController = async (req, res) => {
       if (allowedFields.includes(k)) filteredUpdates[k] = v;
     }
 
-    // Normalización de tipos
     if (filteredUpdates.latitude) filteredUpdates.latitude = parseFloat(filteredUpdates.latitude);
     if (filteredUpdates.longitude) filteredUpdates.longitude = parseFloat(filteredUpdates.longitude);
 
@@ -294,16 +300,13 @@ export const updatePlaceController = async (req, res) => {
       if (!r.length) return res.status(400).json({ message: `La ruta ${filteredUpdates.route_id} no existe` });
     }
 
-    // Verificar que exista el place
     const existingPlace = await getPlaceById(id);
     if (!existingPlace) return res.status(404).json({ message: "Lugar no encontrado" });
 
-    // =========================
-    //  Imagen principal (place.image_url)
-    // =========================
+    // Imagen principal
     const wantRemoveMain = remove_main_image === '1' || remove_main_image === 'true';
     if (wantRemoveMain) {
-      filteredUpdates.image_url = ""; // limpiar
+      filteredUpdates.image_url = "";
       console.log("🧹 Se eliminará la imagen principal");
     } else if (req.files && req.files.image && req.files.image[0]) {
       filteredUpdates.image_url = path.posix.join("/uploads/places", req.files.image[0].filename);
@@ -312,15 +315,11 @@ export const updatePlaceController = async (req, res) => {
       console.log("ℹ️ Imagen principal: se mantiene la existente");
     }
 
-    // 1) Actualizar datos base del place
     const updated = await updatePlace(id, filteredUpdates, modifiedBy);
     if (!updated) return res.status(400).json({ message: "No se pudo actualizar el lugar" });
 
-    // =========================
-    //  Imágenes adicionales (tabla place_images)
-    // =========================
+    // Imágenes adicionales
     let updatedImages = [];
-    // 1) Borrado selectivo por IDs (si vienen)
     try {
       const ids = deleted_additional_image_ids ? JSON.parse(deleted_additional_image_ids) : [];
       if (Array.isArray(ids) && ids.length > 0) {
@@ -335,7 +334,6 @@ export const updatePlaceController = async (req, res) => {
       console.error("❌ JSON inválido en deleted_additional_image_ids:", e);
     }
 
-    // 2) Agregar nuevas (si llegaron archivos)
     if (req.files && req.files.additional_images) {
       try {
         const files = Array.isArray(req.files.additional_images)
@@ -353,12 +351,9 @@ export const updatePlaceController = async (req, res) => {
       }
     }
 
-    // 3) Cargar estado final de las imágenes
     updatedImages = await getImagesByPlaceId(id);
 
-    // =========================
-    //  Horarios
-    // =========================
+    // Horarios
     let updatedSchedules = [];
     if (schedules) {
       try {
@@ -376,9 +371,6 @@ export const updatePlaceController = async (req, res) => {
       updatedSchedules = await getSchedulesByPlaceId(id);
     }
 
-    // =========================
-    //  Respuesta final
-    // =========================
     const updatedPlace = await getPlaceById(id);
     const merged = {
       ...updatedPlace,
@@ -386,7 +378,6 @@ export const updatePlaceController = async (req, res) => {
       schedules: updatedSchedules,
     };
 
-    // URLs absolutas públicas
     merged.image_url = merged.image_url ? toPublicUrl(req, merged.image_url) : null;
     merged.additional_images = merged.additional_images.map(img => ({
       ...img,
@@ -403,18 +394,15 @@ export const updatePlaceController = async (req, res) => {
   }
 };
 
-
 export const deletePlaceController = async (req, res) => {
   try {
     const { id } = req.params;
     const existingPlace = await getPlaceById(id);
     if (!existingPlace) return res.status(404).json({ message: "Lugar no encontrado" });
 
-    // Eliminar horarios e imágenes primero (por las foreign keys)
     await deletePlaceSchedules(id);
     await deletePlaceImages(id);
     
-    // Luego eliminar el lugar
     const deleted = await deletePlace(id);
     if (!deleted) return res.status(400).json({ message: "No se pudo eliminar el lugar" });
 
@@ -439,10 +427,8 @@ export const getPlacesByAdminCity = async (req, res) => {
       return res.status(400).json({ message: "El administrador no tiene ciudad asignada" });
     }
 
-    // Obtener lugares pendientes de usuarios de la misma ciudad
     const places = await findPlacesByCityId(admin.City_id);
     
-    // Convertir URLs de imágenes
     const placesWithPublicUrls = places.map(place => ({
       ...place,
       image_url: place.image_url ? toPublicUrl(req, place.image_url) : null,
@@ -467,7 +453,6 @@ export const getPlacesByAdminCity = async (req, res) => {
   }
 };
 
-// Obtener lugares por ciudad específica
 export const getPlacesBySpecificCity = async (req, res) => {
   try {
     const { cityId } = req.params;
@@ -480,7 +465,6 @@ export const getPlacesBySpecificCity = async (req, res) => {
     const cities = await getAllCities();
     const selectedCity = cities.find(city => city.id == cityId);
     
-    // Convertir URLs de imágenes
     const placesWithPublicUrls = places.map(place => ({
       ...place,
       image_url: place.image_url ? toPublicUrl(req, place.image_url) : null,
@@ -505,12 +489,10 @@ export const getPlacesBySpecificCity = async (req, res) => {
   }
 };
 
-// Obtener todos los lugares pendientes
 export const getPendingPlacesController = async (req, res) => {
   try {
     const places = await findAllPendingPlaces();
     
-    // Convertir URLs de imágenes
     const placesWithPublicUrls = places.map(place => ({
       ...place,
       image_url: place.image_url ? toPublicUrl(req, place.image_url) : null,
@@ -531,7 +513,7 @@ export const getPendingPlacesController = async (req, res) => {
   }
 };
 
-// Aprobar o rechazar lugar
+// ✅ Aprobar o rechazar lugar (limpia comentario al aprobar)
 export const approveRejectPlace = async (req, res) => {
   try {
     const { id } = req.params;
@@ -552,7 +534,8 @@ export const approveRejectPlace = async (req, res) => {
 
     const updates = { 
       status,
-      ...(status === 'rechazada' && { rejectionComment })
+      ...(status === 'rechazada' && { rejectionComment }),
+      ...(status === 'aprobada' && { rejectionComment: null }) // 👈 limpiar si se aprueba
     };
 
     const updated = await updatePlace(id, updates, modifiedBy);
@@ -567,5 +550,17 @@ export const approveRejectPlace = async (req, res) => {
   } catch (error) {
     console.error("Error al aprobar/rechazar lugar:", error);
     res.status(500).json({ message: "Error interno del servidor" });
+  }
+};
+
+// ✅ Consultar si el usuario tiene pendientes (para bloquear botón en el cliente)
+export const checkPendingPlaces = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const count = await countPendingPlacesByUser(userId);
+    res.json({ hasPending: count > 0, pendingCount: count });
+  } catch (error) {
+    console.error('Error checking pending places:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
