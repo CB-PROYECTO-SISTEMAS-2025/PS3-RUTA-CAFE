@@ -11,6 +11,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Modal,
 } from 'react-native';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 
@@ -32,6 +33,21 @@ interface UserData {
   email: string;
 }
 
+// 🔧 AGREGAR ESTA FUNCIÓN - Normaliza URLs de imágenes
+const normalizeImageUrl = (url?: string | null) => {
+  if (!url) return '';
+  // Si ya es una URL completa, mantenerla
+  if (url.startsWith('http')) return url;
+  // Si es una ruta relativa, construir la URL completa
+  if (url.startsWith('/uploads/')) return `${process.env.EXPO_PUBLIC_API_URL}${url}`;
+  // Si viene con host local de desarrollo, convertir
+  if (url.includes('192.168.') || url.includes('localhost')) {
+    const match = url.match(/\/uploads\/.+$/);
+    return match ? `${process.env.EXPO_PUBLIC_API_URL}${match[0]}` : url;
+  }
+  return url;
+};
+
 function RoutesScreen() {
   const router = useRouter();
   const themed = useThemedStyles(); // 🎨 tema
@@ -44,6 +60,13 @@ function RoutesScreen() {
   const [userId, setUserId] = useState<number>(0);
   const [hasPendingRoutes, setHasPendingRoutes] = useState(false);
   const [userToken, setUserToken] = useState<string | null>(null);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+const [routeToDelete, setRouteToDelete] = useState<Route | null>(null);
+const [modalConfig, setModalConfig] = useState({
+  title: '',
+  message: '',
+  type: 'success' as 'success' | 'error',
+});
 
   useEffect(() => {
     loadUserData();
@@ -135,45 +158,70 @@ function RoutesScreen() {
     router.push('/Route/create');
   };
 
-  const handleDelete = async (id: number) => {
-    Alert.alert('Eliminar Ruta', '¿Estás seguro de que quieres eliminar esta ruta?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Eliminar',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const token = await AsyncStorage.getItem('userToken');
-            if (!token) {
-              Alert.alert('Error', 'Sesión expirada. Por favor inicia sesión nuevamente.');
-              return;
-            }
+  const handleDelete = async (route: Route) => {
+  setRouteToDelete(route);
+  setModalConfig({
+    title: 'Confirmar Eliminación',
+    message: `¿Estás seguro de que quieres eliminar la ruta "${route.name}"? Esta acción no se puede deshacer.`,
+    type: 'error',
+  });
+  setDeleteModalVisible(true);
+};
 
-            const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes/${id}`, {
-              method: 'DELETE',
-              headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-              },
-            });
+const confirmDeleteRoute = async () => {
+  if (!routeToDelete) return;
+  
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token) {
+      setModalConfig({
+        title: 'Error',
+        message: 'Sesión expirada. Por favor inicia sesión nuevamente.',
+        type: 'error',
+      });
+      setDeleteModalVisible(true);
+      return;
+    }
 
-            if (response.ok) {
-              Alert.alert('Éxito', 'Ruta eliminada correctamente');
-              fetchRoutes();
-            } else if (response.status === 401) {
-              await AsyncStorage.removeItem('userToken');
-              await AsyncStorage.removeItem('userData');
-              Alert.alert('Sesión expirada', 'Por favor inicia sesión nuevamente.');
-            } else {
-              throw new Error('Error al eliminar la ruta');
-            }
-          } catch {
-            Alert.alert('Error', 'No se pudo eliminar la ruta');
-          }
-        },
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes/${routeToDelete.id}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
       },
-    ]);
-  };
+    });
+
+    if (response.ok) {
+      setModalConfig({
+        title: '¡Éxito!',
+        message: 'Ruta eliminada correctamente',
+        type: 'success',
+      });
+      setDeleteModalVisible(true);
+      fetchRoutes(); // Recargar la lista
+    } else if (response.status === 401) {
+      await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('userData');
+      setModalConfig({
+        title: 'Sesión Expirada',
+        message: 'Por favor inicia sesión nuevamente.',
+        type: 'error',
+      });
+      setDeleteModalVisible(true);
+    } else {
+      throw new Error('Error al eliminar la ruta');
+    }
+  } catch {
+    setModalConfig({
+      title: 'Error',
+      message: 'No se pudo eliminar la ruta',
+      type: 'error',
+    });
+    setDeleteModalVisible(true);
+  } finally {
+    setRouteToDelete(null);
+  }
+};
 
   // 🎨 estilos del estado (pill) en claro/oscuro
   const statusStyles = (status: string) => {
@@ -336,43 +384,10 @@ function RoutesScreen() {
         </View>
       )}
 
-      {/* Botón volver */}
-      <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
-        <TouchableOpacity
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace('/(tabs)/advertisement');
-            }
-          }}
-          style={{
-            backgroundColor: themed.isDark ? '#0b1220' : '#fff7ed',
-            borderColor: themed.accent as string,
-            borderWidth: 1,
-            paddingVertical: 12,
-            borderRadius: 12,
-            shadowColor: '#000',
-            shadowOpacity: 0.1,
-            shadowOffset: { width: 0, height: 2 },
-            shadowRadius: 4,
-            elevation: 2,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 8,
-          }}
-        >
-          <Ionicons name="arrow-back" size={22} color={themed.accent as string} />
-          <Text style={{ color: themed.accent, fontWeight: '600', fontSize: 16, marginLeft: 8 }}>
-            Volver
-          </Text>
-        </TouchableOpacity>
-      </View>
-
       {/* Lista de rutas */}
       <ScrollView
         style={{ flex: 1, paddingHorizontal: 24, marginTop: 24 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
@@ -427,8 +442,9 @@ function RoutesScreen() {
                 }}
               >
                 {route.image_url ? (
+                  // 🔥 CAMBIO ESPECÍFICO AQUÍ - Usar normalizeImageUrl
                   <Image
-                    source={{ uri: route.image_url }}
+                    source={{ uri: normalizeImageUrl(route.image_url) }}
                     style={{ width: '100%', height: 160, borderRadius: 12, marginBottom: 12 }}
                     resizeMode="cover"
                   />
@@ -532,16 +548,17 @@ function RoutesScreen() {
                       )}
 
                       {(route.status === 'pendiente' || route.status === 'rechazada') && (
-                        <TouchableOpacity
-                          onPress={() => handleDelete(route.id)}
-                          style={{
-                            backgroundColor: themed.isDark ? '#4a2e0b' : '#fdba74',
-                            padding: 8,
-                            borderRadius: 10,
-                          }}
-                        >
-                          <Ionicons name="trash" size={20} color={themed.accent as string} />
-                        </TouchableOpacity>
+                       
+<TouchableOpacity
+  onPress={() => handleDelete(route)}
+  style={{
+    backgroundColor: themed.isDark ? '#4a2e0b' : '#fdba74',
+    padding: 8,
+    borderRadius: 10,
+  }}
+>
+  <Ionicons name="trash" size={20} color={themed.accent as string} />
+</TouchableOpacity>
                       )}
                     </View>
                   ) : (
@@ -600,6 +617,154 @@ function RoutesScreen() {
             );
           })
         )}
+
+{/* Modal de Confirmación de Eliminación */}
+<Modal
+  animationType="fade"
+  transparent={true}
+  visible={deleteModalVisible}
+  onRequestClose={() => setDeleteModalVisible(false)}
+>
+  <View style={{ 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)'
+  }}>
+    <View style={{
+      backgroundColor: themed.card,
+      borderRadius: 20,
+      padding: 24,
+      margin: 20,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 5,
+      minWidth: '80%'
+    }}>
+      {/* Icono */}
+      <View style={{
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: modalConfig.type === 'success' 
+          ? (themed.isDark ? '#059669' : '#10b981') 
+          : (themed.isDark ? '#dc2626' : '#ef4444'),
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16
+      }}>
+        <Ionicons 
+          name={modalConfig.type === 'success' ? "checkmark" : "alert-circle"} 
+          size={32} 
+          color="#fff" 
+        />
+      </View>
+
+      {/* Título */}
+      <Text style={{
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: themed.text,
+        textAlign: 'center',
+        marginBottom: 8
+      }}>
+        {modalConfig.title}
+      </Text>
+
+      {/* Mensaje */}
+      <Text style={{
+        fontSize: 16,
+        color: themed.muted,
+        textAlign: 'center',
+        marginBottom: 24,
+        lineHeight: 22
+      }}>
+        {modalConfig.message}
+      </Text>
+
+      {/* Botones */}
+      <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
+        {modalConfig.type === 'error' ? (
+          // Modal de confirmación (eliminar)
+          <>
+            <TouchableOpacity
+              onPress={() => {
+                setDeleteModalVisible(false);
+                setRouteToDelete(null);
+              }}
+              style={{
+                flex: 1,
+                backgroundColor: themed.softBg,
+                borderWidth: 1,
+                borderColor: themed.border,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                borderRadius: 12,
+                alignItems: 'center'
+              }}
+            >
+              <Text style={{
+                color: themed.text,
+                fontSize: 16,
+                fontWeight: '600',
+                textAlign: 'center'
+              }}>
+                Cancelar
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={confirmDeleteRoute}
+              style={{
+                flex: 1,
+                backgroundColor: '#ef4444',
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                borderRadius: 12,
+                alignItems: 'center'
+              }}
+            >
+              <Text style={{
+                color: '#fff',
+                fontSize: 16,
+                fontWeight: '600',
+                textAlign: 'center'
+              }}>
+                Eliminar
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          // Modal de resultado (éxito/error)
+          <TouchableOpacity
+            onPress={() => setDeleteModalVisible(false)}
+            style={{
+              backgroundColor: modalConfig.type === 'success' 
+                ? (themed.accent as string)
+                : (themed.isDark ? '#dc2626' : '#ef4444'),
+              paddingHorizontal: 32,
+              paddingVertical: 12,
+              borderRadius: 12,
+              minWidth: 120
+            }}
+          >
+            <Text style={{
+              color: '#fff',
+              fontSize: 16,
+              fontWeight: '600',
+              textAlign: 'center'
+            }}>
+              {modalConfig.type === 'success' ? 'Continuar' : 'Entendido'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  </View>
+</Modal>
+        
       </ScrollView>
     </View>
   );

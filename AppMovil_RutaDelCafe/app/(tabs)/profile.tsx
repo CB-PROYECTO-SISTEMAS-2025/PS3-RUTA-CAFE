@@ -4,10 +4,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Picker } from "@react-native-picker/picker";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from '@react-navigation/native';
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -20,7 +20,6 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import * as Animatable from "react-native-animatable";
 import { withAuth } from "../../components/ui/withAuth";
 import { useThemedStyles } from "../../hooks/useThemedStyles";
 
@@ -59,6 +58,12 @@ interface EditedData {
   photo: string;
   notifications: boolean;
 }
+interface ModalConfig {
+  title: string;
+  message: string;
+  type: 'success' | 'error';
+  action: 'logout' | 'delete' | 'save' | '';
+}
 
 const cityItems = [
   { label: "Selecciona una ciudad", value: 0, name: "" },
@@ -90,19 +95,23 @@ const phoneCodes = [
 
 function ProfileScreen() {
   const router = useRouter();
-  const themed = useThemedStyles(); // 🎨 tema (oscuro / claro)
+  const themed = useThemedStyles();
   const tabBarHeight = 96;
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [alertVisible, setAlertVisible] = useState(false);
-  const [alertMessage, setAlertMessage] = useState("");
-  const [alertType, setAlertType] = useState<"success" | "error">("success");
   const [showCityPicker, setShowCityPicker] = useState(false);
   const [showPhoneCodePicker, setShowPhoneCodePicker] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+const [modalConfig, setModalConfig] = useState<ModalConfig>({
+  title: '',
+  message: '',
+  type: 'success',
+  action: '',
+});
 
   const [editedData, setEditedData] = useState<EditedData>({
     name: "",
@@ -120,6 +129,81 @@ function ProfileScreen() {
   useEffect(() => {
     loadUserData();
   }, []);
+
+  
+ useFocusEffect(
+  React.useCallback(() => {
+    const checkAuth = async () => {
+      const token = await AsyncStorage.getItem("userToken");
+      if (!token) {
+        router.replace("/login");
+      }
+    };
+    
+    checkAuth();
+  }, [router])
+);
+
+  // CORREGIR esta función - líneas ~89-100
+const showModal = (type: 'success' | 'error', message: string, action: 'logout' | 'delete' | 'save' | '' = '') => {
+  const titles: { [key: string]: string } = {
+    success: '¡Éxito!',
+    error: 'Error',
+    logout: 'Cerrar Sesión',
+    delete: 'Eliminar Cuenta',
+    save: 'Guardar Cambios' // Agregar esta línea
+  };
+  
+  setModalConfig({
+    title: action && titles[action] ? titles[action] : titles[type],
+    message,
+    type,
+    action,
+  });
+  setModalVisible(true);
+};
+
+  const handleModalAction = async () => {
+    setModalVisible(false);
+    
+    switch (modalConfig.action) {
+      case 'logout':
+        await handleLogoutConfirm();
+        break;
+      case 'delete':
+        await handleDeleteConfirm();
+        break;
+      case 'save':
+        if (modalConfig.type === 'success') {
+          loadUserData();
+          setEditMode(false);
+        }
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handleLogoutConfirm = async () => {
+    await AsyncStorage.removeItem("userToken");
+    await AsyncStorage.removeItem("userData");
+    router.replace("/login");
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      const token = await AsyncStorage.getItem("userToken");
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/api/users/profile`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!response.ok) throw new Error("Error al eliminar la cuenta");
+      
+      showModal("success", "Cuenta eliminada correctamente", "delete");
+    } catch {
+      showModal("error", "Error al eliminar la cuenta");
+    }
+  };
 
   const getCityFlag = (cityId: number) => {
     const imgStyle = { width: 40, height: 24 };
@@ -166,7 +250,6 @@ function ProfileScreen() {
 
   const loadUserData = async () => {
     try {
-      // 🔐 extra por si se llama sin pasar por el HOC
       const token = await AsyncStorage.getItem("userToken");
       if (!token) {
         router.replace("/login");
@@ -206,7 +289,7 @@ function ProfileScreen() {
         notifications: true,
       });
     } catch {
-      showAlert("error", "Error al cargar los datos del perfil");
+      showModal("error", "Error al cargar los datos del perfil");
       const token = await AsyncStorage.getItem("userToken");
       if (!token) router.replace("/login");
     } finally {
@@ -217,13 +300,6 @@ function ProfileScreen() {
   const getMaxPhoneLength = () => {
     const phoneCodeObj = phoneCodes.find((i) => i.code === editedData.phoneCode);
     return phoneCodeObj ? phoneCodeObj.maxLength : 15;
-    };
-
-  const showAlert = (type: "success" | "error", message: string) => {
-    setAlertType(type);
-    setAlertMessage(message);
-    setAlertVisible(true);
-    setTimeout(() => setAlertVisible(false), 3000);
   };
 
   const handleEdit = () => setEditMode(true);
@@ -237,28 +313,28 @@ function ProfileScreen() {
       const onlyNumbersRegex = /^[0-9]+$/;
 
       if (!editedData.name || !editedData.lastName || !editedData.email || !editedData.phone) {
-        showAlert("error", "Por favor complete todos los campos obligatorios");
+        showModal("error", "Por favor complete todos los campos obligatorios");
         return;
       }
       if (!onlyLettersRegex.test(editedData.name))
-        return showAlert("error", "El nombre solo puede contener letras");
+        return showModal("error", "El nombre solo puede contener letras");
       if (!onlyLettersRegex.test(editedData.lastName))
-        return showAlert("error", "El apellido paterno solo puede contener letras");
+        return showModal("error", "El apellido paterno solo puede contener letras");
       if (editedData.secondLastName && !onlyLettersRegex.test(editedData.secondLastName))
-        return showAlert("error", "El apellido materno solo puede contener letras");
+        return showModal("error", "El apellido materno solo puede contener letras");
 
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(editedData.email))
-        return showAlert("error", "Formato de correo electrónico inválido");
+        return showModal("error", "Formato de correo electrónico inválido");
 
       if (!onlyNumbersRegex.test(editedData.phone))
-        return showAlert("error", "El teléfono solo puede contener números");
+        return showModal("error", "El teléfono solo puede contener números");
 
       const maxLength = getMaxPhoneLength();
       if (maxLength && editedData.phone.length !== maxLength)
-        return showAlert("error", `El teléfono para ${editedData.phoneCode} debe tener exactamente ${maxLength} dígitos`);
+        return showModal("error", `El teléfono para ${editedData.phoneCode} debe tener exactamente ${maxLength} dígitos`);
 
-      if (!editedData.City_id) return showAlert("error", "Por favor selecciona una ciudad");
+      if (!editedData.City_id) return showModal("error", "Por favor selecciona una ciudad");
 
       const fullPhone = editedData.phoneCode + editedData.phone;
 
@@ -283,11 +359,9 @@ function ProfileScreen() {
         throw new Error(errorData.message || "Error al guardar los cambios");
       }
 
-      showAlert("success", "Perfil editado correctamente");
-      setEditMode(false);
-      loadUserData();
+      showModal("success", "Perfil editado correctamente", "save");
     } catch (err: any) {
-      showAlert("error", err?.message || "Error al guardar los cambios");
+      showModal("error", err?.message || "Error al guardar los cambios");
     } finally {
       setSaving(false);
     }
@@ -320,7 +394,7 @@ function ProfileScreen() {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== "granted") {
-        showAlert("error", "Se necesitan permisos de cámara para tomar fotos");
+        showModal("error", "Se necesitan permisos de cámara para tomar fotos");
         return;
       }
 
@@ -335,7 +409,7 @@ function ProfileScreen() {
         await uploadPhoto(result.assets[0].uri);
       }
     } catch {
-      showAlert("error", "Error al tomar la foto");
+      showModal("error", "Error al tomar la foto");
     }
   };
 
@@ -343,7 +417,7 @@ function ProfileScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        showAlert("error", "Se necesitan permisos para acceder a la galería");
+        showModal("error", "Se necesitan permisos para acceder a la galería");
         return;
       }
 
@@ -358,7 +432,7 @@ function ProfileScreen() {
         await uploadPhoto(result.assets[0].uri);
       }
     } catch {
-      showAlert("error", "Error al seleccionar la foto");
+      showModal("error", "Error al seleccionar la foto");
     }
   };
 
@@ -392,7 +466,7 @@ function ProfileScreen() {
 
             const result = await uploadResponse.json();
             setEditedData({ ...editedData, photo: result.photoUrl });
-            showAlert("success", "Foto de perfil actualizada correctamente");
+            showModal("success", "Foto de perfil actualizada correctamente", "save");
             loadUserData();
             resolve();
           } catch (error) {
@@ -403,7 +477,7 @@ function ProfileScreen() {
         reader.readAsDataURL(blob);
       });
     } catch {
-      showAlert("error", "Error al subir la foto");
+      showModal("error", "Error al subir la foto");
     } finally {
       setUploadingPhoto(false);
     }
@@ -420,56 +494,19 @@ function ProfileScreen() {
       if (!response.ok) throw new Error("Error al eliminar la foto");
 
       setEditedData({ ...editedData, photo: "" });
-      showAlert("success", "Foto de perfil eliminada correctamente");
+      showModal("success", "Foto de perfil eliminada correctamente", "save");
       loadUserData();
     } catch {
-      showAlert("error", "Error al eliminar la foto");
+      showModal("error", "Error al eliminar la foto");
     }
   };
 
-  const handleDeleteAccount = async () => {
-    Alert.alert(
-      "Eliminar cuenta",
-      "¿Estás seguro? Esta acción es irreversible.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const token = await AsyncStorage.getItem("userToken");
-              const response = await fetch(
-                `${process.env.EXPO_PUBLIC_API_URL}/api/users/profile`,
-                { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
-              );
-              if (!response.ok) throw new Error("Error al eliminar la cuenta");
-              showAlert("success", "Cuenta eliminada correctamente");
-              await AsyncStorage.removeItem("userToken");
-              await AsyncStorage.removeItem("userData");
-              router.replace("/login");
-            } catch {
-              showAlert("error", "Error al eliminar la cuenta");
-            }
-          },
-        },
-      ]
-    );
+  const handleDeleteAccount = () => {
+    showModal("error", "¿Estás seguro de que quieres eliminar tu cuenta? Esta acción es irreversible y se perderán todos tus datos.", "delete");
   };
 
-  const handleLogout = async () => {
-    Alert.alert("Cerrar sesión", "¿Quieres salir de tu cuenta?", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Cerrar sesión",
-        style: "destructive",
-        onPress: async () => {
-          await AsyncStorage.removeItem("userToken");
-          await AsyncStorage.removeItem("userData");
-          router.replace("/login");
-        },
-      },
-    ]);
+  const handleLogout = () => {
+    showModal("error", "¿Estás seguro de que quieres cerrar sesión?", "logout");
   };
 
   const selectCity = (cityId: number, cityName: string) => {
@@ -613,29 +650,6 @@ function ProfileScreen() {
               </Text>
             </View>
           </View>
-
-          {/* Alertas */}
-          {alertVisible && (
-            <Animatable.View
-              animation="fadeIn"
-              style={{
-                padding: 12,
-                borderRadius: 12,
-                marginBottom: 16,
-                backgroundColor: alertType === "success" ? (themed.isDark ? "#064e3b" : "#dcfce7") : (themed.isDark ? "#7f1d1d" : "#fee2e2"),
-              }}
-            >
-              <Text
-                style={{
-                  textAlign: "center",
-                  fontWeight: "600",
-                  color: alertType === "success" ? (themed.isDark ? "#a7f3d0" : "#166534") : (themed.isDark ? "#fecaca" : "#991b1b"),
-                }}
-              >
-                {alertMessage}
-              </Text>
-            </Animatable.View>
-          )}
 
           {/* Card info */}
           <View
@@ -930,13 +944,13 @@ function ProfileScreen() {
 
       {/* Picker Ciudad */}
       <Modal
-  visible={showCityPicker}
-  transparent
-  animationType="slide"
-  onRequestClose={() => setShowCityPicker(false)}
->
-  <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" }}>
-    <View style={{ backgroundColor: themed.card, padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderTopWidth: 1, borderColor: themed.border }}>
+        visible={showCityPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCityPicker(false)}
+      >
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <View style={{ backgroundColor: themed.card, padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderTopWidth: 1, borderColor: themed.border }}>
             <Text style={{ fontSize: 18, fontWeight: "bold", textAlign: "center", marginBottom: 12, color: themed.text }}>
               Selecciona una ciudad
             </Text>
@@ -964,14 +978,14 @@ function ProfileScreen() {
       </Modal>
 
       {/* Picker Código Teléfono */}
-     <Modal
-  visible={showPhoneCodePicker}
-  transparent
-  animationType="slide"
-  onRequestClose={() => setShowPhoneCodePicker(false)}
->
-  <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" }}>
-    <View style={{ backgroundColor: themed.card, padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderTopWidth: 1, borderColor: themed.border }}>
+      <Modal
+        visible={showPhoneCodePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPhoneCodePicker(false)}
+      >
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <View style={{ backgroundColor: themed.card, padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderTopWidth: 1, borderColor: themed.border }}>
             <Text style={{ fontSize: 18, fontWeight: "bold", textAlign: "center", marginBottom: 12, color: themed.text }}>
               Selecciona código de país
             </Text>
@@ -997,9 +1011,197 @@ function ProfileScreen() {
           </View>
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+
+      {/* Modal Personalizado para Acciones de Usuario */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={{ 
+          flex: 1, 
+          justifyContent: 'center', 
+          alignItems: 'center',
+          backgroundColor: 'rgba(0,0,0,0.5)'
+        }}>
+          <View style={{
+            backgroundColor: themed.card,
+            borderRadius: 20,
+            padding: 24,
+            margin: 20,
+            alignItems: 'center',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4,
+            elevation: 5,
+            minWidth: '80%'
+          }}>
+            {/* Icono */}
+            <View style={{
+              width: 60,
+              height: 60,
+              borderRadius: 30,
+              backgroundColor: modalConfig.type === 'success' 
+                ? (themed.isDark ? '#059669' : '#10b981') 
+                : (modalConfig.action === 'logout' || modalConfig.action === 'delete')
+                ? (themed.isDark ? '#dc2626' : '#ef4444')
+                : (themed.isDark ? '#dc2626' : '#ef4444'),
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: 16
+            }}>
+              <Ionicons 
+                name={
+                  modalConfig.type === 'success' 
+                    ? "checkmark" 
+                    : modalConfig.action === 'logout'
+                    ? "log-out-outline"
+                    : modalConfig.action === 'delete'
+                    ? "trash-outline"
+                    : "alert-circle"
+                } 
+                size={32} 
+                color="#fff" 
+              />
+            </View>
+
+            {/* Título */}
+            <Text style={{
+              fontSize: 20,
+              fontWeight: 'bold',
+              color: themed.text,
+              textAlign: 'center',
+              marginBottom: 8
+            }}>
+              {modalConfig.title}
+            </Text>
+
+            {/* Mensaje */}
+            <Text style={{
+              fontSize: 16,
+              color: themed.muted,
+              textAlign: 'center',
+              marginBottom: 24,
+              lineHeight: 22
+            }}>
+              {modalConfig.message}
+            </Text>
+
+            {/* Botones */}
+            <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
+              {modalConfig.type === 'error' && !modalConfig.action ? (
+                // Modal de error simple
+                <TouchableOpacity
+                  onPress={() => setModalVisible(false)}
+                  style={{
+                    backgroundColor: themed.isDark ? '#dc2626' : '#ef4444',
+                    paddingHorizontal: 32,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    flex: 1,
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text style={{
+                    color: '#fff',
+                    fontSize: 16,
+                    fontWeight: '600',
+                    textAlign: 'center'
+                  }}>
+                    Entendido
+                  </Text>
+                </TouchableOpacity>
+              ) : modalConfig.action === 'logout' || modalConfig.action === 'delete' ? (
+                // Modal de confirmación (logout/delete)
+                <>
+                  <TouchableOpacity
+                    onPress={() => setModalVisible(false)}
+                    style={{
+                      flex: 1,
+                      backgroundColor: themed.softBg,
+                      borderWidth: 1,
+                      borderColor: themed.border,
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                      borderRadius: 12,
+                      alignItems: 'center'
+                    }}
+                  >
+                    <Text style={{
+                      color: themed.text,
+                      fontSize: 16,
+                      fontWeight: '600',
+                      textAlign: 'center'
+                    }}>
+                      Cancelar
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleModalAction}
+                    style={{
+                      flex: 1,
+                      backgroundColor: modalConfig.action === 'logout' 
+                        ? (themed.accent as string)
+                        : '#ef4444',
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                      borderRadius: 12,
+                      alignItems: 'center'
+                    }}
+                  >
+                    <Text style={{
+                      color: '#fff',
+                      fontSize: 16,
+                      fontWeight: '600',
+                      textAlign: 'center'
+                    }}>
+                      {modalConfig.action === 'logout' ? 'Cerrar Sesión' : 'Eliminar'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                // Modal de éxito (guardar/eliminar cuenta exitoso)
+                <TouchableOpacity
+  onPress={() => {
+    setModalVisible(false);
+    if (modalConfig.action === 'delete' && modalConfig.type === 'success') {
+      AsyncStorage.removeItem("userToken");
+      AsyncStorage.removeItem("userData");
+      router.replace("/login");
+    } else if (modalConfig.action === 'save' && modalConfig.type === 'success') {
+      loadUserData();
+      setEditMode(false);
+    }
+  }}
+  style={{
+    backgroundColor: modalConfig.type === 'success' 
+      ? (themed.accent as string)
+      : (themed.isDark ? '#dc2626' : '#ef4444'),
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 12,
+    flex: 1,
+    alignItems: 'center'
+  }}
+>
+  <Text style={{
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center'
+  }}>
+    Aceptar
+  </Text>
+</TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </KeyboardAvoidingView>   
   );
 }
 
-// 👇 Exporta la pantalla envuelta con el HOC de protección
 export default withAuth(ProfileScreen);

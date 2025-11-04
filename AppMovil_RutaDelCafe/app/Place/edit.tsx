@@ -128,6 +128,12 @@ export default function EditPlaceScreen() {
     image_url: '',
     countryCode: COUNTRY_CODES[0].code,
   });
+  const [modalVisible, setModalVisible] = useState(false);
+const [modalConfig, setModalConfig] = useState({
+  title: '',
+  message: '',
+  type: 'success' as 'success' | 'error',
+});
 
   const [errors, setErrors] = useState({ name: '', description: '' });
 
@@ -269,37 +275,75 @@ export default function EditPlaceScreen() {
     }
   };
 
+// Agregar esta función de limpieza de URLs ANTES del handleInputChange
+// Función para limpiar y validar URLs (MÁS PERMISIVA)
+const cleanWebsiteUrl = (url: string): string => {
+  console.log('🧹 Limpiando URL:', url);
+  
+  if (!url) {
+    console.log('❌ URL vacía');
+    return '';
+  }
+  
+  // Convertir a string por si acaso
+  let cleaned = String(url).trim();
+  
+  // Limpiar espacios y caracteres especiales
+  cleaned = cleaned
+    .replace(/\s+/g, '')  // Remover todos los espacios
+    .replace(/[”“"''‘’`]/g, '') // Remover comillas curvas y especiales
+    .replace(/[，,。]/g, '.') // Reemplazar caracteres especiales por puntos
+    .replace(/[~]/g, '') // Remover caracteres inválidos
+    .replace(/[二]/g, '+'); // Reemplazar caracteres chinos por +
+
+  // Si está vacío después de limpiar, retornar vacío
+  if (!cleaned) {
+    console.log('❌ URL vacía después de limpiar');
+    return '';
+  }
+
+  // Si no tiene protocolo, agregar https://
+  if (!cleaned.match(/^https?:\/\//i)) {
+    cleaned = 'https://' + cleaned;
+    console.log('🔗 Protocolo agregado:', cleaned);
+  }
+
+  console.log('✅ URL limpia:', cleaned);
+  return cleaned.toLowerCase();
+};
+
+  
+
   const handleInputChange = (field: string, value: string) => {
-    if (numericRouteId && field === 'route_id') return;
+  if (numericRouteId && field === 'route_id') return;
 
-    let filteredValue = value;
+  let filteredValue = value;
 
-    switch (field) {
-      case 'name':
-        filteredValue = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '');
-        break;
-      case 'description':
-        filteredValue = cleanDescriptionText(value);
-        break;
-      case 'phoneNumber': {
-        const sel = COUNTRY_CODES.find(c => c.code === formData.countryCode);
-        filteredValue = value.replace(/[^0-9]/g, '');
-        if (sel) filteredValue = filteredValue.slice(0, sel.maxLength);
-        break;
-      }
-      case 'website':
-        if (value && !value.match(/^https?:\/\/.+\..+/) && !value.startsWith('http')) {
-          filteredValue = 'https://' + value;
-        }
-        break;
+  switch (field) {
+    case 'name':
+      filteredValue = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '');
+      break;
+    case 'description':
+      filteredValue = cleanDescriptionText(value);
+      break;
+    case 'phoneNumber': {
+      const sel = COUNTRY_CODES.find(c => c.code === formData.countryCode);
+      filteredValue = value.replace(/[^0-9]/g, '');
+      if (sel) filteredValue = filteredValue.slice(0, sel.maxLength);
+      break;
     }
+    case 'website':
+      // 🔧 APLICAR LIMPIEZA AUTOMÁTICA DE URL
+      filteredValue = cleanWebsiteUrl(value);
+      break;
+  }
 
-    setFormData(prev => ({ ...prev, [field]: filteredValue }));
+  setFormData(prev => ({ ...prev, [field]: filteredValue }));
 
-    if (field === 'name' || field === 'description') {
-      validateNotOnlyNumbers(filteredValue, field as 'name' | 'description');
-    }
-  };
+  if (field === 'name' || field === 'description') {
+    validateNotOnlyNumbers(filteredValue, field as 'name' | 'description');
+  }
+};
 
   const handleCountryChange = (code: string) => setFormData(prev => ({ ...prev, countryCode: code }));
   const handleAcceptPhoneNumber = () => setShowCountryModal(false);
@@ -491,140 +535,205 @@ export default function EditPlaceScreen() {
   };
 
   const validateForm = () => {
-    // reset errores visibles
-    setErrors({ name: '', description: '' });
+  setErrors({ name: '', description: '' });
 
-    if (!formData.name.trim()) {
-      Alert.alert('Error', 'El nombre del lugar es obligatorio');
-      setErrors(prev => ({ ...prev, name: 'Este campo es obligatorio' }));
-      return false;
-    }
-    if (!formData.description.trim()) {
-      Alert.alert('Error', 'La descripción es obligatoria');
-      setErrors(prev => ({ ...prev, description: 'Este campo es obligatorio' }));
-      return false;
-    }
-    if (!validateNotOnlyNumbers(formData.name, 'name')) {
-      Alert.alert('Error', 'El nombre no puede ser solo números');
-      return false;
-    }
-    if (!validateNotOnlyNumbers(formData.description, 'description')) {
-      Alert.alert('Error', 'La descripción no puede ser solo números');
-      return false;
-    }
-    if (!formData.latitude || !formData.longitude) { Alert.alert('Error', 'Debe seleccionar una ubicación en el mapa'); return false; }
-    if (!formData.route_id) { Alert.alert('Error', 'Debe seleccionar una ruta'); return false; }
-    if (formData.website && !formData.website.match(/^https?:\/\/.+\..+/)) { Alert.alert('Error', 'El sitio web debe ser una URL válida'); return false; }
+  if (!formData.name.trim()) {
+    setModalConfig({
+      title: 'Error',
+      message: 'El nombre del lugar es obligatorio',
+      type: 'error',
+    });
+    setModalVisible(true);
+    setErrors(prev => ({ ...prev, name: 'Este campo es obligatorio' }));
+    return false;
+  }
+  if (!formData.description.trim()) {
+    setModalConfig({
+      title: 'Error',
+      message: 'La descripción es obligatoria',
+      type: 'error',
+    });
+    setModalVisible(true);
+    setErrors(prev => ({ ...prev, description: 'Este campo es obligatorio' }));
+    return false;
+  }
+  if (!validateNotOnlyNumbers(formData.name, 'name')) {
+    setModalConfig({
+      title: 'Error',
+      message: 'El nombre no puede ser solo números',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return false;
+  }
+  if (!validateNotOnlyNumbers(formData.description, 'description')) {
+    setModalConfig({
+      title: 'Error',
+      message: 'La descripción no puede ser solo números',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return false;
+  }
+  if (!formData.latitude || !formData.longitude) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Debe seleccionar una ubicación en el mapa',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return false;
+  }
+  if (!formData.route_id) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Debe seleccionar una ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return false;
+  }
 
-    const sel = COUNTRY_CODES.find(c => c.code === formData.countryCode);
-    if (formData.phoneNumber) {
-      if (!formData.phoneNumber.match(/^\d+$/)) { Alert.alert('Error', 'El teléfono debe contener solo números'); return false; }
-      if (sel && formData.phoneNumber.length < 6) { Alert.alert('Error', `El teléfono debe tener al menos 6 dígitos para ${sel.name}`); return false; }
-      if (sel && formData.phoneNumber.length > sel.maxLength) { Alert.alert('Error', `El teléfono no puede exceder ${sel.maxLength} dígitos para ${sel.name}`); return false; }
-    }
-    return true;
-  };
-
-  const handleSubmit = async () => {
-    if (!validateForm()) return;
-    setUpdating(true);
+  // 🔧 MEJORAR VALIDACIÓN DE URL
+  if (formData.website) {
     try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) { router.replace('/login'); return; }
-
-      const submitData = new FormData();
-
-      // Campos
-      submitData.append('name', formData.name.trim());
-      submitData.append('description', formData.description.trim());
-      submitData.append('latitude', parseFloat(formData.latitude).toString());
-      submitData.append('longitude', parseFloat(formData.longitude).toString());
-      submitData.append('route_id', formData.route_id);
-      submitData.append('website', formData.website || '');
-
-      const fullPhone = formData.phoneNumber ? `${formData.countryCode}${formData.phoneNumber}` : '';
-      submitData.append('phoneNumber', fullPhone);
-
-      // Horarios (solo abiertos)
-      const schedulesData = schedule
-        .filter(d => d.isOpen)
-        .map(d => ({ dayOfWeek: d.dayOfWeek, openTime: d.openTime + ':00', closeTime: d.closeTime + ':00' }));
-      submitData.append('schedules', JSON.stringify(schedulesData));
-
-      // Flags de imágenes
-      submitData.append('remove_main_image', removedMainImage ? '1' : '0');
-
-      if (deletedAdditionalIds.length > 0) {
-        submitData.append('deleted_additional_image_ids', JSON.stringify(deletedAdditionalIds));
-      }
-
-      // Imagen principal -> solo si es nueva (file://)
-      if (formData.image_url && formData.image_url.startsWith('file://')) {
-        const filename = formData.image_url.split('/').pop();
-        const match = /\.(\w+)$/.exec(filename || '');
-        const type = match ? `image/${match[1]}` : 'image/jpeg';
-        submitData.append('image', {
-          uri: formData.image_url,
-          name: filename || `place_${id}_image.jpg`,
-          type,
-        } as any);
-      }
-
-      // Imágenes adicionales: adjuntar solo NUEVAS (file://)
-      const newAdditionalImages = additionalImages.filter(img => img.startsWith('file://'));
-      newAdditionalImages.forEach((imageUri, index) => {
-        const filename = imageUri.split('/').pop();
-        const match = /\.(\w+)$/.exec(filename || '');
-        const type = match ? `image/${match[1]}` : 'image/jpeg';
-        submitData.append('additional_images', {
-          uri: imageUri,
-          name: `additional_${index}.${match ? match[1] : 'jpg'}`,
-          type,
-        } as any);
-      });
-
-      // PUT
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${id}`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}` }, // No setear Content-Type con FormData
-        body: submitData,
-      });
-
-      const text = await response.text();
-      let data;
-      try { data = JSON.parse(text); } catch { throw new Error('Respuesta inválida del servidor'); }
-
-      if (response.ok) {
-        Alert.alert('Éxito', 'Lugar actualizado correctamente', [
-          {
-            text: 'OK',
-            onPress: () => {
-              const targetRouteId =
-                (numericRouteId ? String(numericRouteId) : null) ??
-                (place?.route_id ? String(place.route_id) : null) ??
-                (formData.route_id || null);
-
-              const params: Record<string, string> = {
-                refresh: Date.now().toString(),
-                forceRefresh: 'true',
-              };
-              if (targetRouteId) {
-                params.routeId = targetRouteId;
-                if (typeof routeName === 'string' && routeName) params.routeName = routeName;
-              }
-              router.replace({ pathname: '/Place', params });
-            },
-          },
-        ]);
-      } else {
-        throw new Error(data.message || `Error ${response.status}: ${response.statusText}`);
+      const urlObj = new URL(formData.website);
+      if (!['http:', 'https:'].includes(urlObj.protocol)) {
+        setModalConfig({
+          title: 'Error',
+          message: 'El sitio web debe usar HTTP o HTTPS',
+          type: 'error',
+        });
+        setModalVisible(true);
+        return false;
       }
     } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Error desconocido al actualizar el lugar');
-    } finally {
-      setUpdating(false);
+      setModalConfig({
+        title: 'Error',
+        message: 'El sitio web debe ser una URL válida',
+        type: 'error',
+      });
+      setModalVisible(true);
+      return false;
     }
-  };
+  }
+
+  const sel = COUNTRY_CODES.find(c => c.code === formData.countryCode);
+  if (formData.phoneNumber) {
+    if (!formData.phoneNumber.match(/^\d+$/)) {
+      setModalConfig({
+        title: 'Error',
+        message: 'El teléfono debe contener solo números',
+        type: 'error',
+      });
+      setModalVisible(true);
+      return false;
+    }
+    if (sel && formData.phoneNumber.length < 6) {
+      setModalConfig({
+        title: 'Error',
+        message: `El teléfono debe tener al menos 6 dígitos para ${sel.name}`,
+        type: 'error',
+      });
+      setModalVisible(true);
+      return false;
+    }
+    if (sel && formData.phoneNumber.length > sel.maxLength) {
+      setModalConfig({
+        title: 'Error',
+        message: `El teléfono no puede exceder ${sel.maxLength} dígitos para ${sel.name}`,
+        type: 'error',
+      });
+      setModalVisible(true);
+      return false;
+    }
+  }
+  return true;
+};
+
+  const handleSubmit = async () => {
+  if (!validateForm()) return;
+  setUpdating(true);
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token) { router.replace('/login'); return; }
+
+    const submitData = new FormData();
+    submitData.append('name', formData.name.trim());
+    submitData.append('description', formData.description.trim());
+    submitData.append('latitude', parseFloat(formData.latitude).toString());
+    submitData.append('longitude', parseFloat(formData.longitude).toString());
+    submitData.append('route_id', formData.route_id);
+    submitData.append('website', formData.website || '');
+
+    const fullPhone = formData.phoneNumber ? `${formData.countryCode}${formData.phoneNumber}` : '';
+    submitData.append('phoneNumber', fullPhone);
+
+    const schedulesData = schedule
+      .filter(d => d.isOpen)
+      .map(d => ({ dayOfWeek: d.dayOfWeek, openTime: d.openTime + ':00', closeTime: d.closeTime + ':00' }));
+    submitData.append('schedules', JSON.stringify(schedulesData));
+
+    submitData.append('remove_main_image', removedMainImage ? '1' : '0');
+
+    if (deletedAdditionalIds.length > 0) {
+      submitData.append('deleted_additional_image_ids', JSON.stringify(deletedAdditionalIds));
+    }
+
+    if (formData.image_url && formData.image_url.startsWith('file://')) {
+      const filename = formData.image_url.split('/').pop();
+      const match = /\.(\w+)$/.exec(filename || '');
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      submitData.append('image', {
+        uri: formData.image_url,
+        name: filename || `place_${id}_image.jpg`,
+        type,
+      } as any);
+    }
+
+    const newAdditionalImages = additionalImages.filter(img => img.startsWith('file://'));
+    newAdditionalImages.forEach((imageUri, index) => {
+      const filename = imageUri.split('/').pop();
+      const match = /\.(\w+)$/.exec(filename || '');
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      submitData.append('additional_images', {
+        uri: imageUri,
+        name: `additional_${index}.${match ? match[1] : 'jpg'}`,
+        type,
+      } as any);
+    });
+
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${id}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+      body: submitData,
+    });
+
+    const text = await response.text();
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error('Respuesta inválida del servidor'); }
+
+    if (response.ok) {
+      setModalConfig({
+        title: '¡Éxito!',
+        message: 'Lugar actualizado correctamente',
+        type: 'success',
+      });
+      setModalVisible(true);
+    } else {
+      throw new Error(data.message || `Error ${response.status}: ${response.statusText}`);
+    }
+  } catch (error) {
+    setModalConfig({
+      title: 'Error',
+      message: error instanceof Error ? error.message : 'Error desconocido al actualizar el lugar',
+      type: 'error',
+    });
+    setModalVisible(true);
+  } finally {
+    setUpdating(false);
+  }
+};
 
   const getLeafletMapHTML = () => {
     const initialLat = selectedLocation?.latitude || -17.3939;
@@ -1252,6 +1361,114 @@ export default function EditPlaceScreen() {
           </View>
         </View>
       </Modal>
+
+{/* Modal Personalizado */}
+<Modal
+  animationType="fade"
+  transparent={true}
+  visible={modalVisible}
+  onRequestClose={() => setModalVisible(false)}
+>
+  <View style={{ 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)'
+  }}>
+    <View style={{
+      backgroundColor: themed.card,
+      borderRadius: 20,
+      padding: 24,
+      margin: 20,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 5,
+      minWidth: '80%'
+    }}>
+      <View style={{
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: modalConfig.type === 'success' 
+          ? (themed.isDark ? '#059669' : '#10b981') 
+          : (themed.isDark ? '#dc2626' : '#ef4444'),
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16
+      }}>
+        <Ionicons 
+          name={modalConfig.type === 'success' ? "checkmark" : "alert-circle"} 
+          size={32} 
+          color="#fff" 
+        />
+      </View>
+
+      <Text style={{
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: themed.text,
+        textAlign: 'center',
+        marginBottom: 8
+      }}>
+        {modalConfig.title}
+      </Text>
+
+      <Text style={{
+        fontSize: 16,
+        color: themed.muted,
+        textAlign: 'center',
+        marginBottom: 24,
+        lineHeight: 22
+      }}>
+        {modalConfig.message}
+      </Text>
+
+      <TouchableOpacity
+        onPress={() => {
+          setModalVisible(false);
+          if (modalConfig.type === 'success') {
+            const targetRouteId =
+              (numericRouteId ? String(numericRouteId) : null) ??
+              (place?.route_id ? String(place.route_id) : null) ??
+              (formData.route_id || null);
+
+            const params: Record<string, string> = {
+              refresh: Date.now().toString(),
+              forceRefresh: 'true',
+            };
+            if (targetRouteId) {
+              params.routeId = targetRouteId;
+              if (typeof routeName === 'string' && routeName) params.routeName = routeName;
+            }
+            router.replace({ pathname: '/Place', params });
+          }
+        }}
+        style={{
+          backgroundColor: modalConfig.type === 'success' 
+            ? (themed.accent as string)
+            : (themed.isDark ? '#dc2626' : '#ef4444'),
+          paddingHorizontal: 32,
+          paddingVertical: 12,
+          borderRadius: 12,
+          minWidth: 120
+        }}
+      >
+        <Text style={{
+          color: '#fff',
+          fontSize: 16,
+          fontWeight: '600',
+          textAlign: 'center'
+        }}>
+          {modalConfig.type === 'success' ? 'Continuar' : 'Entendido'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
     </View>
   );
 }

@@ -292,34 +292,36 @@ export default function AdvertisementScreen() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={async () => {
-                await AsyncStorage.removeItem("userToken");
-                await AsyncStorage.removeItem("userData");
-                setIsLoggedIn(false);
-                setUserData(null);
-              }}
-              style={{
-                backgroundColor: themed.card,
-                paddingHorizontal: 20,
-                paddingVertical: 10,
-                borderRadius: 18,
-                minWidth: 120,
-                borderWidth: 1,
-                borderColor: themed.border,
-              }}
-            >
-              <Text
-                style={{
-                  color: themed.isDark ? "#FFFFFF" : themed.accent,
-                  fontWeight: "bold",
-                  fontSize: 14,
-                  textAlign: "center",
-                }}
-              >
-                Cerrar Sesión
-              </Text>
-            </TouchableOpacity>
+           <TouchableOpacity
+  onPress={async () => {
+    await AsyncStorage.removeItem("userToken");
+    await AsyncStorage.removeItem("userData");
+    setIsLoggedIn(false);
+    setUserData(null);
+    // 🔥 AGREGAR ESTA LÍNEA para redirigir al login
+    router.replace("/login");
+  }}
+  style={{
+    backgroundColor: themed.card,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 18,
+    minWidth: 120,
+    borderWidth: 1,
+    borderColor: themed.border,
+  }}
+>
+  <Text
+    style={{
+      color: themed.isDark ? "#FFFFFF" : themed.accent,
+      fontWeight: "bold",
+      fontSize: 14,
+      textAlign: "center",
+    }}
+  >
+    Cerrar Sesión
+  </Text>
+</TouchableOpacity>
           </>
         )}
       </View>

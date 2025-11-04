@@ -5,13 +5,18 @@ export const createPlace = async ({
   name, description, latitude, longitude, route_id,
   website, phoneNumber, image_url, createdBy
 }) => {
+  console.log("💾 Guardando en BD - Website:", website);
+  
   const [result] = await pool.query(
     `INSERT INTO \`${SCHEMA}\`.place
-     (name, description, latitude, longitude, route_id, website, phoneNumber, image_url, createdBy, createdAt, status)
+     (name, description, latitude, longitude, route_id, webSite, phoneNumber, image_url, createdBy, createdAt, status)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'pendiente')`,
     [
       name, description, latitude, longitude, route_id,
-      website || "", phoneNumber || "", image_url || "", createdBy
+      website || "",
+      phoneNumber || "", 
+      image_url || "", 
+      createdBy
     ]
   );
   return result.insertId;
@@ -218,7 +223,10 @@ export const getPlacesByRoute = async (routeId, user = null) => {
 export const getPlaceById = async (id, userId = null) => {
   let query = `
     SELECT 
-      p.*, 
+      p.id, p.name, p.description, p.latitude, p.longitude, 
+      p.route_id, p.status, p.rejectionComment, 
+      p.webSite as website, p.phoneNumber, p.image_url,  
+      p.createdBy, p.createdAt, p.modifiedAt, p.modifiedBy,
       r.name AS route_name,
       COUNT(DISTINCT l.id) as likes_count,
       COUNT(DISTINCT c.id) as comments_count
@@ -248,7 +256,15 @@ export const getPlaceById = async (id, userId = null) => {
   `;
 
   const params = userId ? [userId, id] : [id];
+  console.log('🔍 Ejecutando consulta getPlaceById:', { id, userId });
   const [rows] = await pool.query(query, params);
+
+  // 🔍 LOG CRÍTICO - Ver TODOS los campos que vienen de la BD
+  if (rows.length > 0) {
+    console.log('📊 TODOS los campos del lugar desde BD:', Object.keys(rows[0]));
+    console.log('🌐 Valor específico de website:', rows[0].website);
+  }
+
   return rows[0];
 };
 
@@ -317,10 +333,10 @@ export const getApprovedPlaces = async (userId = null) => {
 };
 
 export const updatePlace = async (id, updates, modifiedBy) => {
-  // 🔴 CORRECCIÓN: Filtrar solo los campos que existen en la tabla
+  // ✅ CORRECCIÓN: Usar webSite (con S mayúscula)
   const allowedFields = [
     'name', 'description', 'latitude', 'longitude', 'route_id', 
-    'website', 'phoneNumber', 'image_url', 'status', 'rejectionComment'
+    'webSite', 'phoneNumber', 'image_url', 'status', 'rejectionComment' 
   ];
   
   const filteredUpdates = {};

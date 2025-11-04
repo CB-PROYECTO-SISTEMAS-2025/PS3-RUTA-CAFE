@@ -98,7 +98,7 @@ export default function TabLayout() {
                 ? "home-outline"
                 : route.name === "settings"
                 ? "settings-outline"
-                : route.name === "explore"
+                : route.name === "indexR"
                 ? "fast-food-outline"
                 : "person-circle-outline";
 
@@ -131,7 +131,7 @@ export default function TabLayout() {
     >
       <Tabs.Screen name="advertisement" options={{ title: "Home" }} />
       <Tabs.Screen name="settings" options={{ title: "Ajustes" }} />
-      <Tabs.Screen name="explore" options={{ title: "Rutas" }} />
+      <Tabs.Screen name="indexR" options={{ title: "Rutas" }} />
       <Tabs.Screen name="profile" options={{ title: "Perfil" }} />
     </Tabs>
   );

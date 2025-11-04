@@ -13,6 +13,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Modal,
 } from 'react-native';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 
@@ -56,6 +57,12 @@ export default function EditRouteScreen() {
     name: '',
     description: '',
   });
+  const [modalVisible, setModalVisible] = useState(false);
+const [modalConfig, setModalConfig] = useState({
+  title: '',
+  message: '',
+  type: 'success' as 'success' | 'error',
+});
 
   // 🎯 Limpia texto: letras, espacios, acentos, ñ y signos básicos , . ! ? -
   const cleanText = (text: string) => {
@@ -162,79 +169,112 @@ export default function EditRouteScreen() {
     !errors.description;
 
   // 💾 Guardar
-  const handleSubmit = async () => {
-    // Trim de campos
-    const cleanedData = {
-      name: formData.name.trim(),
-      description: formData.description.trim(),
-      image_url: formData.image_url, // mantenemos string (URL o file://). Si tu backend soporta multipart, te doy variante.
-    };
-
-    // Validaciones previas
-    if (!cleanedData.name) {
-      setErrors((p) => ({ ...p, name: 'Este campo es obligatorio' }));
-      Alert.alert('Error', 'Por favor ingresa un nombre para la ruta');
-      return;
-    }
-    if (!cleanedData.description) {
-      setErrors((p) => ({ ...p, description: 'Este campo es obligatorio' }));
-      Alert.alert('Error', 'Por favor ingresa una descripción para la ruta');
-      return;
-    }
-    if (!validateNotOnlyNumbers(cleanedData.name, 'name')) {
-      Alert.alert('Error', 'Por favor corrige los errores en el nombre de la ruta');
-      return;
-    }
-    if (!validateNotOnlyNumbers(cleanedData.description, 'description')) {
-      Alert.alert('Error', 'Por favor corrige los errores en la descripción');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        router.replace('/login');
-        return;
-      }
-
-      const url = `${process.env.EXPO_PUBLIC_API_URL}/api/routes/${id}`;
-      console.log('📝 PUT =>', url);
-      console.log('📦 Payload =>', cleanedData);
-
-      // Enviamos como JSON (si quieres subir archivo real, te paso variante con FormData)
-      const resp = await fetch(url, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(cleanedData),
-      });
-
-      const text = await resp.text();
-      console.log('📊 HTTP Status =>', resp.status);
-      console.log('📨 Respuesta =>', text);
-
-      if (!resp.ok) {
-        // intenta parsear por si viene message
-        try {
-          const data = JSON.parse(text);
-          throw new Error(data.message || 'Error al actualizar la ruta');
-        } catch {
-          throw new Error('Error al actualizar la ruta');
-        }
-      }
-
-      Alert.alert('Éxito', 'Ruta actualizada correctamente', [
-        { text: 'OK', onPress: () => router.replace('/Route') },
-      ]);
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'No se pudo actualizar la ruta');
-    } finally {
-      setSaving(false);
-    }
+ const handleSubmit = async () => {
+  // Trim de campos
+  const cleanedData = {
+    name: formData.name.trim(),
+    description: formData.description.trim(),
+    image_url: formData.image_url,
   };
+
+  // Validaciones previas
+  if (!cleanedData.name) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Por favor ingresa un nombre para la ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+    setErrors((p) => ({ ...p, name: 'Este campo es obligatorio' }));
+    return;
+  }
+  if (!cleanedData.description) {
+    setModalConfig({
+      title: 'Error', 
+      message: 'Por favor ingresa una descripción para la ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+    setErrors((p) => ({ ...p, description: 'Este campo es obligatorio' }));
+    return;
+  }
+  if (!validateNotOnlyNumbers(cleanedData.name, 'name')) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Por favor corrige los errores en el nombre de la ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return;
+  }
+  if (!validateNotOnlyNumbers(cleanedData.description, 'description')) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Por favor corrige los errores en la descripción',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return;
+  }
+
+  setSaving(true);
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+
+    const url = `${process.env.EXPO_PUBLIC_API_URL}/api/routes/${id}`;
+    const formDataToSend = new FormData();
+    formDataToSend.append('name', cleanedData.name);
+    formDataToSend.append('description', cleanedData.description);
+    
+    if (cleanedData.image_url && cleanedData.image_url.startsWith('file://')) {
+      const filename = cleanedData.image_url.split('/').pop();
+      const fileType = filename?.split('.').pop() || 'jpg';
+      
+      formDataToSend.append('image', {
+        uri: cleanedData.image_url,
+        name: `route-${Date.now()}.${fileType}`,
+        type: `image/${fileType}`,
+      } as any);
+    }
+
+    const resp = await fetch(url, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formDataToSend,
+    });
+
+    const text = await resp.text();
+
+    if (!resp.ok) {
+      try {
+        const data = JSON.parse(text);
+        throw new Error(data.message || 'Error al actualizar la ruta');
+      } catch {
+        throw new Error('Error al actualizar la ruta');
+      }
+    }
+
+    setModalConfig({
+      title: '¡Éxito!',
+      message: 'Ruta actualizada correctamente',
+      type: 'success',
+    });
+    setModalVisible(true);
+  } catch (e: any) {
+    setModalConfig({
+      title: 'Error',
+      message: e?.message || 'No se pudo actualizar la ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+  } finally {
+    setSaving(false);
+  }
+};
 
   // 🎨 Pildora de estado (tema-aware)
   const statusStyles = (status: string) => {
@@ -470,6 +510,108 @@ export default function EditRouteScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+
+{/* Modal Personalizado */}
+<Modal
+  animationType="fade"
+  transparent={true}
+  visible={modalVisible}
+  onRequestClose={() => setModalVisible(false)}
+>
+  <View style={{ 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)'
+  }}>
+    <View style={{
+      backgroundColor: themed.card,
+      borderRadius: 20,
+      padding: 24,
+      margin: 20,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 5,
+      minWidth: '80%'
+    }}>
+      {/* Icono */}
+      <View style={{
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: modalConfig.type === 'success' 
+          ? (themed.isDark ? '#059669' : '#10b981') 
+          : (themed.isDark ? '#dc2626' : '#ef4444'),
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16
+      }}>
+        <Ionicons 
+          name={modalConfig.type === 'success' ? "checkmark" : "alert-circle"} 
+          size={32} 
+          color="#fff" 
+        />
+      </View>
+
+      {/* Título */}
+      <Text style={{
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: themed.text,
+        textAlign: 'center',
+        marginBottom: 8
+      }}>
+        {modalConfig.title}
+      </Text>
+
+      {/* Mensaje */}
+      <Text style={{
+        fontSize: 16,
+        color: themed.muted,
+        textAlign: 'center',
+        marginBottom: 24,
+        lineHeight: 22
+      }}>
+        {modalConfig.message}
+      </Text>
+
+      {/* Botón */}
+      <TouchableOpacity
+        onPress={() => {
+          setModalVisible(false);
+          if (modalConfig.type === 'success') {
+            router.replace('/indexR');
+          }
+        }}
+        style={{
+          backgroundColor: modalConfig.type === 'success' 
+            ? (themed.accent as string)
+            : (themed.isDark ? '#dc2626' : '#ef4444'),
+          paddingHorizontal: 32,
+          paddingVertical: 12,
+          borderRadius: 12,
+          minWidth: 120
+        }}
+      >
+        <Text style={{
+          color: '#fff',
+          fontSize: 16,
+          fontWeight: '600',
+          textAlign: 'center'
+        }}>
+          {modalConfig.type === 'success' ? 'Continuar' : 'Entendido'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
+
+
     </ScrollView>
   );
 }

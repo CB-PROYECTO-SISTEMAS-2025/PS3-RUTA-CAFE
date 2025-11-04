@@ -13,6 +13,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Modal,
 } from 'react-native';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 
@@ -30,6 +31,12 @@ export default function CreateRouteScreen() {
     name: '',
     description: '',
   });
+  const [modalVisible, setModalVisible] = useState(false);
+const [modalConfig, setModalConfig] = useState({
+  title: '',
+  message: '',
+  type: 'success' as 'success' | 'error',
+});
 
   // --- Utilidades de limpieza/validación ---
   // Permite letras, espacios, acentos, ñ y signos básicos , . ! ? -
@@ -77,82 +84,112 @@ export default function CreateRouteScreen() {
 
   // --- Envío ---
   const handleSubmit = async () => {
-    // Trim de los campos obligatorios
-    const cleanedData = {
-      name: formData.name.trim(),
-      description: formData.description.trim(),
-      image_url: formData.image_url,
-    };
-
-    // Validaciones previas
-    if (!cleanedData.name) {
-      Alert.alert('Error', 'Por favor ingresa un nombre para la ruta');
-      setErrors((prev) => ({ ...prev, name: 'Este campo es obligatorio' }));
-      return;
-    }
-    if (!cleanedData.description) {
-      Alert.alert('Error', 'Por favor ingresa una descripción para la ruta');
-      setErrors((prev) => ({ ...prev, description: 'Este campo es obligatorio' }));
-      return;
-    }
-    if (!validateNotOnlyNumbers(cleanedData.name, 'name')) {
-      Alert.alert('Error', 'Por favor corrige los errores en el nombre de la ruta');
-      return;
-    }
-    if (!validateNotOnlyNumbers(cleanedData.description, 'description')) {
-      Alert.alert('Error', 'Por favor corrige los errores en la descripción');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        router.replace('/login');
-        return;
-      }
-
-      // Logs útiles para depurar
-      console.log('🌐 POST =>', `${process.env.EXPO_PUBLIC_API_URL}/api/routes`);
-      console.log('📦 Payload =>', cleanedData);
-
-      // Envío como JSON (si el backend soporta subir archivo como multipart, se puede adaptar)
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(cleanedData),
-      });
-
-      const responseText = await response.text();
-      console.log('📊 HTTP Status =>', response.status);
-      console.log('📨 Respuesta =>', responseText);
-
-      let responseData: any;
-      try {
-        responseData = JSON.parse(responseText);
-      } catch (jsonError) {
-        console.error('❌ Error parseando JSON:', jsonError);
-        throw new Error(`El servidor devolvió: ${responseText.substring(0, 100)}...`);
-        // Si tu backend devuelve texto plano, adapta esto.
-      }
-
-      if (response.ok) {
-        Alert.alert('Éxito', 'Ruta creada correctamente', [
-          { text: 'OK', onPress: () => router.replace('/Route') },
-        ]);
-      } else {
-        throw new Error(responseData.message || `Error (${response.status})`);
-      }
-    } catch (error: any) {
-      console.error('🔥 Error completo:', error);
-      Alert.alert('Error', error.message || 'Error al crear la ruta');
-    } finally {
-      setLoading(false);
-    }
+  // Trim de los campos obligatorios
+  const cleanedData = {
+    name: formData.name.trim(),
+    description: formData.description.trim(),
+    image_url: formData.image_url,
   };
+
+  // Validaciones previas
+  if (!cleanedData.name) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Por favor ingresa un nombre para la ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+    setErrors((prev) => ({ ...prev, name: 'Este campo es obligatorio' }));
+    return;
+  }
+  if (!cleanedData.description) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Por favor ingresa una descripción para la ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+    setErrors((prev) => ({ ...prev, description: 'Este campo es obligatorio' }));
+    return;
+  }
+  if (!validateNotOnlyNumbers(cleanedData.name, 'name')) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Por favor corrige los errores en el nombre de la ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return;
+  }
+  if (!validateNotOnlyNumbers(cleanedData.description, 'description')) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Por favor corrige los errores en la descripción',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+
+    const formDataToSend = new FormData();
+    formDataToSend.append('name', cleanedData.name);
+    formDataToSend.append('description', cleanedData.description);
+    
+    if (cleanedData.image_url && cleanedData.image_url.startsWith('file://')) {
+      const filename = cleanedData.image_url.split('/').pop();
+      const fileType = filename?.split('.').pop() || 'jpg';
+      
+      formDataToSend.append('image', {
+        uri: cleanedData.image_url,
+        name: `route-${Date.now()}.${fileType}`,
+        type: `image/${fileType}`,
+      } as any);
+    }
+
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formDataToSend,
+    });
+
+    const responseText = await response.text();
+
+    let responseData: any;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (jsonError) {
+      throw new Error(`El servidor devolvió una respuesta inválida`);
+    }
+
+    if (response.ok) {
+      setModalConfig({
+        title: '¡Éxito!',
+        message: 'Ruta creada correctamente',
+        type: 'success',
+      });
+      setModalVisible(true);
+    } else {
+      throw new Error(responseData.message || `Error (${response.status})`);
+    }
+  } catch (error: any) {
+    setModalConfig({
+      title: 'Error',
+      message: error.message || 'Error al crear la ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Habilita el botón sólo si está todo válido
   const isFormValid =
@@ -329,6 +366,106 @@ export default function CreateRouteScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+
+      {/* 🔥 AGREGAR EL MODAL AQUÍ - justo después de los botones */}
+<Modal
+  animationType="fade"
+  transparent={true}
+  visible={modalVisible}
+  onRequestClose={() => setModalVisible(false)}
+>
+  <View style={{ 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)'
+  }}>
+    <View style={{
+      backgroundColor: themed.card,
+      borderRadius: 20,
+      padding: 24,
+      margin: 20,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 5,
+      minWidth: '80%'
+    }}>
+      {/* Icono */}
+      <View style={{
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: modalConfig.type === 'success' 
+          ? (themed.isDark ? '#059669' : '#10b981') 
+          : (themed.isDark ? '#dc2626' : '#ef4444'),
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16
+      }}>
+        <Ionicons 
+          name={modalConfig.type === 'success' ? "checkmark" : "alert-circle"} 
+          size={32} 
+          color="#fff" 
+        />
+      </View>
+
+      {/* Título */}
+      <Text style={{
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: themed.text,
+        textAlign: 'center',
+        marginBottom: 8
+      }}>
+        {modalConfig.title}
+      </Text>
+
+      {/* Mensaje */}
+      <Text style={{
+        fontSize: 16,
+        color: themed.muted,
+        textAlign: 'center',
+        marginBottom: 24,
+        lineHeight: 22
+      }}>
+        {modalConfig.message}
+      </Text>
+
+      {/* Botón */}
+      <TouchableOpacity
+        onPress={() => {
+          setModalVisible(false);
+          if (modalConfig.type === 'success') {
+            router.replace('/indexR');
+          }
+        }}
+        style={{
+          backgroundColor: modalConfig.type === 'success' 
+            ? (themed.accent as string)
+            : (themed.isDark ? '#dc2626' : '#ef4444'),
+          paddingHorizontal: 32,
+          paddingVertical: 12,
+          borderRadius: 12,
+          minWidth: 120
+        }}
+      >
+        <Text style={{
+          color: '#fff',
+          fontSize: 16,
+          fontWeight: '600',
+          textAlign: 'center'
+        }}>
+          {modalConfig.type === 'success' ? 'Continuar' : 'Entendido'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+      
     </ScrollView>
   );
 }

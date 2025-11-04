@@ -70,6 +70,7 @@ const normalizeImageUrl = (url: string | null): string => {
   return url;
 };
 
+
 export default function CreatePlaceScreen() {
   const themed = useThemedStyles();
   const router = useRouter();
@@ -101,6 +102,12 @@ export default function CreatePlaceScreen() {
     image_url: '',
     countryCode: COUNTRY_CODES[0].code,
   });
+  const [modalVisible, setModalVisible] = useState(false);
+const [modalConfig, setModalConfig] = useState({
+  title: '',
+  message: '',
+  type: 'success' as 'success' | 'error',
+});
 
   // 🔒 Bloqueo por límite de pendientes
   const [creationBlocked, setCreationBlocked] = useState(false);
@@ -115,6 +122,7 @@ export default function CreatePlaceScreen() {
       isOpen: true,
     }))
   );
+  
 
   // ===== Utilidades de auth/pendientes =====
   const getAuthToken = async () => {
@@ -237,28 +245,64 @@ export default function CreatePlaceScreen() {
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
-    let filteredValue = value;
+  // Agregar esta función de limpieza de URLs ANTES del handleInputChange
+// Función para limpiar y validar URLs (MÁS PERMISIVA)
+const cleanWebsiteUrl = (url: string): string => {
+  console.log('🧹 Limpiando URL:', url);
+  
+  if (!url) {
+    console.log('❌ URL vacía');
+    return '';
+  }
+  
+  // Convertir a string por si acaso
+  let cleaned = String(url).trim();
+  
+  // Limpiar espacios y caracteres especiales
+  cleaned = cleaned
+    .replace(/\s+/g, '')  // Remover todos los espacios
+    .replace(/[”“"''‘’`]/g, '') // Remover comillas curvas y especiales
+    .replace(/[，,。]/g, '.') // Reemplazar caracteres especiales por puntos
+    .replace(/[~]/g, '') // Remover caracteres inválidos
+    .replace(/[二]/g, '+'); // Reemplazar caracteres chinos por +
 
-    switch (field) {
-      case 'name':
-        filteredValue = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '');
-        break;
-      case 'phoneNumber': {
-        const selectedCountry = COUNTRY_CODES.find(c => c.code === formData.countryCode);
-        filteredValue = value.replace(/[^0-9]/g, '');
-        if (selectedCountry) filteredValue = filteredValue.slice(0, selectedCountry.maxLength);
-        break;
-      }
-      case 'website':
-        if (value && !value.match(/^https?:\/\/.+\..+/) && !value.startsWith('http')) {
-          filteredValue = 'https://' + value;
-        }
-        break;
+  // Si está vacío después de limpiar, retornar vacío
+  if (!cleaned) {
+    console.log('❌ URL vacía después de limpiar');
+    return '';
+  }
+
+  // Si no tiene protocolo, agregar https://
+  if (!cleaned.match(/^https?:\/\//i)) {
+    cleaned = 'https://' + cleaned;
+    console.log('🔗 Protocolo agregado:', cleaned);
+  }
+
+  console.log('✅ URL limpia:', cleaned);
+  return cleaned.toLowerCase();
+};
+
+ const handleInputChange = (field: string, value: string) => {
+  let filteredValue = value;
+
+  switch (field) {
+    case 'name':
+      filteredValue = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '');
+      break;
+    case 'phoneNumber': {
+      const selectedCountry = COUNTRY_CODES.find(c => c.code === formData.countryCode);
+      filteredValue = value.replace(/[^0-9]/g, '');
+      if (selectedCountry) filteredValue = filteredValue.slice(0, selectedCountry.maxLength);
+      break;
     }
+    case 'website':
+      // 🔧 APLICAR LIMPIEZA AUTOMÁTICA DE URL
+      filteredValue = cleanWebsiteUrl(value);
+      break;
+  }
 
-    setFormData(prev => ({ ...prev, [field]: filteredValue }));
-  };
+  setFormData(prev => ({ ...prev, [field]: filteredValue }));
+};
 
   const handleCountryChange = (code: string) => {
     setFormData(prev => ({ ...prev, countryCode: code }));
@@ -529,170 +573,203 @@ export default function CreatePlaceScreen() {
     setFormData(prev => ({ ...prev, image_url: '' }));
   };
 
-  const validateForm = () => {
-    if (!formData.name.trim()) {
-      Alert.alert('Error', 'El nombre del lugar es obligatorio');
-      return false;
-    }
-    if (!formData.description.trim()) {
-      Alert.alert('Error', 'La descripción es obligatoria');
-      return false;
-    }
-    if (!formData.latitude || !formData.longitude) {
-      Alert.alert('Error', 'Debe seleccionar una ubicación en el mapa');
-      return false;
-    }
-    if (!formData.route_id) {
-      Alert.alert('Error', 'Debe seleccionar una ruta');
-      return false;
-    }
-    if (formData.website && !formData.website.match(/^https?:\/\/.+\..+/)) {
-      Alert.alert('Error', 'El sitio web debe ser una URL válida');
-      return false;
-    }
-    const selectedCountry = COUNTRY_CODES.find(c => c.code === formData.countryCode);
-    if (formData.phoneNumber) {
-      if (!formData.phoneNumber.match(/^\d+$/)) {
-        Alert.alert('Error', 'El teléfono debe contener solo números');
+const validateForm = () => {
+  if (!formData.name.trim()) {
+    setModalConfig({
+      title: 'Error',
+      message: 'El nombre del lugar es obligatorio',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return false;
+  }
+  if (!formData.description.trim()) {
+    setModalConfig({
+      title: 'Error',
+      message: 'La descripción es obligatoria',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return false;
+  }
+  if (!formData.latitude || !formData.longitude) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Debe seleccionar una ubicación en el mapa',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return false;
+  }
+  if (!formData.route_id) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Debe seleccionar una ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return false;
+  }
+  
+  // 🔧 MEJORAR VALIDACIÓN DE URL
+  if (formData.website) {
+    try {
+      const urlObj = new URL(formData.website);
+      if (!['http:', 'https:'].includes(urlObj.protocol)) {
+        setModalConfig({
+          title: 'Error',
+          message: 'El sitio web debe usar HTTP o HTTPS',
+          type: 'error',
+        });
+        setModalVisible(true);
         return false;
       }
-      if (selectedCountry && formData.phoneNumber.length < 6) {
-        Alert.alert('Error', `El teléfono debe tener al menos 6 dígitos para ${selectedCountry.name}`);
-        return false;
-      }
-      if (selectedCountry && formData.phoneNumber.length > selectedCountry.maxLength) {
-        Alert.alert('Error', `El teléfono no puede exceder ${selectedCountry.maxLength} dígitos para ${selectedCountry.name}`);
-        return false;
-      }
+    } catch (error) {
+      setModalConfig({
+        title: 'Error',
+        message: 'El sitio web debe ser una URL válida',
+        type: 'error',
+      });
+      setModalVisible(true);
+      return false;
     }
-    return true;
-  };
+  }
+
+  const selectedCountry = COUNTRY_CODES.find(c => c.code === formData.countryCode);
+  if (formData.phoneNumber) {
+    if (!formData.phoneNumber.match(/^\d+$/)) {
+      setModalConfig({
+        title: 'Error',
+        message: 'El teléfono debe contener solo números',
+        type: 'error',
+      });
+      setModalVisible(true);
+      return false;
+    }
+    if (selectedCountry && formData.phoneNumber.length < 6) {
+      setModalConfig({
+        title: 'Error',
+        message: `El teléfono debe tener al menos 6 dígitos para ${selectedCountry.name}`,
+        type: 'error',
+      });
+      setModalVisible(true);
+      return false;
+    }
+    if (selectedCountry && formData.phoneNumber.length > selectedCountry.maxLength) {
+      setModalConfig({
+        title: 'Error',
+        message: `El teléfono no puede exceder ${selectedCountry.maxLength} dígitos para ${selectedCountry.name}`,
+        type: 'error',
+      });
+      setModalVisible(true);
+      return false;
+    }
+  }
+  return true;
+};
 
   // ===== handleSubmit con guard + manejo 409 =====
-  const handleSubmit = async () => {
-    // Guard: ¿puede crear?
-    const allowed = await preSubmitGuard();
-    if (!allowed) return;
+const handleSubmit = async () => {
+  const allowed = await preSubmitGuard();
+  if (!allowed) return;
 
-    if (!validateForm()) return;
+  if (!validateForm()) return;
 
-    setLoading(true);
-    try {
-      const token = await getAuthToken();
-      if (!token) return;
+  setLoading(true);
+  try {
+    const token = await getAuthToken();
+    if (!token) return;
 
-      // Preparar datos para enviar
-      const submitData = new FormData();
-      submitData.append('name', formData.name.trim());
-      submitData.append('description', formData.description.trim());
-      submitData.append('latitude', formData.latitude);
-      submitData.append('longitude', formData.longitude);
-      submitData.append('route_id', formData.route_id);
-      submitData.append('website', formData.website || '');
-      submitData.append('phoneNumber', formData.countryCode + (formData.phoneNumber || ''));
+    const submitData = new FormData();
+    submitData.append('name', formData.name.trim());
+    submitData.append('description', formData.description.trim());
+    submitData.append('latitude', formData.latitude);
+    submitData.append('longitude', formData.longitude);
+    submitData.append('route_id', formData.route_id);
+    submitData.append('website', formData.website || '');
+    submitData.append('phoneNumber', formData.countryCode + (formData.phoneNumber || ''));
 
-      // Horarios
-      const schedulesData = schedule
-        .filter(daySchedule => daySchedule.isOpen)
-        .map(daySchedule => ({
-          dayOfWeek: daySchedule.dayOfWeek,
-          openTime: daySchedule.openTime + ':00',
-          closeTime: daySchedule.closeTime + ':00'
-        }));
-      submitData.append('schedules', JSON.stringify(schedulesData));
+    const schedulesData = schedule
+      .filter(daySchedule => daySchedule.isOpen)
+      .map(daySchedule => ({
+        dayOfWeek: daySchedule.dayOfWeek,
+        openTime: daySchedule.openTime + ':00',
+        closeTime: daySchedule.closeTime + ':00'
+      }));
+    submitData.append('schedules', JSON.stringify(schedulesData));
 
-      // Imagen principal (si existe)
-      if (formData.image_url) {
-        const filename = formData.image_url.split('/').pop();
-        const match = /\.(\w+)$/.exec(filename || '');
-        const type = match ? `image/${match[1]}` : 'image/jpeg';
-        submitData.append('image', {
-          uri: formData.image_url,
-          name: filename || 'image.jpg',
-          type,
-        } as any);
-      }
-
-      // Imágenes adicionales (hasta 8)
-      additionalImages.forEach((imageUri, index) => {
-        const filename = imageUri.split('/').pop();
-        const match = /\.(\w+)$/.exec(filename || '');
-        const type = match ? `image/${match[1]}` : 'image/jpeg';
-
-        submitData.append('additional_images', {
-          uri: imageUri,
-          name: `additional_${index}.${match ? match[1] : 'jpg'}`,
-          type,
-        } as any);
-      });
-
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }, // no incluir Content-Type con FormData
-        body: submitData,
-      });
-
-      const responseText = await response.text();
-      let responseData: any;
-      try {
-        responseData = JSON.parse(responseText);
-      } catch {
-        responseData = { message: responseText || 'Error desconocido' };
-      }
-
-      if (response.ok) {
-        Alert.alert('Éxito', 'Lugar creado correctamente', [
-          {
-            text: 'OK',
-            onPress: () => {
-              if (numericRouteId) {
-                router.replace({
-                  pathname: '/Place',
-                  params: { routeId: String(numericRouteId), refresh: Date.now() }
-                });
-              } else {
-                router.replace({ pathname: '/Place', params: { refresh: Date.now() } });
-              }
-            },
-          },
-        ]);
-        return;
-      }
-
-      // Manejo explícito del límite enviado por backend
-      if (response.status === 409 && responseData?.code === 'PENDING_LIMIT') {
-        setCreationBlocked(true);
-        setPendingCount(responseData.currentPending ?? pendingCount);
-
-        Alert.alert(
-          'No puedes crear más lugares',
-          responseData.message || 'Límite de lugares pendientes alcanzado.',
-          [
-            {
-              text: 'Ver mis lugares',
-              onPress: () => {
-                if (numericRouteId) {
-                  router.replace({ pathname: '/Place', params: { routeId: String(numericRouteId) } });
-                } else {
-                  router.replace('/Place');
-                }
-              }
-            },
-            { text: 'OK' }
-          ]
-        );
-        return;
-      }
-
-      // Otros errores
-      throw new Error(responseData.message || `Error ${response.status} al crear el lugar`);
-    } catch (error: any) {
-      console.error('Error completo en handleSubmit:', error);
-      Alert.alert('Error', error?.message || 'No se pudo crear el lugar. Intenta nuevamente.');
-    } finally {
-      setLoading(false);
+    if (formData.image_url) {
+      const filename = formData.image_url.split('/').pop();
+      const match = /\.(\w+)$/.exec(filename || '');
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      submitData.append('image', {
+        uri: formData.image_url,
+        name: filename || 'image.jpg',
+        type,
+      } as any);
     }
-  };
+
+    additionalImages.forEach((imageUri, index) => {
+      const filename = imageUri.split('/').pop();
+      const match = /\.(\w+)$/.exec(filename || '');
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+      submitData.append('additional_images', {
+        uri: imageUri,
+        name: `additional_${index}.${match ? match[1] : 'jpg'}`,
+        type,
+      } as any);
+    });
+
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: submitData,
+    });
+
+    const responseText = await response.text();
+    let responseData: any;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      responseData = { message: responseText || 'Error desconocido' };
+    }
+
+    if (response.ok) {
+      setModalConfig({
+        title: '¡Éxito!',
+        message: 'Lugar creado correctamente',
+        type: 'success',
+      });
+      setModalVisible(true);
+      return;
+    }
+
+    if (response.status === 409 && responseData?.code === 'PENDING_LIMIT') {
+      setCreationBlocked(true);
+      setPendingCount(responseData.currentPending ?? pendingCount);
+
+      setModalConfig({
+        title: 'Límite alcanzado',
+        message: responseData.message || 'No puedes crear más lugares pendientes',
+        type: 'error',
+      });
+      setModalVisible(true);
+      return;
+    }
+
+    throw new Error(responseData.message || `Error ${response.status} al crear el lugar`);
+  } catch (error: any) {
+    setModalConfig({
+      title: 'Error',
+      message: error?.message || 'No se pudo crear el lugar. Intenta nuevamente.',
+      type: 'error',
+    });
+    setModalVisible(true);
+  } finally {
+    setLoading(false);
+  }
+};
   // ===========================================
 
   const getLeafletMapHTML = () => {
@@ -1488,6 +1565,108 @@ export default function CreatePlaceScreen() {
           </View>
         </View>
       </Modal>
+
+{/* Modal Personalizado */}
+<Modal
+  animationType="fade"
+  transparent={true}
+  visible={modalVisible}
+  onRequestClose={() => setModalVisible(false)}
+>
+  <View style={{ 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)'
+  }}>
+    <View style={{
+      backgroundColor: themed.card,
+      borderRadius: 20,
+      padding: 24,
+      margin: 20,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 5,
+      minWidth: '80%'
+    }}>
+      <View style={{
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: modalConfig.type === 'success' 
+          ? (themed.isDark ? '#059669' : '#10b981') 
+          : (themed.isDark ? '#dc2626' : '#ef4444'),
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16
+      }}>
+        <Ionicons 
+          name={modalConfig.type === 'success' ? "checkmark" : "alert-circle"} 
+          size={32} 
+          color="#fff" 
+        />
+      </View>
+
+      <Text style={{
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: themed.text,
+        textAlign: 'center',
+        marginBottom: 8
+      }}>
+        {modalConfig.title}
+      </Text>
+
+      <Text style={{
+        fontSize: 16,
+        color: themed.muted,
+        textAlign: 'center',
+        marginBottom: 24,
+        lineHeight: 22
+      }}>
+        {modalConfig.message}
+      </Text>
+
+      <TouchableOpacity
+        onPress={() => {
+          setModalVisible(false);
+          if (modalConfig.type === 'success') {
+            if (numericRouteId) {
+              router.replace({
+                pathname: '/Place',
+                params: { routeId: String(numericRouteId), refresh: Date.now() }
+              });
+            } else {
+              router.replace({ pathname: '/Place', params: { refresh: Date.now() } });
+            }
+          }
+        }}
+        style={{
+          backgroundColor: modalConfig.type === 'success' 
+            ? (themed.accent as string)
+            : (themed.isDark ? '#dc2626' : '#ef4444'),
+          paddingHorizontal: 32,
+          paddingVertical: 12,
+          borderRadius: 12,
+          minWidth: 120
+        }}
+      >
+        <Text style={{
+          color: '#fff',
+          fontSize: 16,
+          fontWeight: '600',
+          textAlign: 'center'
+        }}>
+          {modalConfig.type === 'success' ? 'Continuar' : 'Entendido'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
     </View>
   );
 }

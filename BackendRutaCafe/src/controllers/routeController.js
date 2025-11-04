@@ -3,34 +3,39 @@ import { createRoute, getAllRoutes, getRouteById, updateRoute, deleteRoute, find
 import { findUserWithCity, getAllCities } from "../models/userModel.js";
 // Crear nueva ruta
 export const createRouteController = async (req, res) => {
-    try {
-        const { name, description, image_url } = req.body;
-        const createdBy = req.user.id; // 👈 del token
+  try {
+    const { name, description } = req.body;
+    const createdBy = req.user.id;
 
-        if (!name || !description) {
-            return res.status(400).json({ message: "Faltan campos obligatorios: name y description" });
-        }
-
-        // Establecer estado "pendiente" por defecto
-        const status = "pendiente";
-
-        const routeId = await createRoute({
-            name,
-            description,
-            status, // 👈 Estado por defecto
-            image_url,
-            createdBy
-        });
-
-        res.status(201).json({
-            message: "Ruta creada con éxito",
-            routeId,
-            status: "pendiente" // Confirmar el estado
-        });
-    } catch (error) {
-        console.error("Error al crear ruta:", error);
-        res.status(500).json({ message: "Error interno del servidor" });
+    if (!name || !description) {
+      return res.status(400).json({ message: "Faltan campos obligatorios: name y description" });
     }
+
+    // 🔥 CAMBIO: Manejar la imagen subida
+    let image_url = '';
+    if (req.file) {
+      image_url = `/uploads/routes/${req.file.filename}`;
+    }
+
+    const status = "pendiente";
+
+    const routeId = await createRoute({
+      name,
+      description,
+      status,
+      image_url,
+      createdBy
+    });
+
+    res.status(201).json({
+      message: "Ruta creada con éxito",
+      routeId,
+      status: "pendiente"
+    });
+  } catch (error) {
+    console.error("Error al crear ruta:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
 };
 // Listar todas las rutas
 export const getRoutesController = async (req, res) => {
@@ -177,19 +182,25 @@ export const getRouteByIdController = async (req, res) => {
 
 // Actualizar ruta
 export const updateRouteController = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const updates = req.body;
-        const modifiedBy = req.user.id;
+  try {
+    const { id } = req.params;
+    const { name, description } = req.body;
+    const modifiedBy = req.user.id;
 
-        const updated = await updateRoute(id, updates, modifiedBy);
-        if (updated === 0) return res.status(404).json({ message: "Ruta no encontrada" });
-
-        res.json({ message: "Ruta actualizada correctamente" });
-    } catch (error) {
-        console.error("Error al actualizar ruta:", error);
-        res.status(500).json({ message: "Error interno del servidor" });
+    // 🔥 CAMBIO: Manejar la imagen subida
+    let updates = { name, description };
+    if (req.file) {
+      updates.image_url = `/uploads/routes/${req.file.filename}`;
     }
+
+    const updated = await updateRoute(id, updates, modifiedBy);
+    if (updated === 0) return res.status(404).json({ message: "Ruta no encontrada" });
+
+    res.json({ message: "Ruta actualizada correctamente" });
+  } catch (error) {
+    console.error("Error al actualizar ruta:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
 };
 
 // Eliminar ruta

@@ -32,6 +32,41 @@ const toPublicUrl = (req, maybeRelative) => {
   // En desarrollo, usar el host de la request
   return `${req.protocol}://${req.get("host")}${maybeRelative}`;
 };
+// Función para limpiar y validar URLs
+const cleanAndValidateUrl = (url) => {
+  if (!url || typeof url !== 'string') return '';
+  
+  // Limpiar espacios y caracteres especiales
+  let cleaned = url.trim()
+                   .replace(/\s+/g, '')  // Remover todos los espacios
+                   .replace(/[”“"''‘’`]/g, '') // Remover comillas curvas y especiales
+                   .replace(/[，,。]/g, '.') // Reemplazar caracteres especiales por puntos
+                   .replace(/[~]/g, '') // Remover caracteres inválidos
+                   .replace(/[二]/g, '+'); // Reemplazar caracteres chinos por +
+
+  // Si está vacío después de limpiar, retornar vacío
+  if (!cleaned) return '';
+
+  // Si no tiene protocolo, agregar https://
+  if (!cleaned.match(/^https?:\/\//i)) {
+    cleaned = 'https://' + cleaned;
+  }
+
+  // Validación básica de formato URL
+  try {
+    const urlObj = new URL(cleaned);
+    
+    // Asegurar que el protocolo sea http o https
+    if (!['http:', 'https:'].includes(urlObj.protocol)) {
+      return '';
+    }
+
+    return cleaned.toLowerCase();
+  } catch (error) {
+    console.log('❌ URL inválida después de limpieza:', cleaned);
+    return '';
+  }
+};
 
 export const createPlaceController = async (req, res) => {
   try {
@@ -46,6 +81,15 @@ export const createPlaceController = async (req, res) => {
     if (!name || !description || !latitude || !longitude || !route_id) {
       return res.status(400).json({
         message: "Faltan campos obligatorios: name, description, latitude, longitude, route_id",
+      });
+    }
+
+    // 🔧 LIMPIAR Y VALIDAR URL ANTES DE GUARDAR
+    const cleanedWebsite = cleanAndValidateUrl(website);
+    if (website && !cleanedWebsite) {
+      return res.status(400).json({
+        message: "La URL del sitio web proporcionada no es válida",
+        originalUrl: website
       });
     }
 
@@ -66,7 +110,7 @@ export const createPlaceController = async (req, res) => {
       return res.status(400).json({ message: `La ruta ${routeIdNum} no existe` });
     }
 
-    // 🔒 Límite de sitios pendientes por usuario (por env, default 1)
+    // 🔒 Límite de sitios pendientes por usuario
     const MAX_PENDING = parseInt(process.env.MAX_PENDING_PLACES_PER_USER || '1', 10);
     if (createdBy && Number.isFinite(MAX_PENDING) && MAX_PENDING > 0) {
       const pendingCount = await countPendingPlacesByUser(createdBy);
@@ -80,7 +124,7 @@ export const createPlaceController = async (req, res) => {
       }
     }
 
-    // Procesar imagen principal (multipart con upload.fields)
+    // Procesar imagen principal
     let image_url = "";
     if (req.files && req.files.image && req.files.image[0]) {
       image_url = path.posix.join("/uploads/places", req.files.image[0].filename);
@@ -95,14 +139,14 @@ export const createPlaceController = async (req, res) => {
       const files = Array.isArray(req.files.additional_images) 
         ? req.files.additional_images 
         : [req.files.additional_images];
-      const limitedFiles = files.slice(0, 8); // máximo 8
+      const limitedFiles = files.slice(0, 8);
       additionalImages = limitedFiles.map(file => 
         path.posix.join("/uploads/places", file.filename)
       );
       console.log("🖼️ Imágenes adicionales procesadas:", additionalImages.length);
     }
 
-    // Crear el lugar
+    // Crear el lugar con la URL limpia
     console.log("📝 Creando lugar en BD...");
     const placeId = await createPlace({
       name,
@@ -110,13 +154,14 @@ export const createPlaceController = async (req, res) => {
       latitude: lat,
       longitude: lng,
       route_id: routeIdNum,
-      website: (website || "").trim(),
+      website: cleanedWebsite, // 🔧 USAR URL LIMPIA
       phoneNumber: (phoneNumber || "").trim(),
       image_url,
       createdBy,
     });
 
     console.log("✅ Lugar creado con ID:", placeId);
+    console.log("🌐 Website guardado:", cleanedWebsite || 'No proporcionado');
 
     // Horarios
     let createdSchedules = [];
@@ -152,6 +197,7 @@ export const createPlaceController = async (req, res) => {
         ...img,
         image_url: toPublicUrl(req, img.image_url)
       })),
+      website: cleanedWebsite, // 🔧 RETORNAR URL LIMPIA AL CLIENTE
       status: "pendiente",
       schedules: createdSchedules
     });
@@ -240,6 +286,19 @@ export const getPlaceByIdController = async (req, res) => {
     const place = await getPlaceById(id, userId);
     if (!place) return res.status(404).json({ message: "Lugar no encontrado" });
     
+
+
+    // 🔍 AGREGAR LOG PARA DEBUG DEL WEBSITE
+    console.log('🌐 Website del lugar:', {
+      id: place.id,
+      name: place.name,
+      website: place.website,
+      websiteType: typeof place.website,
+      websiteLength: place.website ? place.website.length : 0,
+      hasWebsite: !!place.website
+    });
+
+
     const schedules = await getSchedulesByPlaceId(id);
     const images = await getImagesByPlaceId(id);
     
@@ -260,12 +319,11 @@ export const getPlaceByIdController = async (req, res) => {
 export const updatePlaceController = async (req, res) => {
   try {
     const { id } = req.params;
-
     const {
-      schedules,                        // string JSON opcional
-      remove_main_image,                // '1'|'0' o 'true'|'false'
-      deleted_additional_image_ids,     // string JSON: "[1,2,3]"
-      ...updates                        // el resto de campos editables
+      schedules,
+      remove_main_image,
+      deleted_additional_image_ids,
+      ...updates
     } = req.body;
 
     const modifiedBy = req.user.id;
@@ -278,6 +336,19 @@ export const updatePlaceController = async (req, res) => {
       remove_main_image,
       deleted_additional_image_ids
     });
+
+    // 🔧 LIMPIAR Y VALIDAR URL SI SE PROPORCIONA
+    if (updates.website !== undefined) {
+      const cleanedWebsite = cleanAndValidateUrl(updates.website);
+      if (updates.website && !cleanedWebsite) {
+        return res.status(400).json({
+          message: "La URL del sitio web proporcionada no es válida",
+          originalUrl: updates.website
+        });
+      }
+      updates.website = cleanedWebsite;
+      console.log("🌐 Website actualizado:", cleanedWebsite || 'Eliminado');
+    }
 
     const allowedFields = [
       'name', 'description', 'latitude', 'longitude', 'route_id',

@@ -59,6 +59,43 @@ const DAYS_OF_WEEK = [
   { key: 'sábado', label: 'Sábado' },
   { key: 'domingo', label: 'Domingo' },
 ];
+// 🔧 AGREGAR ESTA FUNCIÓN AQUÍ
+// Función para limpiar y validar URLs (MÁS PERMISIVA)
+// Función para limpiar y validar URLs (MÁS PERMISIVA)
+const cleanWebsiteUrl = (url: string): string => {
+  console.log('🧹 Limpiando URL:', url);
+  
+  if (!url) {
+    console.log('❌ URL vacía');
+    return '';
+  }
+  
+  // Convertir a string por si acaso
+  let cleaned = String(url).trim();
+  
+  // Limpiar espacios y caracteres especiales
+  cleaned = cleaned
+    .replace(/\s+/g, '')  // Remover todos los espacios
+    .replace(/[”“"''‘’`]/g, '') // Remover comillas curvas y especiales
+    .replace(/[，,。]/g, '.') // Reemplazar caracteres especiales por puntos
+    .replace(/[~]/g, '') // Remover caracteres inválidos
+    .replace(/[二]/g, '+'); // Reemplazar caracteres chinos por +
+
+  // Si está vacío después de limpiar, retornar vacío
+  if (!cleaned) {
+    console.log('❌ URL vacía después de limpiar');
+    return '';
+  }
+
+  // Si no tiene protocolo, agregar https://
+  if (!cleaned.match(/^https?:\/\//i)) {
+    cleaned = 'https://' + cleaned;
+    console.log('🔗 Protocolo agregado:', cleaned);
+  }
+
+  console.log('✅ URL limpia:', cleaned);
+  return cleaned.toLowerCase();
+};
 
 // Normaliza cualquier forma de imágenes que venga del backend a string[]
 const normalizeImages = (p: Place): string[] => {
@@ -120,30 +157,45 @@ export default function PlaceDetailsScreen() {
 
   const placeId = params.id ? (Array.isArray(params.id) ? params.id[0] : params.id) : null;
 
-  useEffect(() => {
-    if (placeId) fetchPlace();
-    else {
-      Alert.alert('Error', 'ID del lugar no válido');
-      safeGoBack();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placeId]);
+useEffect(() => {
+  if (placeId) {
+    console.log('🔄 Iniciando carga del lugar ID:', placeId);
+    fetchPlace();
+  } else {
+    console.log('❌ No hay placeId');
+    Alert.alert('Error', 'ID del lugar no válido');
+    safeGoBack();
+  }
+}, [placeId]);
 
-  const fetchPlace = async () => {
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      const headers: any = { 'Content-Type': 'application/json', Accept: 'application/json' };
-      if (token) headers.Authorization = `Bearer ${token}`;
+// En fetchPlace, después de recibir los datos
+const fetchPlace = async () => {
+  try {
+    console.log('📡 Fetching place data for ID:', placeId);
+    const token = await AsyncStorage.getItem('userToken');
+    const headers: any = { 'Content-Type': 'application/json', Accept: 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${placeId}`, { headers });
-      if (!response.ok) throw new Error('Error al cargar el lugar');
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${placeId}`, { headers });
+    if (!response.ok) throw new Error('Error al cargar el lugar');
 
-      const placeData = await response.json();
-      console.log('📱 Datos del lugar recibidos:', {
-        image_url: placeData.image_url,
-        additional_images_count: placeData.additional_images?.length || 0,
-        additional_images: placeData.additional_images
-      });
+    const placeData = await response.json();
+    
+    // 🔍 LOG CRÍTICO - Ver qué website viene del backend
+    console.log('📥 Datos del lugar recibidos del backend:', {
+      id: placeData.id,
+      name: placeData.name,
+      website: placeData.website,
+      hasWebsite: !!placeData.website,
+      websiteLength: placeData.website ? placeData.website.length : 0
+    });
+
+    console.log('📱 Datos del lugar recibidos:', {
+      image_url: placeData.image_url,
+      additional_images_count: placeData.additional_images?.length || 0,
+      additional_images: placeData.additional_images
+    });
+
 
       // Normaliza imágenes a array
       const imgs = normalizeImages(placeData);
@@ -215,19 +267,60 @@ export default function PlaceDetailsScreen() {
     else router.replace('/(tabs)/advertisement');
   };
 
-  const handleWebsitePress = () => {
-    if (!place?.website) return;
-    let url = place.website.trim();
-    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-    Linking.openURL(url).catch(() => Alert.alert('Error', 'No se pudo abrir el sitio web'));
-  };
+ const handleWebsitePress = () => {
+  console.log('🔍 handleWebsitePress llamado, place.website:', place?.website);
+  
+  if (!place?.website) {
+    console.log('❌ No hay website definido');
+    return;
+  }
+  
+  // 🔧 MEJORAR LA VALIDACIÓN - aceptar cualquier string no vacío
+  const websiteStr = String(place.website || '').trim();
+  
+  if (!websiteStr) {
+    console.log('❌ Website está vacío después de trim');
+    Alert.alert('Error', 'No hay sitio web disponible');
+    return;
+  }
 
-  const handlePhonePress = () => {
-    if (!place?.phoneNumber) return;
-    const clean = place.phoneNumber.replace(/[^\d+]/g, '');
-    if (!clean) return;
-    Linking.openURL(`tel:${clean}`).catch(() => Alert.alert('Error', 'No se pudo realizar la llamada'));
-  };
+  console.log('🌐 Website a procesar:', websiteStr);
+  
+  // Limpiar la URL
+  let url = cleanWebsiteUrl(websiteStr);
+  
+  console.log('🌐 URL después de limpieza:', url);
+  
+  if (!url) {
+    Alert.alert('Error', 'La URL del sitio web no es válida');
+    return;
+  }
+
+  console.log('🌐 Intentando abrir URL:', url);
+  
+  Linking.openURL(url).catch((error) => {
+    console.error('Error al abrir URL:', error);
+    Alert.alert('Error', 'No se pudo abrir el sitio web. Verifica que la URL sea válida.');
+  });
+};
+
+ const handlePhonePress = () => {
+  if (!place?.phoneNumber) return;
+  
+  const clean = place.phoneNumber.replace(/[^\d+]/g, '');
+  
+  if (!clean) {
+    Alert.alert('Error', 'El número de teléfono no es válido');
+    return;
+  }
+
+  console.log('📞 Intentando llamar:', clean);
+  
+  Linking.openURL(`tel:${clean}`).catch((error) => {
+    console.error('Error al realizar llamada:', error);
+    Alert.alert('Error', 'No se pudo realizar la llamada. Verifica que el número sea válido.');
+  });
+};
 
   const handleDirectionsPress = () => {
     if (!place?.latitude || !place?.longitude) return;
@@ -593,21 +686,21 @@ export default function PlaceDetailsScreen() {
 
           {/* Acciones rápidas */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
-            <TouchableOpacity
-              disabled={!place.website}
-              onPress={handleWebsitePress}
-              style={{
-                flex: 1,
-                opacity: place.website ? 1 : 0.5,
-                backgroundColor: themed.softBg,
-                marginHorizontal: 4,
-                padding: 16,
-                borderRadius: 12,
-                alignItems: 'center',
-                borderWidth: 1,
-                borderColor: themed.border,
-              }}
-            >
+          <TouchableOpacity
+  disabled={!place?.website || String(place.website).trim().length === 0}
+  onPress={handleWebsitePress}
+  style={{
+    flex: 1,
+    opacity: (place?.website && String(place.website).trim().length > 0) ? 1 : 0.5,
+    backgroundColor: themed.softBg,
+    marginHorizontal: 4,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: themed.border,
+  }}
+>
               <Ionicons name="globe-outline" size={22} color={themed.accent as string} />
               <Text style={{ color: themed.text, fontWeight: '700', marginTop: 6 }}>Sitio Web</Text>
             </TouchableOpacity>
