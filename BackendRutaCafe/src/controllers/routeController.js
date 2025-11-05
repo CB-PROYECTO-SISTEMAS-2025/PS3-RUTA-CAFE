@@ -3,34 +3,39 @@ import { createRoute, getAllRoutes, getRouteById, updateRoute, deleteRoute, find
 import { findUserWithCity, getAllCities } from "../models/userModel.js";
 // Crear nueva ruta
 export const createRouteController = async (req, res) => {
-    try {
-        const { name, description, image_url } = req.body;
-        const createdBy = req.user.id; // 👈 del token
+  try {
+    const { name, description } = req.body;
+    const createdBy = req.user.id;
 
-        if (!name || !description) {
-            return res.status(400).json({ message: "Faltan campos obligatorios: name y description" });
-        }
-
-        // Establecer estado "pendiente" por defecto
-        const status = "pendiente";
-
-        const routeId = await createRoute({
-            name,
-            description,
-            status, // 👈 Estado por defecto
-            image_url,
-            createdBy
-        });
-
-        res.status(201).json({
-            message: "Ruta creada con éxito",
-            routeId,
-            status: "pendiente" // Confirmar el estado
-        });
-    } catch (error) {
-        console.error("Error al crear ruta:", error);
-        res.status(500).json({ message: "Error interno del servidor" });
+    if (!name || !description) {
+      return res.status(400).json({ message: "Faltan campos obligatorios: name y description" });
     }
+
+    // 🔥 CAMBIO: Manejar la imagen subida
+    let image_url = '';
+    if (req.file) {
+      image_url = `/uploads/routes/${req.file.filename}`;
+    }
+
+    const status = "pendiente";
+
+    const routeId = await createRoute({
+      name,
+      description,
+      status,
+      image_url,
+      createdBy
+    });
+
+    res.status(201).json({
+      message: "Ruta creada con éxito",
+      routeId,
+      status: "pendiente"
+    });
+  } catch (error) {
+    console.error("Error al crear ruta:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
 };
 // Listar todas las rutas
 export const getRoutesController = async (req, res) => {
@@ -176,20 +181,57 @@ export const getRouteByIdController = async (req, res) => {
 };
 
 // Actualizar ruta
+// Actualizar ruta
 export const updateRouteController = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const updates = req.body;
-        const modifiedBy = req.user.id;
+  try {
+    const { id } = req.params;
+    const { name, description } = req.body;
+    const modifiedBy = req.user.id;
 
-        const updated = await updateRoute(id, updates, modifiedBy);
-        if (updated === 0) return res.status(404).json({ message: "Ruta no encontrada" });
+    console.log('🔄 Iniciando actualización de ruta ID:', id);
+    console.log('📝 Datos recibidos:', { name, description });
 
-        res.json({ message: "Ruta actualizada correctamente" });
-    } catch (error) {
-        console.error("Error al actualizar ruta:", error);
-        res.status(500).json({ message: "Error interno del servidor" });
+    // 🔥 NUEVO: Obtener la ruta actual para verificar su estado
+    const currentRoute = await getRouteById(id);
+    console.log('📊 Ruta actual:', currentRoute);
+    
+    if (!currentRoute) {
+      return res.status(404).json({ message: "Ruta no encontrada" });
     }
+
+    console.log('🎯 Estado actual de la ruta:', currentRoute.status);
+
+    // 🔥 NUEVO: Si la ruta está rechazada, cambiar a pendiente
+    let updates = { name, description };
+    if (currentRoute.status === 'rechazada') {
+      console.log('🔄 Ruta rechazada detectada - Cambiando estado a pendiente');
+      updates.status = 'pendiente';
+      updates.rejectionComment = null; // Limpiar el comentario de rechazo
+    }
+
+    console.log('📤 Updates a aplicar:', updates);
+
+    // Manejar la imagen subida
+    if (req.file) {
+      updates.image_url = `/uploads/routes/${req.file.filename}`;
+      console.log('🖼️ Nueva imagen subida');
+    }
+
+    const updated = await updateRoute(id, updates, modifiedBy);
+    console.log('✅ Filas actualizadas en BD:', updated);
+    
+    if (updated === 0) return res.status(404).json({ message: "Ruta no encontrada" });
+
+    res.json({ 
+      message: "Ruta actualizada correctamente",
+      // 🔥 NUEVO: Informar si cambió el estado
+      statusChanged: currentRoute.status === 'rechazada',
+      newStatus: currentRoute.status === 'rechazada' ? 'pendiente' : currentRoute.status
+    });
+  } catch (error) {
+    console.error("❌ Error al actualizar ruta:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
 };
 
 // Eliminar ruta

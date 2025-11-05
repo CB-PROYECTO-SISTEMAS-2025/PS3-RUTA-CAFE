@@ -1,159 +1,270 @@
 import React from "react";
-import { 
-  View, 
-  Text, 
-  Image, 
-  TouchableOpacity, 
-  SafeAreaView, 
+import {
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  SafeAreaView,
   ScrollView,
   Linking,
-  Dimensions 
+  Dimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useThemedStyles } from "../hooks/useThemedStyles";
 
-const { width } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 
 export default function AboutUs() {
   const router = useRouter();
+  const themed = useThemedStyles(); // 🎨 tema oscuro/claro
 
   const openEmail = () => {
-    Linking.openURL('mailto:contacto@larutadelsabor.com');
+    Linking.openURL("mailto:contacto@larutadelsabor.com");
   };
 
+  const Card: React.FC<{ children: React.ReactNode; style?: any }> = ({ children, style }) => (
+    <View
+      style={[
+        {
+          backgroundColor: themed.card,
+          borderRadius: 16,
+          padding: 16,
+          marginBottom: 16,
+          borderWidth: 1,
+          borderColor: themed.border,
+          shadowColor: "#000",
+          shadowOpacity: 0.1,
+          shadowRadius: 6,
+          shadowOffset: { width: 0, height: 2 },
+          elevation: 2,
+        },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
+
   return (
-    <SafeAreaView className="flex-1 bg-[#FFF5E6]">
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} className="p-5 pt-2.5">
-        {/* Encabezado con logo de la aplicación */}
-        <View className="items-center mb-[30px] pt-5">
-          <View className="flex-row justify-center items-center mb-5">
-            <Image 
+    <SafeAreaView style={{ flex: 1, backgroundColor: themed.background }}>
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1, padding: 20, paddingTop: 10 }}
+        showsVerticalScrollIndicator={false}
+        style={{ backgroundColor: themed.background }}
+      >
+        {/* Encabezado con logo */}
+        <View style={{ alignItems: "center", marginBottom: 30, paddingTop: 20 }}>
+          <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", marginBottom: 20 }}>
+            <Image
               source={require("../app/images/Univalle.png")}
-              className="w-[100px] h-[100px] rounded-full border-[3px] border-[#FFB74D] bg-white mx-2.5" 
+              style={{
+                width: 100,
+                height: 100,
+                borderRadius: 999,
+                borderWidth: 3,
+                borderColor: themed.accent as string,
+                backgroundColor: "#FFFFFF",
+                marginHorizontal: 10,
+              }}
               resizeMode="contain"
             />
-            <Image 
+            <Image
               source={require("../app/images/LOGOTIPO.png")}
-              className="w-[100px] h-[100px] rounded-[20px] border-[3px] border-[#E65100] bg-white mx-2.5" 
+              style={{
+                width: 100,
+                height: 100,
+                borderRadius: 20,
+                borderWidth: 3,
+                borderColor: themed.accent as string,
+                backgroundColor: "#FFFFFF",
+                marginHorizontal: 10,
+              }}
               resizeMode="contain"
             />
           </View>
-          <Text className="text-[28px] font-bold text-[#E65100] text-center mb-1">
+          <Text style={{ fontSize: 28, fontWeight: "800", color: themed.accent as string, textAlign: "center", marginBottom: 4 }}>
             La Ruta del Sabor
           </Text>
-          <Text className="text-[16px] text-[#FF8C00] text-center italic mb-2.5">
+          <Text style={{ fontSize: 16, color: themed.muted as string, textAlign: "center", fontStyle: "italic" }}>
             Descubre los sabores de tu ciudad
           </Text>
         </View>
 
-        {/* Tarjeta de información principal */}
-        <View className="bg-white rounded-[15px] p-5 mb-5 shadow-lg border border-[#FFE0B2]">
-          <Text className="text-[20px] font-bold text-[#E65100] mb-[15px] text-center">
+        {/* ¿Quiénes somos? */}
+        <Card>
+          <Text
+            style={{
+              fontSize: 20,
+              fontWeight: "800",
+              color: themed.accent as string,
+              marginBottom: 12,
+              textAlign: "center",
+            }}
+          >
             ¿Quiénes Somos?
           </Text>
-          <Text className="text-[16px] text-[#5D4037] leading-[22px] text-justify mb-[15px]">
-            Somos un equipo de estudiantes de Ingeniería de Sistemas de la Universidad del Valle, 
-            apasionados por la tecnología y la innovación. Este proyecto nace como iniciativa 
+          <Text style={{ fontSize: 16, color: themed.text, lineHeight: 22, textAlign: "justify", marginBottom: 12 }}>
+            Somos un equipo de estudiantes de Ingeniería de Sistemas de la Universidad del Valle,
+            apasionados por la tecnología y la innovación. Este proyecto nace como iniciativa
             académica para combinar nuestros conocimientos técnicos con el mundo gastronómico.
           </Text>
-          <Text className="text-[16px] text-[#5D4037] leading-[22px] text-justify">
-            Nuestra misión es crear soluciones tecnológicas que impacten positivamente en la 
-            comunidad, comenzando con esta aplicación que busca revolucionar la forma en que 
+          <Text style={{ fontSize: 16, color: themed.text, lineHeight: 22, textAlign: "justify" }}>
+            Nuestra misión es crear soluciones tecnológicas que impacten positivamente en la
+            comunidad, comenzando con esta aplicación que busca revolucionar la forma en que
             las personas descubren y disfrutan de la gastronomía local.
           </Text>
-        </View>
+        </Card>
 
-        {/* Tarjeta sobre el proyecto */}
-        <View className="bg-white rounded-[15px] p-5 mb-5 shadow-lg border border-[#FFE0B2]">
-          <Text className="text-[20px] font-bold text-[#E65100] mb-[15px] text-center">
+        {/* Proyecto */}
+        <Card>
+          <Text
+            style={{
+              fontSize: 20,
+              fontWeight: "800",
+              color: themed.accent as string,
+              marginBottom: 12,
+              textAlign: "center",
+            }}
+          >
             Nuestro Proyecto
           </Text>
-          <Text className="text-[16px] text-[#5D4037] leading-[22px] text-justify">
-            "La Ruta del Sabor" es una aplicación móvil desarrollada como parte del Proyecto de 
-            Sistemas III. Nuestro objetivo es conectar a los amantes de la buena comida con los 
-            establecimientos gastronómicos locales, ofreciendo una experiencia culinaria única 
+          <Text style={{ fontSize: 16, color: themed.text, lineHeight: 22, textAlign: "justify" }}>
+            "La Ruta del Sabor" es una aplicación móvil desarrollada como parte del Proyecto de
+            Sistemas III. Nuestro objetivo es conectar a los amantes de la buena comida con los
+            establecimientos gastronómicos locales, ofreciendo una experiencia culinaria única
             y personalizada.
           </Text>
-        </View>
+        </Card>
 
-        {/* Equipo de desarrollo */}
-        <View className="bg-white rounded-[15px] p-5 mb-5 shadow-lg border border-[#FFE0B2]">
-          <Text className="text-[20px] font-bold text-[#E65100] mb-[15px] text-center">
+        {/* Equipo */}
+        <Card>
+          <Text
+            style={{
+              fontSize: 20,
+              fontWeight: "800",
+              color: themed.accent as string,
+              marginBottom: 12,
+              textAlign: "center",
+            }}
+          >
             Nuestro Equipo
           </Text>
-          <Text className="text-[16px] text-[#5D4037] leading-[22px] text-justify mb-[15px]">
-            Contamos con un equipo multidisciplinario de desarrolladores, diseñadores y 
-            especialistas en experiencia de usuario, todos estudiantes de Ingeniería de Sistemas 
+          <Text style={{ fontSize: 16, color: themed.text, lineHeight: 22, textAlign: "justify", marginBottom: 12 }}>
+            Contamos con un equipo multidisciplinario de desarrolladores, diseñadores y
+            especialistas en experiencia de usuario, todos estudiantes de Ingeniería de Sistemas
             comprometidos con la excelencia académica y la innovación tecnológica.
           </Text>
-          
-          <View className="flex-row justify-around mt-5 pt-[15px] border-t border-[#FFE0B2]">
-            <View className="items-center flex-1">
-              <Text className="text-[24px] font-bold text-[#E65100]">3</Text>
-              <Text className="text-[12px] text-[#5D4037] mt-1 text-center">Desarrolladores</Text>
+
+          <View style={{ flexDirection: "row", justifyContent: "space-around", paddingTop: 12, borderTopWidth: 1, borderColor: themed.border }}>
+            <View style={{ alignItems: "center", flex: 1 }}>
+              <Text style={{ fontSize: 24, fontWeight: "800", color: themed.accent as string }}>3</Text>
+              <Text style={{ fontSize: 12, color: themed.muted as string, marginTop: 4, textAlign: "center" }}>Desarrolladores</Text>
             </View>
-            <View className="items-center flex-1">
-              <Text className="text-[24px] font-bold text-[#E65100]">3</Text>
-              <Text className="text-[12px] text-[#5D4037] mt-1 text-center">Meses de trabajo</Text>
+            <View style={{ alignItems: "center", flex: 1 }}>
+              <Text style={{ fontSize: 24, fontWeight: "800", color: themed.accent as string }}>3</Text>
+              <Text style={{ fontSize: 12, color: themed.muted as string, marginTop: 4, textAlign: "center" }}>Meses de trabajo</Text>
             </View>
-            <View className="items-center flex-1">
-              <Text className="text-[24px] font-bold text-[#E65100]">1000+</Text>
-              <Text className="text-[12px] text-[#5D4037] mt-1 text-center">Líneas de código</Text>
+            <View style={{ alignItems: "center", flex: 1 }}>
+              <Text style={{ fontSize: 24, fontWeight: "800", color: themed.accent as string }}>1000+</Text>
+              <Text style={{ fontSize: 12, color: themed.muted as string, marginTop: 4, textAlign: "center" }}>Líneas de código</Text>
             </View>
           </View>
-        </View>
+        </Card>
 
         {/* Detalles académicos */}
-        <View className="bg-white rounded-[15px] p-5 mb-5 shadow-lg border border-[#FFE0B2]">
-          <Text className="text-[20px] font-bold text-[#E65100] mb-[15px] text-center">
+        <Card>
+          <Text
+            style={{
+              fontSize: 20,
+              fontWeight: "800",
+              color: themed.accent as string,
+              marginBottom: 12,
+              textAlign: "center",
+            }}
+          >
             Proyecto de Sistemas III
           </Text>
-          <Text className="text-[16px] text-[#5D4037] leading-[22px] text-justify mb-[15px]">
-            Esta aplicación fue desarrollada como parte del curso de Proyecto de Sistemas III 
-            de la Facultad de Ingeniería de Sistemas de la Universidad del Valle. El proyecto 
-            busca integrar todos los conocimientos adquiridos durante la carrera en una 
+          <Text style={{ fontSize: 16, color: themed.text, lineHeight: 22, textAlign: "justify", marginBottom: 12 }}>
+            Esta aplicación fue desarrollada como parte del curso de Proyecto de Sistemas III
+            de la Facultad de Ingeniería de Sistemas de la Universidad del Valle. El proyecto
+            busca integrar todos los conocimientos adquiridos durante la carrera en una
             aplicación funcional y de calidad profesional.
           </Text>
-          <Text className="text-[16px] text-[#5D4037] leading-[22px] text-justify">
-            El desarrollo incluye tecnologías modernas como React Native, Node.js, bases de 
+          <Text style={{ fontSize: 16, color: themed.text, lineHeight: 22, textAlign: "justify" }}>
+            El desarrollo incluye tecnologías modernas como React Native, Node.js, bases de
             datos MySQL y APIs RESTful, siguiendo las mejores prácticas de desarrollo de software.
           </Text>
-        </View>
+        </Card>
 
         {/* Contacto */}
-        <View className="bg-white rounded-[15px] p-5 mb-5 shadow-lg border border-[#FFE0B2]">
-          <Text className="text-[20px] font-bold text-[#E65100] mb-[15px] text-center">
+        <Card>
+          <Text
+            style={{
+              fontSize: 20,
+              fontWeight: "800",
+              color: themed.accent as string,
+              marginBottom: 12,
+              textAlign: "center",
+            }}
+          >
             Contáctanos
           </Text>
-          <Text className="text-[16px] text-[#5D4037] leading-[22px] text-justify mb-[15px]">
-            ¿Tienes preguntas, sugerencias o comentarios sobre nuestra aplicación? 
+          <Text style={{ fontSize: 16, color: themed.text, lineHeight: 22, textAlign: "justify", marginBottom: 12 }}>
+            ¿Tienes preguntas, sugerencias o comentarios sobre nuestra aplicación?
             Nos encantaría escuchar tu opinión para seguir mejorando.
           </Text>
-          
-          <TouchableOpacity 
-            className="flex-row bg-[#E65100] py-3 px-5 rounded-[25px] items-center justify-center mt-[15px] self-center"
-            onPress={openEmail}
-          >
-            <Ionicons name="mail" size={20} color="white" />
-            <Text className="text-white font-bold ml-2.5 text-[16px]">Enviar mensaje</Text>
-          </TouchableOpacity>
-        </View>
 
-        {/* Botón para volver */}
-        <TouchableOpacity 
-          className="flex-row py-3.5 px-6 rounded-[10px] bg-[#FFE0B2] border border-[#FFB74D] items-center justify-center mb-[30px] self-center"
+          <TouchableOpacity
+            onPress={openEmail}
+            style={{
+              flexDirection: "row",
+              backgroundColor: themed.accent as string,
+              paddingVertical: 12,
+              paddingHorizontal: 20,
+              borderRadius: 24,
+              alignItems: "center",
+              justifyContent: "center",
+              alignSelf: "center",
+              marginTop: 8,
+            }}
+          >
+            <Ionicons name="mail" size={20} color="#FFFFFF" />
+            <Text style={{ color: "#FFFFFF", fontWeight: "800", marginLeft: 10, fontSize: 16 }}>
+              Enviar mensaje
+            </Text>
+          </TouchableOpacity>
+        </Card>
+
+        {/* Botón volver */}
+        <TouchableOpacity
           onPress={() => router.back()}
+          style={{
+            flexDirection: "row",
+            paddingVertical: 12,
+            paddingHorizontal: 24,
+            borderRadius: 12,
+            backgroundColor: themed.isDark ? "#0b1220" : "#fff7ed",
+            borderWidth: 1,
+            borderColor: themed.accent,
+            alignItems: "center",
+            justifyContent: "center",
+            alignSelf: "center",
+            marginBottom: 30,
+          }}
         >
-          <Ionicons name="arrow-back" size={20} color="#FF8C00" />
-          <Text className="text-[#FF8C00] text-[16px] font-medium ml-2.5">Volver al inicio</Text>
+          <Ionicons name="arrow-back" size={20} color={themed.accent as string} />
+          <Text style={{ color: themed.accent as string, fontSize: 16, fontWeight: "600", marginLeft: 10 }}>
+            Volver al inicio
+          </Text>
         </TouchableOpacity>
 
         {/* Footer */}
-        <View className="items-center py-5">
-          <Text className="text-[12px] text-[#FF8C00] text-center mb-1">
+        <View style={{ alignItems: "center", paddingVertical: 16 }}>
+          <Text style={{ fontSize: 12, color: themed.muted as string, textAlign: "center", marginBottom: 4 }}>
             © 2023 La Ruta del Sabor - Proyecto de Sistemas III
           </Text>
-          <Text className="text-[12px] text-[#FF8C00] text-center">
+          <Text style={{ fontSize: 12, color: themed.muted as string, textAlign: "center" }}>
             Universidad del Valle - Ingeniería de Sistemas
           </Text>
         </View>

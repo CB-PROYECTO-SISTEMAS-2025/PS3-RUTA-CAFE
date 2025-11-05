@@ -1,5 +1,4 @@
-// app/(tabs)/_layout.tsx
-import React from "react";
+import React, { useRef } from "react";
 import { Tabs } from "expo-router";
 import {
   TouchableOpacity,
@@ -7,164 +6,149 @@ import {
   Platform,
   StyleSheet,
   View,
+  Animated,
+  Easing,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-
-const ORANGE = "#f97316";
-const WHITE = "#ffffff";
-const TAB_HEIGHT = 96;
-const ICON_SIZE = 26;
-
-/* ---------- Item (sin animación) ---------- */
-function TabItem({
-  label,
-  iconName,
-  focused,
-  onPress,
-}: {
-  label: string;
-  iconName: keyof typeof Ionicons.glyphMap;
-  focused: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      accessibilityRole="button"
-      accessibilityState={focused ? { selected: true } : {}}
-      onPress={onPress}
-      style={styles.tabButton}
-      activeOpacity={0.85}
-    >
-      <View style={styles.iconWrapper}>
-        <View
-          style={[
-            styles.iconContainer,
-            focused
-              ? { backgroundColor: WHITE, borderColor: ORANGE, borderWidth: 3 }
-              : { backgroundColor: "transparent", borderWidth: 0, borderColor: "transparent" },
-          ]}
-        >
-          <Ionicons name={iconName} size={ICON_SIZE} color={focused ? ORANGE : WHITE} />
-        </View>
-      </View>
-
-      <Text
-        style={[
-          styles.label,
-          { color: WHITE, fontWeight: focused ? "bold" : "600", opacity: focused ? 1 : 0.9 },
-        ]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
-/* ---------- TabBar personalizado para Expo Router ---------- */
-function CustomTabBar({ state, descriptors, navigation }: any) {
-  return (
-    <View pointerEvents="box-none" style={styles.wrap}>
-      <View style={styles.tabBg} />
-
-      <View style={styles.row}>
-        {state.routes.map((route: any, index: number) => {
-          const { options } = descriptors[route.key];
-          const focused = state.index === index;
-          const label = options.tabBarLabel || options.title || route.name;
-
-          const iconName: keyof typeof Ionicons.glyphMap =
-            route.name === "advertisement"
-              ? "home-outline"
-              : route.name === "settings"
-              ? "settings-outline"
-              : route.name === "explore"
-              ? "fast-food-outline"
-              : "person-circle-outline";
-
-          const onPress = () => {
-            const event = navigation.emit({
-              type: "tabPress",
-              target: route.key,
-              canPreventDefault: true,
-            });
-            if (!focused && !event.defaultPrevented) {
-              navigation.navigate(route.name);
-            }
-          };
-
-          return (
-            <View key={route.key} style={{ flex: 1, alignItems: "center" }}>
-              <TabItem label={label} iconName={iconName} focused={focused} onPress={onPress} />
-            </View>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
+import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { useTheme } from "../../hooks/theme-context"; // 👈 usamos directamente el contexto
 
 export default function TabLayout() {
+  const { theme, effectiveTheme } = useTheme(); // 👈 así el componente se actualiza automáticamente
+  const isDark = effectiveTheme === "dark";
+
+  const COLORS = {
+    bg: isDark ? "#1E3A8A" : "#f97316",
+    text: isDark ? "#E5E7EB" : "#FFFFFF",
+    iconActive: isDark ? "#60A5FA" : "#f97316",
+    iconInactive: isDark ? "#A5B4FC" : "#FFFFFF",
+  };
+
+  function TabItem({ label, iconName, focused, onPress }: any) {
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+    const bounce = () => {
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 0.8,
+          duration: 80,
+          easing: Easing.ease,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 3,
+          tension: 60,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    };
+
+    return (
+      <TouchableOpacity
+        onPress={() => {
+          bounce();
+          onPress();
+        }}
+        style={styles.tabButton}
+        activeOpacity={0.85}
+      >
+        <Animated.View style={[styles.iconWrapper, { transform: [{ scale: scaleAnim }] }]}>
+          <View
+            style={[
+              styles.iconContainer,
+              focused
+                ? { backgroundColor: COLORS.text, borderColor: COLORS.iconActive, borderWidth: 2.5 }
+                : { backgroundColor: "transparent", borderWidth: 0 },
+            ]}
+          >
+            <Ionicons
+              name={iconName}
+              size={23}
+              color={focused ? COLORS.iconActive : COLORS.iconInactive}
+            />
+          </View>
+        </Animated.View>
+        <Text
+          style={{
+            color: COLORS.text,
+            fontWeight: focused ? "bold" : "600",
+            opacity: focused ? 1 : 0.9,
+            fontSize: 11,
+            marginTop: 3,
+            textAlign: "center",
+          }}
+        >
+          {label}
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+
+  function MyTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+    return (
+      <View pointerEvents="box-none" style={styles.wrap}>
+        <View style={[styles.tabBg, { backgroundColor: COLORS.bg }]} />
+        <View style={styles.row}>
+          {state.routes.map((route, index) => {
+            const { options } = descriptors[route.key];
+            const focused = state.index === index;
+            const label = (options.title ?? route.name) as string;
+            const iconName =
+              route.name === "advertisement"
+                ? "home-outline"
+                : route.name === "settings"
+                ? "settings-outline"
+                : route.name === "indexR"
+                ? "fast-food-outline"
+                : "person-circle-outline";
+
+            const onPress = () => {
+              const event = navigation.emit({
+                type: "tabPress",
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+            };
+
+            return (
+              <View key={route.key} style={{ flex: 1, alignItems: "center" }}>
+                <TabItem label={label} iconName={iconName} focused={focused} onPress={onPress} />
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  // 👇 esta línea hace que Tabs se re-renderice cuando cambia el tema
   return (
-    <Tabs 
-      tabBar={props => <CustomTabBar {...props} />} 
-      screenOptions={{ 
-        headerShown: false,
-        tabBarStyle: {
-          display: 'none' // Ocultamos el tab bar por defecto ya que usamos uno personalizado
-        }
-      }}
+    <Tabs
+      key={effectiveTheme} // 🔥 esto fuerza que el layout se regenere al cambiar el tema
+      tabBar={(p) => <MyTabBar {...p} />}
+      screenOptions={{ headerShown: false }}
     >
-      <Tabs.Screen 
-        name="advertisement" 
-        options={{ 
-          title: "Home",
-          tabBarLabel: "Home"
-        }} 
-      />
-      <Tabs.Screen 
-        name="settings" 
-        options={{ 
-          title: "Ajustes",
-          tabBarLabel: "Ajustes"
-        }} 
-      />
-      <Tabs.Screen 
-        name="explore" 
-        options={{ 
-          title: "Rutas",
-          tabBarLabel: "Rutas"
-        }} 
-      />
-      <Tabs.Screen 
-        name="profile" 
-        options={{ 
-          title: "Perfil",
-          tabBarLabel: "Perfil"
-        }} 
-      />
+      <Tabs.Screen name="advertisement" options={{ title: "Home" }} />
+      <Tabs.Screen name="settings" options={{ title: "Ajustes" }} />
+      <Tabs.Screen name="indexR" options={{ title: "Rutas" }} />
+      <Tabs.Screen name="profile" options={{ title: "Perfil" }} />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { 
-    position: "absolute", 
-    left: 0, 
-    right: 0, 
-    bottom: 0,
-    backgroundColor: 'transparent'
-  },
+  wrap: { position: "absolute", left: 0, right: 0, bottom: 0 },
   tabBg: {
-    backgroundColor: ORANGE,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    height: TAB_HEIGHT,
+    height: 72,
     ...Platform.select({
-      ios: { 
-        shadowColor: "#000", 
-        shadowOffset: { width: 0, height: -3 }, 
-        shadowOpacity: 0.12, 
-        shadowRadius: 6 
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: -3 },
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
       },
       android: { elevation: 8 },
     }),
@@ -174,45 +158,19 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: TAB_HEIGHT,
+    height: 72,
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingTop: 8,
-    paddingBottom: Platform.OS === "ios" ? 16 : 12,
+    paddingTop: 4,
+    paddingBottom: Platform.OS === "ios" ? 10 : 8,
   },
-  tabButton: { 
-    width: "100%", 
-    alignItems: "center", 
-    justifyContent: "flex-start", 
-    paddingTop: 6 
-  },
-  iconWrapper: { 
-    alignItems: "center", 
-    justifyContent: "center" 
-  },
+  tabButton: { width: "100%", alignItems: "center", justifyContent: "flex-start", paddingTop: 4 },
+  iconWrapper: { alignItems: "center", justifyContent: "center" },
   iconContainer: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: "center",
     justifyContent: "center",
-  },
-  label: {
-    fontSize: 11,
-    marginTop: 6,
-    textAlign: "center",
-    ...Platform.select({
-      ios: { 
-        shadowColor: "#000", 
-        shadowOffset: { width: 0, height: 1 }, 
-        shadowOpacity: 0.25, 
-        shadowRadius: 1 
-      },
-      android: { 
-        textShadowColor: "rgba(0,0,0,0.3)", 
-        textShadowOffset: { width: 0, height: 1 }, 
-        textShadowRadius: 2 
-      },
-    }),
   },
 });

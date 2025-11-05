@@ -1,4 +1,3 @@
-// src/routes/placeRoutes.js
 import express from "express";
 import { maybeAuth } from "../middlewares/maybeAuth.js";
 import { verifyToken, verifyAdmin } from "../middlewares/authMiddleware.js";
@@ -13,15 +12,17 @@ import {
   getPlacesBySpecificCity,
   getPendingPlacesController,
   approveRejectPlace,
-  checkPendingPlaces
+  checkPendingPlaces, // 👈 importar
 } from "../controllers/placeController.js";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
 
+// 👉 Asegurar carpeta de uploads
 const uploadDir = path.join(process.cwd(), "uploads", "places");
 fs.mkdirSync(uploadDir, { recursive: true });
 
+// Configuración de multer
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (_req, file, cb) => {
@@ -33,27 +34,45 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+   limits: { 
+    fileSize: 10 * 1024 * 1024, // Aumenta a 10MB
+    fieldSize: 10 * 1024 * 1024 // 👈 NUEVO
+  },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype?.startsWith("image/")) cb(null, true);
     else cb(new Error("Solo se permiten imágenes"));
   },
 });
 
+
 const router = express.Router();
 
-// Rutas públicas
+// Crear (con imagen principal + adicionales)
+router.post("/", verifyToken, upload.fields([
+  { name: "image", maxCount: 1 },
+  { name: "additional_images", maxCount: 8 }
+]), createPlaceController);
+
+// 🟢 GET públicos (visitante o logueado)
 router.get("/", maybeAuth, getPlacesController);
 router.get("/route/:routeId", maybeAuth, getPlacesByRouteController);
 router.get("/:id", maybeAuth, getPlaceByIdController);
 
-// Rutas protegidas para técnicos
-router.post("/", verifyToken, upload.single("image"), createPlaceController);
-router.put("/:id", verifyToken, upload.single("image"), updatePlaceController);
+// Editar (con imagen principal + adicionales)
+router.put("/:id", verifyToken, (req, res, next) => {
+  req.setTimeout(30000); // 30 segundos timeout
+  next();
+}, upload.fields([
+  { name: "image", maxCount: 1 },
+  { name: "additional_images", maxCount: 8 }
+]), updatePlaceController);
+
 router.delete("/:id", verifyToken, deletePlaceController);
+
+// ✅ Usuario consulta si tiene pendientes (para bloquear en cliente)
 router.get("/check/pending", verifyToken, checkPendingPlaces);
 
-// Rutas de administración
+// Rutas de administración para lugares pendientes
 router.get("/admin/pending", verifyAdmin, getPendingPlacesController);
 router.get("/admin/city", verifyAdmin, getPlacesByAdminCity);
 router.get("/admin/city/:cityId", verifyAdmin, getPlacesBySpecificCity);

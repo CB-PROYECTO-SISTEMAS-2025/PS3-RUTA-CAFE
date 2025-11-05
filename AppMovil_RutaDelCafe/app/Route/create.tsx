@@ -1,14 +1,26 @@
+// app/Route/create.tsx
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-    ActivityIndicator, Alert, Image, ScrollView, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  Modal,
 } from 'react-native';
+import { useThemedStyles } from '../../hooks/useThemedStyles';
 
 export default function CreateRouteScreen() {
   const router = useRouter();
+  const themed = useThemedStyles();
+
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -19,55 +31,44 @@ export default function CreateRouteScreen() {
     name: '',
     description: '',
   });
+  const [modalVisible, setModalVisible] = useState(false);
+const [modalConfig, setModalConfig] = useState({
+  title: '',
+  message: '',
+  type: 'success' as 'success' | 'error',
+});
 
-  // Función para limpiar texto (elimina caracteres no permitidos)
+  // --- Utilidades de limpieza/validación ---
+  // Permite letras, espacios, acentos, ñ y signos básicos , . ! ? -
   const cleanText = (text: string) => {
-    // Permite letras, espacios, acentos, ñ, y algunos caracteres básicos como , . ! ? -
     const textRegex = /[a-zA-ZÀ-ÿ\u00f1\u00d1\s,.!?\-]/g;
     const matches = text.match(textRegex);
     return matches ? matches.join('') : '';
   };
 
-  // Función para validar que no sea solo números
-  const validateNotOnlyNumbers = (text: string, field: string) => {
+  // Valida que no sea solo números y que no esté vacío
+  const validateNotOnlyNumbers = (text: string, field: 'name' | 'description') => {
     const onlyNumbersRegex = /^\d+$/;
-    
     if (onlyNumbersRegex.test(text)) {
-      setErrors(prev => ({
-        ...prev,
-        [field]: 'No puede contener solo números'
-      }));
+      setErrors((prev) => ({ ...prev, [field]: 'No puede contener solo números' }));
       return false;
     } else if (text.trim() === '') {
-      setErrors(prev => ({
-        ...prev,
-        [field]: 'Este campo es obligatorio'
-      }));
+      setErrors((prev) => ({ ...prev, [field]: 'Este campo es obligatorio' }));
       return false;
     } else {
-      setErrors(prev => ({
-        ...prev,
-        [field]: ''
-      }));
+      setErrors((prev) => ({ ...prev, [field]: '' }));
       return true;
     }
   };
 
-  // Función para manejar cambios en los campos con limpieza automática
-  const handleTextChange = (text: string, field: string) => {
-    // Limpiamos el texto eliminando caracteres no permitidos
-    const cleanedText = cleanText(text);
-    
-    // Actualizamos el estado con el texto limpio
-    setFormData(prev => ({
-      ...prev,
-      [field]: cleanedText
-    }));
-
-    // Validamos que no sea solo números
-    validateNotOnlyNumbers(cleanedText, field);
+  // Maneja cambios aplicando limpieza y validando
+  const handleTextChange = (text: string, field: 'name' | 'description') => {
+    const cleaned = cleanText(text);
+    setFormData((prev) => ({ ...prev, [field]: cleaned }));
+    validateNotOnlyNumbers(cleaned, field);
   };
 
+  // --- Imagen principal opcional ---
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'images',
@@ -77,192 +78,394 @@ export default function CreateRouteScreen() {
     });
 
     if (!result.canceled) {
-      setFormData({ ...formData, image_url: result.assets[0].uri });
+      setFormData((prev) => ({ ...prev, image_url: result.assets[0].uri }));
     }
   };
 
+  // --- Envío ---
   const handleSubmit = async () => {
-    // Limpiar espacios en blanco al inicio y final
-    const cleanedData = {
-      name: formData.name.trim(),
-      description: formData.description.trim(),
-      image_url: formData.image_url
-    };
-
-    // Validaciones antes de enviar
-    if (!cleanedData.name) {
-      Alert.alert('Error', 'Por favor ingresa un nombre para la ruta');
-      setErrors(prev => ({ ...prev, name: 'Este campo es obligatorio' }));
-      return;
-    }
-
-    if (!cleanedData.description) {
-      Alert.alert('Error', 'Por favor ingresa una descripción para la ruta');
-      setErrors(prev => ({ ...prev, description: 'Este campo es obligatorio' }));
-      return;
-    }
-
-    // Validar que no sea solo números
-    if (!validateNotOnlyNumbers(cleanedData.name, 'name')) {
-      Alert.alert('Error', 'Por favor corrige los errores en el nombre de la ruta');
-      return;
-    }
-
-    if (!validateNotOnlyNumbers(cleanedData.description, 'description')) {
-      Alert.alert('Error', 'Por favor corrige los errores en la descripción');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        router.replace('/login');
-        return;
-      }
-
-      console.log('🌐 Enviando petición a:', `${process.env.EXPO_PUBLIC_API_URL}/api/routes`);
-      console.log('📦 Datos enviados:', cleanedData);
-
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(cleanedData),
-      });
-
-      const responseText = await response.text();
-      console.log('📊 Status de respuesta:', response.status);
-      console.log('📨 Respuesta del servidor:', responseText);
-
-      let responseData;
-      try {
-        responseData = JSON.parse(responseText);
-      } catch (jsonError) {
-        console.error('❌ Error parseando JSON:', jsonError);
-        throw new Error(`El servidor devolvió: ${responseText.substring(0, 100)}...`);
-      }
-
-      if (response.ok) {
-        Alert.alert('Éxito', 'Ruta creada correctamente');
-        router.replace('/Route');
-      } else {
-        throw new Error(responseData.message || `Error (${response.status})`);
-      }
-    } catch (error: any) {
-      console.error('🔥 Error completo:', error);
-      Alert.alert('Error', error.message || 'Error al crear la ruta');
-    } finally {
-      setLoading(false);
-    }
+  // Trim de los campos obligatorios
+  const cleanedData = {
+    name: formData.name.trim(),
+    description: formData.description.trim(),
+    image_url: formData.image_url,
   };
 
-  // Verificar si el formulario es válido para habilitar/deshabilitar el botón
-  const isFormValid = formData.name.trim() && 
-                     formData.description.trim() && 
-                     !errors.name && 
-                     !errors.description;
+  // Validaciones previas
+  if (!cleanedData.name) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Por favor ingresa un nombre para la ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+    setErrors((prev) => ({ ...prev, name: 'Este campo es obligatorio' }));
+    return;
+  }
+  if (!cleanedData.description) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Por favor ingresa una descripción para la ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+    setErrors((prev) => ({ ...prev, description: 'Este campo es obligatorio' }));
+    return;
+  }
+  if (!validateNotOnlyNumbers(cleanedData.name, 'name')) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Por favor corrige los errores en el nombre de la ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return;
+  }
+  if (!validateNotOnlyNumbers(cleanedData.description, 'description')) {
+    setModalConfig({
+      title: 'Error',
+      message: 'Por favor corrige los errores en la descripción',
+      type: 'error',
+    });
+    setModalVisible(true);
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+
+    const formDataToSend = new FormData();
+    formDataToSend.append('name', cleanedData.name);
+    formDataToSend.append('description', cleanedData.description);
+    
+    if (cleanedData.image_url && cleanedData.image_url.startsWith('file://')) {
+      const filename = cleanedData.image_url.split('/').pop();
+      const fileType = filename?.split('.').pop() || 'jpg';
+      
+      formDataToSend.append('image', {
+        uri: cleanedData.image_url,
+        name: `route-${Date.now()}.${fileType}`,
+        type: `image/${fileType}`,
+      } as any);
+    }
+
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formDataToSend,
+    });
+
+    const responseText = await response.text();
+
+    let responseData: any;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (jsonError) {
+      throw new Error(`El servidor devolvió una respuesta inválida`);
+    }
+
+    if (response.ok) {
+      setModalConfig({
+        title: '¡Éxito!',
+        message: 'Ruta creada correctamente',
+        type: 'success',
+      });
+      setModalVisible(true);
+    } else {
+      throw new Error(responseData.message || `Error (${response.status})`);
+    }
+  } catch (error: any) {
+    setModalConfig({
+      title: 'Error',
+      message: error.message || 'Error al crear la ruta',
+      type: 'error',
+    });
+    setModalVisible(true);
+  } finally {
+    setLoading(false);
+  }
+};
+
+  // Habilita el botón sólo si está todo válido
+  const isFormValid =
+    formData.name.trim() &&
+    formData.description.trim() &&
+    !errors.name &&
+    !errors.description;
 
   return (
-    <ScrollView className="flex-1 bg-orange-50">
+    <ScrollView
+      style={{ flex: 1, backgroundColor: themed.background }}
+      contentContainerStyle={{ paddingBottom: 24 }}
+      showsVerticalScrollIndicator={false}
+    >
       {/* Header */}
-      <View className="bg-orange-500 px-6 py-4 rounded-b-3xl shadow-lg">
-        <Text className="text-white text-2xl font-bold text-center">
+      <View
+        style={{
+          backgroundColor: themed.accent,
+          paddingHorizontal: 24,
+          paddingVertical: 16,
+          borderBottomLeftRadius: 24,
+          borderBottomRightRadius: 24,
+          shadowColor: '#000',
+          shadowOpacity: 0.15,
+          shadowOffset: { width: 0, height: 3 },
+          shadowRadius: 6,
+          elevation: 6,
+        }}
+      >
+        <Text style={{ color: '#fff', fontSize: 22, fontWeight: 'bold', textAlign: 'center' }}>
           Crear Nueva Ruta
         </Text>
-        <Text className="text-orange-100 text-center mt-1">
+        <Text style={{ color: '#fff', opacity: 0.9, textAlign: 'center', marginTop: 4 }}>
           Comparte tu experiencia gastronómica
         </Text>
       </View>
 
       {/* Formulario */}
-      <View className="px-6 mt-6">
+      <View style={{ paddingHorizontal: 24, marginTop: 20 }}>
         {/* Nombre */}
-        <View className="mb-4">
-          <Text className="text-orange-900 font-bold mb-2">Nombre de la Ruta *</Text>
-          <TextInput
-            value={formData.name}
-            onChangeText={(text) => handleTextChange(text, 'name')}
-            placeholder="Ej: Ruta de Antojos Paceños"
-            placeholderTextColor="#9ca3af"
-            className={`bg-white border rounded-2xl px-4 py-3 text-orange-900 ${
-              errors.name ? 'border-red-500' : 'border-orange-200'
-            }`}
-          />
+        <View style={{ marginBottom: 12 }}>
+          <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
+            Nombre de la Ruta *
+          </Text>
+          <View
+            style={{
+              backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
+              borderColor: errors.name ? (themed.danger as string) : (themed.border as string),
+              borderWidth: 1.5,
+              borderRadius: 16,
+            }}
+          >
+            <TextInput
+              value={formData.name}
+              onChangeText={(t) => handleTextChange(t, 'name')}
+              placeholder="Ej: Ruta de Antojos Paceños"
+              placeholderTextColor={themed.muted as string}
+              style={{ color: themed.text, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }}
+            />
+          </View>
           {errors.name ? (
-            <Text className="text-red-500 text-sm mt-1 ml-2">{errors.name}</Text>
+            <Text style={{ color: themed.danger as string, marginTop: 6 }}>{errors.name}</Text>
           ) : null}
         </View>
 
         {/* Descripción */}
-        <View className="mb-4">
-          <Text className="text-orange-900 font-bold mb-2">Descripción *</Text>
-          <TextInput
-            value={formData.description}
-            onChangeText={(text) => handleTextChange(text, 'description')}
-            placeholder="Describe tu ruta gastronómica..."
-            placeholderTextColor="#9ca3af"
-            multiline
-            numberOfLines={4}
-            className={`bg-white border rounded-2xl px-4 py-3 text-orange-900 h-32 ${
-              errors.description ? 'border-red-500' : 'border-orange-200'
-            }`}
-          />
+        <View style={{ marginBottom: 12 }}>
+          <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
+            Descripción *
+          </Text>
+          <View
+            style={{
+              backgroundColor: themed.isDark ? '#0B1220' : '#FFFFFF',
+              borderColor: errors.description ? (themed.danger as string) : (themed.border as string),
+              borderWidth: 1.5,
+              borderRadius: 16,
+              height: 128,
+            }}
+          >
+            <TextInput
+              value={formData.description}
+              onChangeText={(t) => handleTextChange(t, 'description')}
+              placeholder="Describe tu ruta gastronómica..."
+              placeholderTextColor={themed.muted as string}
+              multiline
+              numberOfLines={4}
+              style={{
+                color: themed.text,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 16,
+                textAlignVertical: 'top',
+                height: '100%',
+              }}
+            />
+          </View>
           {errors.description ? (
-            <Text className="text-red-500 text-sm mt-1 ml-2">{errors.description}</Text>
+            <Text style={{ color: themed.danger as string, marginTop: 6 }}>{errors.description}</Text>
           ) : null}
         </View>
 
-        {/* Imagen */}
-        <View className="mb-6">
-          <Text className="text-orange-900 font-bold mb-2">Imagen (Opcional)</Text>
+        {/* Imagen (opcional) */}
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ color: themed.text, fontWeight: '700', marginBottom: 8 }}>
+            Imagen (Opcional)
+          </Text>
           <TouchableOpacity
             onPress={pickImage}
-            className="bg-white border border-orange-200 rounded-2xl p-4 items-center justify-center h-40"
+            style={{
+              backgroundColor: themed.card,
+              borderColor: themed.border,
+              borderWidth: 1,
+              borderRadius: 16,
+              padding: 12,
+              height: 160,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
             {formData.image_url ? (
               <Image
                 source={{ uri: formData.image_url }}
-                className="w-full h-full rounded-xl"
+                style={{ width: '100%', height: '100%', borderRadius: 12 }}
                 resizeMode="cover"
               />
             ) : (
-              <View className="items-center">
-                <Ionicons name="image-outline" size={48} color="#f97316" />
-                <Text className="text-orange-500 mt-2">Seleccionar imagen</Text>
+              <View style={{ alignItems: 'center' }}>
+                <Ionicons name="image-outline" size={48} color={themed.accent as string} />
+                <Text style={{ color: themed.muted as string, marginTop: 6 }}>
+                  Seleccionar imagen
+                </Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
 
         {/* Botones */}
-        <View className="flex-row space-x-4 mb-8">
+        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 28 }}>
           <TouchableOpacity
             onPress={() => router.back()}
-            className="flex-1 bg-orange-100 border border-orange-300 py-4 rounded-2xl"
+            style={{
+              flex: 1,
+              backgroundColor: themed.isDark ? '#0b1220' : '#fff7ed',
+              borderColor: themed.accent,
+              borderWidth: 1,
+              paddingVertical: 14,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
-            <Text className="text-orange-700 font-bold text-center">Cancelar</Text>
+            <Text style={{ color: themed.accent, fontWeight: '700' }}>Cancelar</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             onPress={handleSubmit}
             disabled={loading || !isFormValid}
-            className={`flex-1 py-4 rounded-2xl shadow-lg ${
-              loading || !isFormValid 
-                ? 'bg-orange-300' 
-                : 'bg-orange-500'
-            }`}
+            style={{
+              flex: 1,
+              backgroundColor: themed.accent,
+              paddingVertical: 14,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+              elevation: 3,
+              opacity: loading || !isFormValid ? 0.6 : 1,
+            }}
           >
             {loading ? (
-              <ActivityIndicator color="white" />
+              <ActivityIndicator color="#fff" />
             ) : (
-              <Text className="text-white font-bold text-center">Crear Ruta</Text>
-            )} 
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Crear Ruta</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
+
+
+      {/* 🔥 AGREGAR EL MODAL AQUÍ - justo después de los botones */}
+<Modal
+  animationType="fade"
+  transparent={true}
+  visible={modalVisible}
+  onRequestClose={() => setModalVisible(false)}
+>
+  <View style={{ 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)'
+  }}>
+    <View style={{
+      backgroundColor: themed.card,
+      borderRadius: 20,
+      padding: 24,
+      margin: 20,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 5,
+      minWidth: '80%'
+    }}>
+      {/* Icono */}
+      <View style={{
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: modalConfig.type === 'success' 
+          ? (themed.isDark ? '#059669' : '#10b981') 
+          : (themed.isDark ? '#dc2626' : '#ef4444'),
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16
+      }}>
+        <Ionicons 
+          name={modalConfig.type === 'success' ? "checkmark" : "alert-circle"} 
+          size={32} 
+          color="#fff" 
+        />
+      </View>
+
+      {/* Título */}
+      <Text style={{
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: themed.text,
+        textAlign: 'center',
+        marginBottom: 8
+      }}>
+        {modalConfig.title}
+      </Text>
+
+      {/* Mensaje */}
+      <Text style={{
+        fontSize: 16,
+        color: themed.muted,
+        textAlign: 'center',
+        marginBottom: 24,
+        lineHeight: 22
+      }}>
+        {modalConfig.message}
+      </Text>
+
+      {/* Botón */}
+      <TouchableOpacity
+        onPress={() => {
+          setModalVisible(false);
+          if (modalConfig.type === 'success') {
+            router.replace('/indexR');
+          }
+        }}
+        style={{
+          backgroundColor: modalConfig.type === 'success' 
+            ? (themed.accent as string)
+            : (themed.isDark ? '#dc2626' : '#ef4444'),
+          paddingHorizontal: 32,
+          paddingVertical: 12,
+          borderRadius: 12,
+          minWidth: 120
+        }}
+      >
+        <Text style={{
+          color: '#fff',
+          fontSize: 16,
+          fontWeight: '600',
+          textAlign: 'center'
+        }}>
+          {modalConfig.type === 'success' ? 'Continuar' : 'Entendido'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+      
     </ScrollView>
   );
 }

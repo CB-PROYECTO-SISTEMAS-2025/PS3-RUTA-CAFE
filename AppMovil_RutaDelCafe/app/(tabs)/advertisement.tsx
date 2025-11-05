@@ -6,28 +6,89 @@ import {
   View,
   Dimensions,
   ScrollView,
-  Alert,
+  FlatList,
+  Linking,
+  ColorValue,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useThemedStyles } from "../../hooks/useThemedStyles";
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.0.40:4000";
+
+// Tupla de exactamente 3 colores (readonly) para que encaje con el tipo de LinearGradient
+type Triple<T> = readonly [T, T, T];
 
 export default function AdvertisementScreen() {
   const router = useRouter();
+  const themed = useThemedStyles();
+
   const screenWidth = Dimensions.get("window").width;
+  const itemWidth = screenWidth - 48; // ancho usado por FlatList (snapToInterval)
+
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userData, setUserData] = useState<any>(null);
+  const [ads, setAds] = useState<any[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const flatListRef = useRef<FlatList<any> | null>(null);
 
-  const galleryImages = [
-    { id: 1, image: require("../images/comida1.jpg") },
-    { id: 2, image: require("../images/comida2.jpg") },
-    { id: 3, image: require("../images/comida3.jpg") },
-    { id: 4, image: require("../images/comida4.jpg") },
+  // 🎨 Degradado del header según tema (tupla tipada -> FIX de TS)
+  const gradientColors = useMemo<Triple<ColorValue>>(
+    () =>
+      themed.isDark
+        ? ["#0B1220", "#0F1E3A", "#1E3A8A"] as const // dark
+        : ["#f97316", "#ea580c", "#c2410c"] as const, // light
+    [themed.isDark]
+  );
+
+  // 📸 Imágenes locales de respaldo
+  const fallbackAds = [
+    {
+      id: "local1",
+      title: "Sabor local 1",
+      description: "Descubre los mejores sabores cerca de ti.",
+      image_url: require("../images/comida1.jpg"),
+      enlace_url: "",
+    },
+    {
+      id: "local2",
+      title: "Sabor local 2",
+      description: "Explora nuevos lugares y experiencias.",
+      image_url: require("../images/comida2.jpg"),
+      enlace_url: "",
+    },
+    {
+      id: "local3",
+      title: "Sabor local 3",
+      description: "Encuentra los platos más deliciosos.",
+      image_url: require("../images/comida3.jpg"),
+      enlace_url: "",
+    },
   ];
 
+  // 🔐 Verificar login y cargar publicidades
   useEffect(() => {
     checkLoginStatus();
+    fetchPublicAds();
   }, []);
+
+  // 🎠 Carrusel automático (cada 10 s) usando offset
+  useEffect(() => {
+    const dataToShow = ads.length > 0 ? ads : fallbackAds;
+    if (dataToShow.length <= 1) return;
+
+    const id = setInterval(() => {
+      const next = (currentIndex + 1) % dataToShow.length;
+      setCurrentIndex(next);
+      flatListRef.current?.scrollToOffset({
+        offset: next * itemWidth,
+        animated: true,
+      });
+    }, 10000);
+
+    return () => clearInterval(id);
+  }, [ads, currentIndex, itemWidth]);
 
   const checkLoginStatus = async () => {
     try {
@@ -35,9 +96,7 @@ export default function AdvertisementScreen() {
       const userDataString = await AsyncStorage.getItem("userData");
       if (token) {
         setIsLoggedIn(true);
-        if (userDataString) {
-          setUserData(JSON.parse(userDataString));
-        }
+        if (userDataString) setUserData(JSON.parse(userDataString));
       } else {
         setIsLoggedIn(false);
         setUserData(null);
@@ -47,69 +106,91 @@ export default function AdvertisementScreen() {
     }
   };
 
-  const handleRoutePress = () => {
-    if (!isLoggedIn) {
-      Alert.alert(
-        "Iniciar Sesión Requerido",
-        "Debes iniciar sesión para acceder a las rutas",
-        [
-          { text: "Cancelar", style: "cancel" },
-          { text: "Iniciar Sesión", onPress: () => router.push("/login") }
-        ]
-      );
-    } else {
-      router.push("/Route");
+  const fetchPublicAds = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/advertising/public`);
+      const data = await res.json();
+      const now = new Date();
+
+      const filtered = (data || []).filter((ad: any) => {
+        const start = new Date(ad.start_date);
+        const end = new Date(ad.end_date);
+        return ad.status === "activo" && start <= now && end >= now;
+      });
+
+      setAds(filtered.length > 0 ? filtered : []);
+    } catch (error) {
+      console.error("Error fetching ads:", error);
+      setAds([]);
     }
   };
 
-  const handleProfilePress = () => {
-    if (isLoggedIn) {
-      router.push("/profile");
-    } else {
-      router.push("/login");
-    }
-  };
-
-  const handleLogout = async () => {
-    Alert.alert(
-      "Cerrar Sesión",
-      "¿Estás seguro de que quieres cerrar sesión?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Cerrar Sesión",
-          onPress: async () => {
-            await AsyncStorage.removeItem("userToken");
-            await AsyncStorage.removeItem("userData");
-            setIsLoggedIn(false);
-            setUserData(null);
-          }
-        }
-      ]
+  const openLink = (url: string) => {
+    if (!url) return;
+    const finalUrl =
+      url.startsWith("http://") || url.startsWith("https://")
+        ? url
+        : `https://${url}`;
+    Linking.openURL(finalUrl).catch((err) =>
+      console.error("Error al abrir el enlace:", err)
     );
   };
 
-  // Recupera nombre y apellido si existe, si no muestra "Bienvenido"
-  const getWelcomeName = () => {
-    if (isLoggedIn && userData) {
-      const name = userData.name || "";
-      const lastName = userData.lastName || "";
-      if (name && lastName) {
-        return `¡Bienvenido de nuevo, ${name} ${lastName}!`;
-      }
-      if (name) {
-        return `¡Bienvenido de nuevo, ${name}!`;
-      }
-      return "¡Bienvenido de nuevo!";
-    }
-    return "¡Bienvenido a La Ruta del Sabor!";
+  const renderAd = ({ item }: { item: any }) => {
+    const imageSource =
+      typeof item.image_url === "string"
+        ? { uri: item.image_url }
+        : item.image_url;
+
+    return (
+      <TouchableOpacity
+        activeOpacity={item.enlace_url ? 0.9 : 1}
+        onPress={() => openLink(item.enlace_url)}
+        style={{
+          width: itemWidth,
+          marginRight: 16,
+          borderRadius: 16,
+          overflow: "hidden",
+          backgroundColor: themed.card,
+          shadowColor: "#000",
+          shadowOpacity: 0.12,
+          shadowRadius: 6,
+          elevation: 4,
+          borderWidth: 1,
+          borderColor: themed.border,
+        }}
+      >
+        <Image
+          source={imageSource}
+          style={{ width: "100%", height: 280 }}
+          resizeMode="cover"
+        />
+        <View style={{ padding: 12 }}>
+          <Text
+            style={{
+              fontSize: 18,
+              fontWeight: "bold",
+              color: themed.accent,
+              marginBottom: 4,
+            }}
+          >
+            {item.title || "Publicidad"}
+          </Text>
+          <Text style={{ fontSize: 14, color: themed.text }}>
+            {item.description || "Descubre los mejores sabores locales."}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
+  const dataToShow = ads.length > 0 ? ads : fallbackAds;
+
   return (
-    <View className="flex-1 bg-white">
+    <View style={{ flex: 1, backgroundColor: themed.background }}>
       {/* Fondo degradado superior */}
       <LinearGradient
-        colors={["#f97316", "#ea580c", "#c2410c"]}
+        colors={gradientColors} // <- ahora es una tupla readonly compatible
         style={{
           position: "absolute",
           top: 0,
@@ -122,162 +203,341 @@ export default function AdvertisementScreen() {
         }}
       />
 
-      {/* Logo centrado */}
-      <View className="absolute top-8 left-0 right-0 items-center z-10">
-        <Image source={require("../images/LOGOTIPO.png")} style={{ width: 60, height: 60 }} resizeMode="contain" />
-      </View>
-
-      {/* Botones de sesión arriba */}
-      <View className="absolute top-8 left-0 right-0 flex-row justify-between px-6 z-20">
+      {/* Botones de sesión (estilo acorde al tema) */}
+      <View
+        style={{
+          position: "absolute",
+          top: 32,
+          left: 0,
+          right: 0,
+          flexDirection: "row",
+          justifyContent: "space-between",
+          paddingHorizontal: 24,
+          zIndex: 20,
+        }}
+      >
         {!isLoggedIn ? (
           <>
             <TouchableOpacity
               onPress={() => router.push("/register")}
-              className="bg-white px-5 py-2.5 rounded-2xl shadow border border-orange-100 min-w-[120px]"
+              style={{
+                backgroundColor: themed.card,
+                paddingHorizontal: 20,
+                paddingVertical: 10,
+                borderRadius: 18,
+                minWidth: 120,
+                borderWidth: 1,
+                borderColor: themed.border,
+              }}
             >
-              <Text className="text-orange-600 font-bold text-sm text-center">Registrarse</Text>
+              <Text
+                style={{
+                  color: themed.isDark ? "#FFFFFF" : themed.accent,
+                  fontWeight: "bold",
+                  fontSize: 14,
+                  textAlign: "center",
+                }}
+              >
+                Registrarse
+              </Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               onPress={() => router.push("/login")}
-              className="bg-white px-5 py-2.5 rounded-2xl shadow border border-orange-100 min-w-[120px]"
+              style={{
+                backgroundColor: themed.card,
+                paddingHorizontal: 20,
+                paddingVertical: 10,
+                borderRadius: 18,
+                minWidth: 120,
+                borderWidth: 1,
+                borderColor: themed.border,
+              }}
             >
-              <Text className="text-orange-600 font-bold text-sm text-center">Iniciar Sesión</Text>
+              <Text
+                style={{
+                  color: themed.isDark ? "#FFFFFF" : themed.accent,
+                  fontWeight: "bold",
+                  fontSize: 14,
+                  textAlign: "center",
+                }}
+              >
+                Iniciar Sesión
+              </Text>
             </TouchableOpacity>
           </>
         ) : (
           <>
             <TouchableOpacity
-              onPress={handleProfilePress}
-              className="bg-white px-5 py-2.5 rounded-2xl shadow border border-orange-100 min-w-[120px]"
+              onPress={() => router.push("/profile")}
+              style={{
+                backgroundColor: themed.card,
+                paddingHorizontal: 20,
+                paddingVertical: 10,
+                borderRadius: 18,
+                minWidth: 120,
+                borderWidth: 1,
+                borderColor: themed.border,
+              }}
             >
-              <Text className="text-orange-600 font-bold text-sm text-center">Ver Perfil</Text>
+              <Text
+                style={{
+                  color: themed.isDark ? "#FFFFFF" : themed.accent,
+                  fontWeight: "bold",
+                  fontSize: 14,
+                  textAlign: "center",
+                }}
+              >
+                Ver Perfil
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleLogout}
-              className="bg-white px-5 py-2.5 rounded-2xl shadow border border-orange-100 min-w-[120px]"
-            >
-              <Text className="text-orange-600 font-bold text-sm text-center">Cerrar Sesión</Text>
-            </TouchableOpacity>
+
+           <TouchableOpacity
+  onPress={async () => {
+    await AsyncStorage.removeItem("userToken");
+    await AsyncStorage.removeItem("userData");
+    setIsLoggedIn(false);
+    setUserData(null);
+    // 🔥 AGREGAR ESTA LÍNEA para redirigir al login
+    router.replace("/login");
+  }}
+  style={{
+    backgroundColor: themed.card,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 18,
+    minWidth: 120,
+    borderWidth: 1,
+    borderColor: themed.border,
+  }}
+>
+  <Text
+    style={{
+      color: themed.isDark ? "#FFFFFF" : themed.accent,
+      fontWeight: "bold",
+      fontSize: 14,
+      textAlign: "center",
+    }}
+  >
+    Cerrar Sesión
+  </Text>
+</TouchableOpacity>
           </>
         )}
       </View>
 
+      {/* Contenido scrollable */}
       <ScrollView
         contentContainerStyle={{
           flexGrow: 1,
-          paddingBottom: 20,
-          minHeight: 700, // Fijo para evitar que el contenido se mueva
+          paddingBottom: 40,
+          minHeight: 700,
         }}
-        className="mt-[120px] px-6"
+        style={{ marginTop: 120, paddingHorizontal: 24 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Mensaje de bienvenida con nombre y apellido */}
-        <View style={{ minHeight: 60, justifyContent: "center" }}>
-          <Text className="text-2xl font-bold text-center text-gray-700 mb-4 mt-2">
-            {getWelcomeName()}
-          </Text>
-        </View>
+        {/* Título principal */}
+        <Text
+          style={{
+            fontSize: 22,
+            fontWeight: "bold",
+            textAlign: "center",
+            marginBottom: 24,
+            color: themed.text,
+          }}
+        >
+          ¡Bienvenido a La Ruta del Sabor!
+        </Text>
+        
 
-        {/* Galería horizontal detrás de la barra naranja */}
-        <View className="relative">
-          <ScrollView
+
+        {/* Botón: Ver mapa de lugares (AllPlaces) */}
+<View style={{ marginTop: 12, alignItems: "center" }}>
+  <TouchableOpacity
+    onPress={() => router.push("/Place/all-places")}
+    activeOpacity={0.9}
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: themed.accent as string,
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: (themed.accent as string) + "55",
+      shadowColor: "#000",
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      elevation: 3,
+    }}
+  >
+    <Text style={{ color: "#FFFFFF", fontWeight: "bold", fontSize: 16 }}>
+      🗺️ Ver mapa de lugares
+    </Text>
+  </TouchableOpacity>
+</View>
+
+
+        {/* Carrusel principal */}
+        <View style={{ marginBottom: 24 }}>
+          <FlatList
+            ref={flatListRef}
+            data={dataToShow}
+            renderItem={renderAd}
+            keyExtractor={(item) => String(item.id)}
             horizontal
             showsHorizontalScrollIndicator={false}
-            className="mb-6"
-            contentContainerStyle={{ paddingHorizontal: 0 }}
-          >
-            {galleryImages.map((item) => (
+            snapToInterval={itemWidth}
+            snapToAlignment="start"
+            decelerationRate="fast"
+            getItemLayout={(_, index) => ({
+              length: itemWidth,
+              offset: itemWidth * index,
+              index,
+            })}
+            onScrollToIndexFailed={({ index }) => {
+              flatListRef.current?.scrollToOffset({
+                offset: index * itemWidth,
+                animated: true,
+              });
+            }}
+          />
+        </View>
+
+        {/* Secciones con ScrollView */}
+        <Text
+          style={{
+            fontSize: 18,
+            fontWeight: "bold",
+            color: themed.accent,
+            marginBottom: 12,
+          }}
+        >
+          🕒 Publicidades que vencerán pronto
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {[require("../images/comida1.jpg"), require("../images/comida2.jpg")].map(
+            (img, index) => (
               <View
-                key={item.id}
-                className="mr-4"
+                key={index}
                 style={{
-                  width: screenWidth - 48,
-                  marginTop: -30,
-                  zIndex: 0,
+                  marginRight: 12,
+                  borderRadius: 16,
+                  overflow: "hidden",
+                  backgroundColor: themed.card,
+                  width: screenWidth * 0.7,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.1,
+                  shadowRadius: 6,
+                  elevation: 3,
+                  borderWidth: 1,
+                  borderColor: themed.border,
                 }}
               >
-                <Image
-                  source={item.image}
-                  style={{
-                    width: screenWidth - 48,
-                    height: 200,
-                    borderRadius: 16,
-                  }}
-                  resizeMode="cover"
-                />
+                <Image source={img} style={{ width: "100%", height: 180 }} resizeMode="cover" />
+                <View style={{ padding: 10 }}>
+                  <Text style={{ fontWeight: "bold", color: themed.accent }}>
+                    Promoción Especial #{index + 1}
+                  </Text>
+                  <Text style={{ color: themed.text, fontSize: 12 }}>
+                    Aprovecha esta oferta antes de que termine.
+                  </Text>
+                </View>
               </View>
-            ))}
-          </ScrollView>
-        </View>
+            )
+          )}
+        </ScrollView>
 
-        {/* Botones principales - CENTRADOS CON ESPACIO EQUITATIVO */}
-        <View className="mt-2 flex-row justify-center px-4">
-          
-          {/* Cómo Llegar - NUEVO BOTÓN */}
-          <View className="items-center mb-4 mx-8">
-            <TouchableOpacity
-              className="items-center"
-              onPress={() => router.push("/Place/all-places")}
+        <Text
+          style={{
+            fontSize: 18,
+            fontWeight: "bold",
+            color: themed.accent,
+            marginTop: 24,
+            marginBottom: 12,
+          }}
+        >
+          💚 Ofertas y Promociones
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {[require("../images/comida3.jpg"), require("../images/comida4.jpg")].map(
+            (img, index) => (
+              <View
+                key={index}
+                style={{
+                  marginRight: 12,
+                  borderRadius: 16,
+                  overflow: "hidden",
+                  backgroundColor: themed.card,
+                  width: screenWidth * 0.7,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.1,
+                  shadowRadius: 6,
+                  elevation: 3,
+                  borderWidth: 1,
+                  borderColor: themed.border,
+                }}
+              >
+                <Image source={img} style={{ width: "100%", height: 180 }} resizeMode="cover" />
+                <View style={{ padding: 10 }}>
+                  <Text style={{ fontWeight: "bold", color: themed.accent }}>
+                    Oferta destacada #{index + 1}
+                  </Text>
+                  <Text style={{ color: themed.text, fontSize: 12 }}>
+                    Descubre nuevos sabores a precios únicos.
+                  </Text>
+                </View>
+              </View>
+            )
+          )}
+        </ScrollView>
+
+        {/* Acerca de nosotros */}
+        <View style={{ alignItems: "center", marginTop: 32 }}>
+          <TouchableOpacity onPress={() => router.push("/about-us")}>
+            <View
+              style={{
+                backgroundColor: (themed.accent as string) + "22",
+                padding: 12,
+                borderRadius: 999,
+                marginBottom: 8,
+                alignItems: "center",
+                justifyContent: "center",
+                width: 48,
+                height: 48,
+                borderWidth: 1,
+                borderColor: themed.accent,
+              }}
             >
-              <View className="bg-orange-100 p-3 rounded-full mb-2 items-center justify-center w-12 h-12">
-                <Image source={require("../images/navigation-icon.png")} style={{ width: 24, height: 24 }} resizeMode="contain" />
-              </View>
-              <Text className="text-xs text-gray-700 font-medium text-center">Cómo Llegar</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Acerca de nosotros */}
-          <View className="items-center mb-4 mx-8">
-            <TouchableOpacity
-              className="items-center"
-              onPress={() => router.push("/about-us")}
-            >
-              <View className="bg-orange-100 p-3 rounded-full mb-2 items-center justify-center w-12 h-12">
-                <Image source={require("../images/info-icon.png")} style={{ width: 24, height: 24 }} resizeMode="contain" />
-              </View>
-              <Text className="text-xs text-gray-700 font-medium text-center">Acerca de</Text>
-            </TouchableOpacity>
-          </View>
+              <Image
+                source={require("../images/info-icon.png")}
+                style={{ width: 24, height: 24, tintColor: themed.accent as string }}
+                resizeMode="contain"
+              />
+            </View>
+            <Text style={{ fontSize: 12, color: themed.text, fontWeight: "600", textAlign: "center" }}>
+              Acerca de nosotros
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Separador */}
-        <View className="mt-8 mb-4 flex-row items-center justify-center">
-          <View className="h-px bg-orange-200 flex-1" />
-          <Text className="mx-3 text-orange-500 font-bold">•</Text>
-          <View className="h-px bg-orange-200 flex-1" />
-        </View>
-
-        {/* Texto informativo debajo del separador */}
-        <View className="mb-4 px-2">
-          <Text className="text-center text-xs text-gray-500">
-            Conéctate con los mejores sabores de tu ciudad y descubre experiencias gastronómicas únicas.
+        {/* Footer */}
+        <View style={{ marginTop: 24, marginBottom: 12, paddingHorizontal: 8 }}>
+          <Text style={{ textAlign: "center", fontSize: 12, color: themed.muted }}>
+            Conéctate con los mejores sabores de tu ciudad y descubre
+            experiencias gastronómicas únicas.
           </Text>
         </View>
-
-        {/* Mensaje de bienvenida y descripción */}
-        <View className="mb-4 px-2">
-          <Text className="text-base text-gray-700 text-center leading-6">
+        <View style={{ marginBottom: 12, paddingHorizontal: 8 }}>
+          <Text style={{ fontSize: 16, color: themed.text, textAlign: "center", lineHeight: 22 }}>
             Descubre los sabores auténticos de tu ciudad.
-            <Text className="font-bold text-orange-600">
+            <Text style={{ fontWeight: "bold", color: themed.accent }}>
               {" "}Encuentra restaurantes, promociones exclusivas{" "}
             </Text>
             y disfruta de la mejor experiencia gastronómica.
           </Text>
         </View>
-
-        {/* Botón principal para registro */}
-        {!isLoggedIn && (
-          <TouchableOpacity
-            onPress={() => router.push("/register")}
-            className="mt-4 py-4 rounded-xl overflow-hidden shadow-lg mb-4"
-          >
-            <LinearGradient
-              colors={["#f97316", "#ea580c"]}
-              style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16 }}
-            />
-            <Text className="text-white text-lg font-bold text-center">Comenzar mi Ruta del Sabor</Text>
-          </TouchableOpacity>
-        )}
       </ScrollView>
     </View>
   );
