@@ -503,66 +503,94 @@ const confirmDeleteRoute = async () => {
                     {new Date(route.createdAt).toLocaleDateString()}
                   </Text>
 
-                  {isTechnician ? (
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      {/* Ver Sitios */}
-                      <TouchableOpacity
-                        onPress={() =>
-                          router.push({
-                            pathname: '/Place',
-                            params: { routeId: String(route.id), routeName: route.name },
-                          })
-                        }
-                        style={{
-                          backgroundColor: themed.isDark ? '#0b1220' : '#fff7ed',
-                          borderColor: themed.accent as string,
-                          borderWidth: 1,
-                          paddingHorizontal: 10,
-                          paddingVertical: 8,
-                          borderRadius: 10,
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <Ionicons name="locate-outline" size={18} color={themed.accent as string} />
-                        <Text style={{ color: themed.accent, fontWeight: '600', fontSize: 13, marginLeft: 6 }}>
-                          Ver Sitios
-                        </Text>
-                      </TouchableOpacity>
+{isTechnician ? (
+  <View style={{ flexDirection: 'row', gap: 8 }}>
+    {/* Botón "Ver Sitios" SOLO para rutas aprobadas */}
+    {route.status === 'aprobada' ? (
+      <TouchableOpacity
+        onPress={() =>
+          router.push({
+            pathname: '/Place',
+            params: { routeId: String(route.id), routeName: route.name },
+          })
+        }
+        style={{
+          backgroundColor: themed.isDark ? '#0b1220' : '#fff7ed',
+          borderColor: themed.accent as string,
+          borderWidth: 1,
+          paddingHorizontal: 10,
+          paddingVertical: 8,
+          borderRadius: 10,
+          flexDirection: 'row',
+          alignItems: 'center',
+        }}
+      >
+        <Ionicons name="locate-outline" size={18} color={themed.accent as string} />
+        <Text style={{ color: themed.accent, fontWeight: '600', fontSize: 13, marginLeft: 6 }}>
+          Ver Sitios
+        </Text>
+      </TouchableOpacity>
+    ) : (
+      // Estado bloqueado para pendiente/rechazada
+      <View style={{
+        backgroundColor: themed.isDark ? '#2a2a2a' : '#f3f4f6',
+        borderColor: themed.isDark ? '#4b5563' : '#d1d5db',
+        borderWidth: 1,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderRadius: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+      }}>
+        <Ionicons 
+          name="lock-closed" 
+          size={16} 
+          color={themed.isDark ? '#9ca3af' : '#6b7280'} 
+        />
+        <Text style={{ 
+          color: themed.isDark ? '#9ca3af' : '#6b7280', 
+          fontWeight: '500', 
+          fontSize: 12, 
+          marginLeft: 6 
+        }}>
+          {route.status === 'pendiente' ? 'En revisión' : 'Ruta rechazada'}
+        </Text>
+      </View>
+    )}
 
-                      {(route.status === 'pendiente' || route.status === 'rechazada') && (
-                        <TouchableOpacity
-                          onPress={() =>
-                            router.push({
-                              pathname: '/Route/edit',
-                              params: { id: route.id.toString() },
-                            })
-                          }
-                          style={{
-                            backgroundColor: themed.isDark ? '#34240f' : '#fed7aa',
-                            padding: 8,
-                            borderRadius: 10,
-                          }}
-                        >
-                          <Ionicons name="pencil" size={20} color={themed.accent as string} />
-                        </TouchableOpacity>
-                      )}
+    {/* Botones de editar y eliminar (mantener igual) */}
+    {(route.status === 'pendiente' || route.status === 'rechazada') && (
+      <>
+        <TouchableOpacity
+          onPress={() =>
+            router.push({
+              pathname: '/Route/edit',
+              params: { id: route.id.toString() },
+            })
+          }
+          style={{
+            backgroundColor: themed.isDark ? '#34240f' : '#fed7aa',
+            padding: 8,
+            borderRadius: 10,
+          }}
+        >
+          <Ionicons name="pencil" size={20} color={themed.accent as string} />
+        </TouchableOpacity>
 
-                      {(route.status === 'pendiente' || route.status === 'rechazada') && (
-                       
-<TouchableOpacity
-  onPress={() => handleDelete(route)}
-  style={{
-    backgroundColor: themed.isDark ? '#4a2e0b' : '#fdba74',
-    padding: 8,
-    borderRadius: 10,
-  }}
->
-  <Ionicons name="trash" size={20} color={themed.accent as string} />
-</TouchableOpacity>
-                      )}
-                    </View>
-                  ) : (
+        <TouchableOpacity
+          onPress={() => handleDelete(route)}
+          style={{
+            backgroundColor: themed.isDark ? '#4a2e0b' : '#fdba74',
+            padding: 8,
+            borderRadius: 10,
+          }}
+        >
+          <Ionicons name="trash" size={20} color={themed.accent as string} />
+        </TouchableOpacity>
+      </>
+    )}
+  </View>
+) : (
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       {/* Ver Sitios */}
                       <TouchableOpacity

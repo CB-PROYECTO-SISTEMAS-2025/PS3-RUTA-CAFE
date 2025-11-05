@@ -34,12 +34,16 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+   limits: { 
+    fileSize: 10 * 1024 * 1024, // Aumenta a 10MB
+    fieldSize: 10 * 1024 * 1024 // 👈 NUEVO
+  },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype?.startsWith("image/")) cb(null, true);
     else cb(new Error("Solo se permiten imágenes"));
   },
 });
+
 
 const router = express.Router();
 
@@ -55,7 +59,10 @@ router.get("/route/:routeId", maybeAuth, getPlacesByRouteController);
 router.get("/:id", maybeAuth, getPlaceByIdController);
 
 // Editar (con imagen principal + adicionales)
-router.put("/:id", verifyToken, upload.fields([
+router.put("/:id", verifyToken, (req, res, next) => {
+  req.setTimeout(30000); // 30 segundos timeout
+  next();
+}, upload.fields([
   { name: "image", maxCount: 1 },
   { name: "additional_images", maxCount: 8 }
 ]), updatePlaceController);

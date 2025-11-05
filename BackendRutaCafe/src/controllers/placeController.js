@@ -487,16 +487,64 @@ export const deletePlaceController = async (req, res) => {
     const existingPlace = await getPlaceById(id);
     if (!existingPlace) return res.status(404).json({ message: "Lugar no encontrado" });
 
-    await deletePlaceSchedules(id);
-    await deletePlaceImages(id);
+    console.log(`🗑️ Eliminando lugar ID: ${id} y sus relaciones...`);
+
+    // 🔥 ELIMINAR EN ESTE ORDEN para respetar constraints:
     
+    // 1. Eliminar favoritos primero
+    try {
+      await pool.query(
+        `DELETE FROM \`${SCHEMA}\`.favorites WHERE place_id = ?`,
+        [id]
+      );
+      console.log("✅ Favoritos eliminados");
+    } catch (favError) {
+      console.error("⚠️ Error eliminando favoritos:", favError.message);
+    }
+
+    // 2. Eliminar likes
+    try {
+      await pool.query(
+        `DELETE FROM \`${SCHEMA}\`.likes WHERE place_id = ?`,
+        [id]
+      );
+      console.log("✅ Likes eliminados");
+    } catch (likeError) {
+      console.error("⚠️ Error eliminando likes:", likeError.message);
+    }
+
+    // 3. Eliminar comentarios
+    try {
+      await pool.query(
+        `DELETE FROM \`${SCHEMA}\`.comment WHERE place_id = ?`,
+        [id]
+      );
+      console.log("✅ Comentarios eliminados");
+    } catch (commentError) {
+      console.error("⚠️ Error eliminando comentarios:", commentError.message);
+    }
+
+    // 4. Eliminar horarios
+    await deletePlaceSchedules(id);
+    console.log("✅ Horarios eliminados");
+
+    // 5. Eliminar imágenes adicionales
+    await deletePlaceImages(id);
+    console.log("✅ Imágenes eliminadas");
+
+    // 6. Finalmente eliminar el lugar
     const deleted = await deletePlace(id);
     if (!deleted) return res.status(400).json({ message: "No se pudo eliminar el lugar" });
 
+    console.log("✅ Lugar eliminado completamente");
     res.json({ message: "Lugar eliminado permanentemente" });
+    
   } catch (error) {
-    console.error("Error al eliminar lugar:", error);
-    res.status(500).json({ message: "Error interno del servidor" });
+    console.error("❌ Error al eliminar lugar:", error);
+    res.status(500).json({ 
+      message: "Error interno del servidor",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 

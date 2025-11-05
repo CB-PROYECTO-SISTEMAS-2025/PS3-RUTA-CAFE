@@ -668,7 +668,46 @@ const validateForm = () => {
   return true;
 };
 
+
+// 🔧 FUNCIÓN MEJORADA PARA OPTIMIZAR IMÁGENES
+const optimizeImageQuality = async (imageUri: string, maxWidth = 800, quality = 0.7): Promise<string> => {
+  try {
+    console.log("🖼️ Optimizando imagen:", imageUri);
+    
+    // Por ahora, retornamos la imagen original
+    // En el futuro puedes implementar con react-native-image-resizer:
+    /*
+    if (imageUri.startsWith('file://')) {
+      const compressedUri = await ImageResizer.createResizedImage(
+        imageUri,
+        maxWidth,
+        maxWidth * (4/3), // Mantener aspect ratio 4:3
+        'JPEG',
+        quality * 100,
+        0,
+        undefined,
+        false,
+        { mode: 'contain', onlyScaleDown: true }
+      );
+      console.log("✅ Imagen optimizada:", compressedUri.uri);
+      return compressedUri.uri;
+    }
+    */
+    
+    console.log("✅ Imagen lista para subir (sin compresión)");
+    return imageUri;
+    
+  } catch (error) {
+    console.warn("❌ Error optimizando imagen, usando original:", error);
+    return imageUri;
+  }
+};
+
+
+
   // ===== handleSubmit con guard + manejo 409 =====
+// ===== handleSubmit MEJORADO para CREATE =====
+// ===== handleSubmit MEJORADO para CREATE con optimización =====
 const handleSubmit = async () => {
   const allowed = await preSubmitGuard();
   if (!allowed) return;
@@ -676,9 +715,15 @@ const handleSubmit = async () => {
   if (!validateForm()) return;
 
   setLoading(true);
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+
   try {
     const token = await getAuthToken();
     if (!token) return;
+
+    console.log("🔄 Iniciando creación de lugar...");
 
     const submitData = new FormData();
     submitData.append('name', formData.name.trim());
@@ -698,37 +743,54 @@ const handleSubmit = async () => {
       }));
     submitData.append('schedules', JSON.stringify(schedulesData));
 
+    // 🔧 OPTIMIZAR: Imagen principal
     if (formData.image_url) {
-      const filename = formData.image_url.split('/').pop();
+      console.log("📸 Procesando imagen principal...");
+      const optimizedImageUri = await optimizeImageQuality(formData.image_url);
+      const filename = optimizedImageUri.split('/').pop();
       const match = /\.(\w+)$/.exec(filename || '');
       const type = match ? `image/${match[1]}` : 'image/jpeg';
+      
       submitData.append('image', {
-        uri: formData.image_url,
+        uri: optimizedImageUri,
         name: filename || 'image.jpg',
         type,
       } as any);
     }
 
-    additionalImages.forEach((imageUri, index) => {
-      const filename = imageUri.split('/').pop();
+    // 🔧 OPTIMIZAR: Imágenes adicionales
+    const imagesToUpload = additionalImages.slice(0, 5);
+    console.log(`🖼️ Subiendo ${imagesToUpload.length} imágenes adicionales...`);
+
+    for (let i = 0; i < imagesToUpload.length; i++) {
+      const optimizedImageUri = await optimizeImageQuality(imagesToUpload[i]);
+      const filename = optimizedImageUri.split('/').pop();
       const match = /\.(\w+)$/.exec(filename || '');
       const type = match ? `image/${match[1]}` : 'image/jpeg';
 
       submitData.append('additional_images', {
-        uri: imageUri,
-        name: `additional_${index}.${match ? match[1] : 'jpg'}`,
+        uri: optimizedImageUri,
+        name: `additional_${i}.${match ? match[1] : 'jpg'}`,
         type,
       } as any);
-    });
+    }
 
+    console.log("📡 Enviando petición al servidor...");
     const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { 
+        Authorization: `Bearer ${token}`,
+      },
       body: submitData,
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
+    console.log("📨 Respuesta recibida, status:", response.status);
     const responseText = await response.text();
     let responseData: any;
+    
     try {
       responseData = JSON.parse(responseText);
     } catch {
@@ -736,6 +798,7 @@ const handleSubmit = async () => {
     }
 
     if (response.ok) {
+      console.log("✅ Lugar creado exitosamente");
       setModalConfig({
         title: '¡Éxito!',
         message: 'Lugar creado correctamente',
@@ -746,6 +809,7 @@ const handleSubmit = async () => {
     }
 
     if (response.status === 409 && responseData?.code === 'PENDING_LIMIT') {
+      console.log("🚫 Límite de pendientes alcanzado");
       setCreationBlocked(true);
       setPendingCount(responseData.currentPending ?? pendingCount);
 
@@ -759,12 +823,25 @@ const handleSubmit = async () => {
     }
 
     throw new Error(responseData.message || `Error ${response.status} al crear el lugar`);
+    
   } catch (error: any) {
-    setModalConfig({
-      title: 'Error',
-      message: error?.message || 'No se pudo crear el lugar. Intenta nuevamente.',
-      type: 'error',
-    });
+    clearTimeout(timeoutId);
+    
+    console.error("❌ Error en handleSubmit:", error);
+    
+    if (error.name === 'AbortError') {
+      setModalConfig({
+        title: 'Timeout',
+        message: 'La subida tardó demasiado. Intenta con menos imágenes o imágenes más pequeñas.',
+        type: 'error',
+      });
+    } else {
+      setModalConfig({
+        title: 'Error',
+        message: error?.message || 'No se pudo crear el lugar. Intenta nuevamente.',
+        type: 'error',
+      });
+    }
     setModalVisible(true);
   } finally {
     setLoading(false);

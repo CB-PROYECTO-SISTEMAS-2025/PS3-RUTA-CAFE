@@ -651,12 +651,58 @@ const cleanWebsiteUrl = (url: string): string => {
   return true;
 };
 
- const handleSubmit = async () => {
+// 🔧 FUNCIÓN MEJORADA PARA OPTIMIZAR IMÁGENES
+const optimizeImageQuality = async (imageUri: string, maxWidth = 800, quality = 0.7): Promise<string> => {
+  try {
+    console.log("🖼️ Optimizando imagen:", imageUri);
+    
+    // Por ahora, retornamos la imagen original
+    // En el futuro puedes implementar con react-native-image-resizer:
+    /*
+    if (imageUri.startsWith('file://')) {
+      const compressedUri = await ImageResizer.createResizedImage(
+        imageUri,
+        maxWidth,
+        maxWidth * (4/3), // Mantener aspect ratio 4:3
+        'JPEG',
+        quality * 100,
+        0,
+        undefined,
+        false,
+        { mode: 'contain', onlyScaleDown: true }
+      );
+      console.log("✅ Imagen optimizada:", compressedUri.uri);
+      return compressedUri.uri;
+    }
+    */
+    
+    console.log("✅ Imagen lista para subir (sin compresión)");
+    return imageUri;
+    
+  } catch (error) {
+    console.warn("❌ Error optimizando imagen, usando original:", error);
+    return imageUri;
+  }
+};
+
+
+// ===== handleSubmit MEJORADO para EDIT =====
+// ===== handleSubmit MEJORADO para EDIT con optimización =====
+const handleSubmit = async () => {
   if (!validateForm()) return;
   setUpdating(true);
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+
   try {
     const token = await AsyncStorage.getItem('userToken');
-    if (!token) { router.replace('/login'); return; }
+    if (!token) { 
+      router.replace('/login'); 
+      return; 
+    }
+
+    console.log("🔄 Iniciando actualización del lugar...");
 
     const submitData = new FormData();
     submitData.append('name', formData.name.trim());
@@ -671,7 +717,11 @@ const cleanWebsiteUrl = (url: string): string => {
 
     const schedulesData = schedule
       .filter(d => d.isOpen)
-      .map(d => ({ dayOfWeek: d.dayOfWeek, openTime: d.openTime + ':00', closeTime: d.closeTime + ':00' }));
+      .map(d => ({ 
+        dayOfWeek: d.dayOfWeek, 
+        openTime: d.openTime + ':00', 
+        closeTime: d.closeTime + ':00' 
+      }));
     submitData.append('schedules', JSON.stringify(schedulesData));
 
     submitData.append('remove_main_image', removedMainImage ? '1' : '0');
@@ -680,41 +730,62 @@ const cleanWebsiteUrl = (url: string): string => {
       submitData.append('deleted_additional_image_ids', JSON.stringify(deletedAdditionalIds));
     }
 
+    // 🔧 OPTIMIZAR: Solo subir imagen si es nueva y optimizarla
     if (formData.image_url && formData.image_url.startsWith('file://')) {
-      const filename = formData.image_url.split('/').pop();
+      console.log("📸 Procesando nueva imagen principal...");
+      const optimizedImageUri = await optimizeImageQuality(formData.image_url);
+      const filename = optimizedImageUri.split('/').pop();
       const match = /\.(\w+)$/.exec(filename || '');
       const type = match ? `image/${match[1]}` : 'image/jpeg';
+      
       submitData.append('image', {
-        uri: formData.image_url,
+        uri: optimizedImageUri,
         name: filename || `place_${id}_image.jpg`,
         type,
       } as any);
     }
 
+    // 🔧 OPTIMIZAR: Solo subir imágenes adicionales nuevas y optimizarlas
     const newAdditionalImages = additionalImages.filter(img => img.startsWith('file://'));
-    newAdditionalImages.forEach((imageUri, index) => {
-      const filename = imageUri.split('/').pop();
+    console.log(`🖼️ Subiendo ${newAdditionalImages.length} imágenes adicionales nuevas...`);
+
+    for (let i = 0; i < newAdditionalImages.length; i++) {
+      const optimizedImageUri = await optimizeImageQuality(newAdditionalImages[i]);
+      const filename = optimizedImageUri.split('/').pop();
       const match = /\.(\w+)$/.exec(filename || '');
       const type = match ? `image/${match[1]}` : 'image/jpeg';
+      
       submitData.append('additional_images', {
-        uri: imageUri,
-        name: `additional_${index}.${match ? match[1] : 'jpg'}`,
+        uri: optimizedImageUri,
+        name: `additional_${i}.${match ? match[1] : 'jpg'}`,
         type,
       } as any);
-    });
+    }
 
+    console.log("📡 Enviando petición PUT...");
     const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${id}`, {
       method: 'PUT',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { 
+        Authorization: `Bearer ${token}`,
+      },
       body: submitData,
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
+    console.log("📨 Respuesta recibida, status:", response.status);
     const text = await response.text();
     let data;
-    try { data = JSON.parse(text); } catch { throw new Error('Respuesta inválida del servidor'); }
+    
+    try { 
+      data = JSON.parse(text); 
+    } catch { 
+      throw new Error('Respuesta inválida del servidor'); 
+    }
 
     if (response.ok) {
-      // 🔥 NUEVO: Mensaje personalizado si el lugar fue rechazado y ahora está pendiente
+      console.log("✅ Lugar actualizado exitosamente");
       if (data.statusChanged) {
         setModalConfig({
           title: '¡Solicitud Enviada!',
@@ -732,12 +803,25 @@ const cleanWebsiteUrl = (url: string): string => {
     } else {
       throw new Error(data.message || `Error ${response.status}: ${response.statusText}`);
     }
+    
   } catch (error) {
-    setModalConfig({
-      title: 'Error',
-      message: error instanceof Error ? error.message : 'Error desconocido al actualizar el lugar',
-      type: 'error',
-    });
+    clearTimeout(timeoutId);
+    
+    console.error("❌ Error en handleSubmit:", error);
+    
+    if (error instanceof Error && error.name === 'AbortError') {
+      setModalConfig({
+        title: 'Timeout',
+        message: 'La actualización tardó demasiado. Intenta con menos imágenes o imágenes más pequeñas.',
+        type: 'error',
+      });
+    } else {
+      setModalConfig({
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'Error desconocido al actualizar el lugar',
+        type: 'error',
+      });
+    }
     setModalVisible(true);
   } finally {
     setUpdating(false);
