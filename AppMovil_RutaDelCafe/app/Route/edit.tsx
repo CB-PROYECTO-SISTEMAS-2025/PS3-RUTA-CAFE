@@ -217,7 +217,7 @@ const [modalConfig, setModalConfig] = useState({
     return;
   }
 
-  setSaving(true);
+setSaving(true);
   try {
     const token = await AsyncStorage.getItem('userToken');
     if (!token) {
@@ -258,11 +258,23 @@ const [modalConfig, setModalConfig] = useState({
       }
     }
 
-    setModalConfig({
-      title: '¡Éxito!',
-      message: 'Ruta actualizada correctamente',
-      type: 'success',
-    });
+    const responseData = JSON.parse(text);
+    
+    // 🔥 NUEVO: Mensaje personalizado si la ruta fue rechazada y ahora está pendiente
+    if (responseData.statusChanged) {
+      setModalConfig({
+        title: '¡Solicitud Enviada!',
+        message: 'Ruta actualizada y enviada para revisión nuevamente. El administrador revisará los cambios.',
+        type: 'success',
+      });
+    } else {
+      setModalConfig({
+        title: '¡Éxito!',
+        message: 'Ruta actualizada correctamente',
+        type: 'success',
+      });
+    }
+    
     setModalVisible(true);
   } catch (e: any) {
     setModalConfig({

@@ -337,6 +337,14 @@ export const updatePlaceController = async (req, res) => {
       deleted_additional_image_ids
     });
 
+    // 🔥 NUEVO: Obtener el lugar actual para verificar su estado
+    const currentPlace = await getPlaceById(id);
+    if (!currentPlace) {
+      return res.status(404).json({ message: "Lugar no encontrado" });
+    }
+
+    console.log('🎯 Estado actual del lugar:', currentPlace.status);
+
     // 🔧 LIMPIAR Y VALIDAR URL SI SE PROPORCIONA
     if (updates.website !== undefined) {
       const cleanedWebsite = cleanAndValidateUrl(updates.website);
@@ -359,6 +367,13 @@ export const updatePlaceController = async (req, res) => {
       if (allowedFields.includes(k)) filteredUpdates[k] = v;
     }
 
+    // 🔥 NUEVO: Si el lugar está rechazado, cambiar a pendiente
+    if (currentPlace.status === 'rechazada') {
+      console.log('🔄 Lugar rechazado detectado - Cambiando estado a pendiente');
+      filteredUpdates.status = 'pendiente';
+      filteredUpdates.rejectionComment = null; // Limpiar el comentario de rechazo
+    }
+
     if (filteredUpdates.latitude) filteredUpdates.latitude = parseFloat(filteredUpdates.latitude);
     if (filteredUpdates.longitude) filteredUpdates.longitude = parseFloat(filteredUpdates.longitude);
 
@@ -371,9 +386,6 @@ export const updatePlaceController = async (req, res) => {
       if (!r.length) return res.status(400).json({ message: `La ruta ${filteredUpdates.route_id} no existe` });
     }
 
-    const existingPlace = await getPlaceById(id);
-    if (!existingPlace) return res.status(404).json({ message: "Lugar no encontrado" });
-
     // Imagen principal
     const wantRemoveMain = remove_main_image === '1' || remove_main_image === 'true';
     if (wantRemoveMain) {
@@ -385,6 +397,8 @@ export const updatePlaceController = async (req, res) => {
     } else {
       console.log("ℹ️ Imagen principal: se mantiene la existente");
     }
+
+    console.log('📤 Updates a aplicar:', filteredUpdates);
 
     const updated = await updatePlace(id, filteredUpdates, modifiedBy);
     if (!updated) return res.status(400).json({ message: "No se pudo actualizar el lugar" });
@@ -457,6 +471,8 @@ export const updatePlaceController = async (req, res) => {
 
     res.json({
       message: "Lugar actualizado correctamente",
+      // 🔥 NUEVO: Informar si cambió el estado
+      statusChanged: currentPlace.status === 'rechazada',
       updatedPlace: merged
     });
   } catch (error) {

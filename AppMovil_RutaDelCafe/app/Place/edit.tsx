@@ -651,7 +651,7 @@ const cleanWebsiteUrl = (url: string): string => {
   return true;
 };
 
-  const handleSubmit = async () => {
+ const handleSubmit = async () => {
   if (!validateForm()) return;
   setUpdating(true);
   try {
@@ -714,11 +714,20 @@ const cleanWebsiteUrl = (url: string): string => {
     try { data = JSON.parse(text); } catch { throw new Error('Respuesta inválida del servidor'); }
 
     if (response.ok) {
-      setModalConfig({
-        title: '¡Éxito!',
-        message: 'Lugar actualizado correctamente',
-        type: 'success',
-      });
+      // 🔥 NUEVO: Mensaje personalizado si el lugar fue rechazado y ahora está pendiente
+      if (data.statusChanged) {
+        setModalConfig({
+          title: '¡Solicitud Enviada!',
+          message: 'Lugar actualizado y enviado para revisión nuevamente. El administrador revisará los cambios.',
+          type: 'success',
+        });
+      } else {
+        setModalConfig({
+          title: '¡Éxito!',
+          message: 'Lugar actualizado correctamente',
+          type: 'success',
+        });
+      }
       setModalVisible(true);
     } else {
       throw new Error(data.message || `Error ${response.status}: ${response.statusText}`);

@@ -71,6 +71,7 @@ export const getRouteById = async (id) => {
 };
 
 // Actualizar ruta
+// Actualizar ruta
 export const updateRoute = async (id, updates, modifiedBy) => {
   const fields = Object.keys(updates).map((k) => `${k} = ?`).join(", ");
   const values = [...Object.values(updates), modifiedBy, id];

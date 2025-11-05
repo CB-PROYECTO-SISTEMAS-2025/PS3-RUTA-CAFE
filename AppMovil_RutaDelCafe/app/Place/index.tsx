@@ -992,37 +992,25 @@ const confirmDeletePlace = async () => {
                     {isAdmin && (
                       <>
                         {/* Editar - BLOQUEADO si está rechazado */}
-                        <TouchableOpacity
-                          onPress={() => {
-                            if (handleBlockedAction(place, 'editar')) return;
-                            router.push(`/Place/edit?id=${place.id}`);
-                          }}
-                          style={{
-                            flex: 1,
-                            backgroundColor: place.status === 'rechazada' ? '#e5e7eb' : themed.softBg,
-                            paddingVertical: 8,
-                            borderRadius: 12,
-                            borderWidth: 1,
-                            borderColor: place.status === 'rechazada' ? '#9ca3af' : themed.border,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                          disabled={place.status === 'rechazada'}
-                        >
-                          <Ionicons 
-                            name="create-outline" 
-                            size={18} 
-                            color={place.status === 'rechazada' ? '#9ca3af' : '#3b82f6'} 
-                          />
-                          <Text style={{ 
-                            color: place.status === 'rechazada' ? '#9ca3af' : themed.text, 
-                            fontWeight: '700', 
-                            marginLeft: 8 
-                          }}>
-                            Editar
-                          </Text>
-                        </TouchableOpacity>
+                         <TouchableOpacity
+      onPress={() => router.push(`/Place/edit?id=${place.id}`)}
+      style={{
+        flex: 1,
+        backgroundColor: themed.softBg,
+        paddingVertical: 8,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: themed.border,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}
+    >
+      <Ionicons name="create-outline" size={18} color="#3b82f6" />
+      <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>
+        Editar
+      </Text>
+    </TouchableOpacity>
 
                         {/* Eliminar - SIEMPRE disponible para técnicos */}
                        {/* En la sección de acciones del lugar, cambiar el onPress del botón eliminar: */}
@@ -1046,94 +1034,72 @@ const confirmDeletePlace = async () => {
                       </>
                     )}
 
-                    {isUser ? (
-                      <>
-                        {/* Like - BLOQUEADO si está rechazado */}
-                        <TouchableOpacity
-                          onPress={() => {
-                            if (handleBlockedAction(place, 'dar like a')) return;
-                            toggleLike(place.id);
-                          }}
-                          style={{
-                            flex: 1,
-                            backgroundColor: place.status === 'rechazada' ? '#e5e7eb' : themed.softBg,
-                            paddingVertical: 8,
-                            borderRadius: 12,
-                            borderWidth: 1,
-                            borderColor: place.status === 'rechazada' ? '#9ca3af' : themed.border,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                          disabled={place.status === 'rechazada'}
-                        >
-                          <Ionicons 
-                            name={place.user_liked ? 'heart' : 'heart-outline'} 
-                            size={18} 
-                            color={place.status === 'rechazada' ? '#9ca3af' : '#ec4899'} 
-                          />
-                          <Text style={{ 
-                            color: place.status === 'rechazada' ? '#9ca3af' : themed.text, 
-                            fontWeight: '700', 
-                            marginLeft: 8 
-                          }}>
-                            {place.user_liked ? 'Quitar' : 'Like'}
-                          </Text>
-                        </TouchableOpacity>
+{isUser ? (
+  <>
+    {/* Like - PERMITIDO incluso cuando está rechazado */}
+    <TouchableOpacity
+      onPress={() => toggleLike(place.id)}
+      style={{
+        flex: 1,
+        backgroundColor: themed.softBg,
+        paddingVertical: 8,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: themed.border,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}
+    >
+      <Ionicons 
+        name={place.user_liked ? 'heart' : 'heart-outline'} 
+        size={18} 
+        color="#ec4899" 
+      />
+      <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>
+        {place.user_liked ? 'Quitar' : 'Like'}
+      </Text>
+    </TouchableOpacity>
 
-                        {/* Comentarios - BLOQUEADO si está rechazado */}
-                        <TouchableOpacity
-                          onPress={() => {
-                            if (handleBlockedAction(place, 'comentar')) return;
-                            router.push(`/Place/comments?id=${place.id}&name=${place.name}`);
-                          }}
-                          style={{
-                            flex: 1,
-                            backgroundColor: place.status === 'rechazada' ? '#e5e7eb' : themed.successBg,
-                            paddingVertical: 8,
-                            borderRadius: 12,
-                            borderWidth: 1,
-                            borderColor: place.status === 'rechazada' ? '#9ca3af' : themed.successBorder,
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                          disabled={place.status === 'rechazada'}
-                        >
-                          <Text style={{ 
-                            color: place.status === 'rechazada' ? '#9ca3af' : (themed.successText as string), 
-                            fontWeight: '700' 
-                          }}>
-                            Comentarios
-                          </Text>
-                        </TouchableOpacity>
-                      </>
-                    ) : (
-                      // Visitante: solo ver comentarios (BLOQUEADO si está rechazado)
-                      <TouchableOpacity
-                        onPress={() => {
-                          if (handleBlockedAction(place, 'ver comentarios de')) return;
-                          router.push(`/Place/comments?id=${place.id}&name=${place.name}`);
-                        }}
-                        style={{
-                          flex: 1,
-                          backgroundColor: place.status === 'rechazada' ? '#e5e7eb' : themed.successBg,
-                          paddingVertical: 8,
-                          borderRadius: 12,
-                          borderWidth: 1,
-                          borderColor: place.status === 'rechazada' ? '#9ca3af' : themed.successBorder,
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}
-                        disabled={place.status === 'rechazada'}
-                      >
-                        <Text style={{ 
-                          color: place.status === 'rechazada' ? '#9ca3af' : (themed.successText as string), 
-                          fontWeight: '700' 
-                        }}>
-                          Comentarios
-                        </Text>
-                      </TouchableOpacity>
-                    )}
+    {/* Comentarios - PERMITIDO incluso cuando está rechazado */}
+    <TouchableOpacity
+      onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
+      style={{
+        flex: 1,
+        backgroundColor: themed.successBg,
+        paddingVertical: 8,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: themed.successBorder,
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}
+    >
+      <Text style={{ color: themed.successText as string, fontWeight: '700' }}>
+        Comentarios
+      </Text>
+    </TouchableOpacity>
+  </>
+) : (
+  // Visitante: solo ver comentarios (PERMITIDO incluso cuando está rechazado)
+  <TouchableOpacity
+    onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
+    style={{
+      flex: 1,
+      backgroundColor: themed.successBg,
+      paddingVertical: 8,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: themed.successBorder,
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}
+  >
+    <Text style={{ color: themed.successText as string, fontWeight: '700' }}>
+      Comentarios
+    </Text>
+  </TouchableOpacity>
+)}
                   </View>
                 </View>
               );
