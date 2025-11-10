@@ -176,6 +176,9 @@ const [modalConfig, setModalConfig] = useState({
     if (places.length > 0) setMapKey((p) => p + 1);
   }, [places]);
 
+
+  
+
   // 🔥 NUEVO: Verificar si el usuario tiene lugares pendientes
   const userHasPendingPlaces = useMemo(() => {
     if (!isAdmin) return false;
@@ -196,22 +199,41 @@ const [modalConfig, setModalConfig] = useState({
   };
 
   // user
-  const loadUser = async () => {
-    try {
-      const userData = await AsyncStorage.getItem('userData');
-      if (userData) {
+ const loadUser = async () => {
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    
+    // 🔥 CRÍTICO: Si no hay token, forzar rol de visitante
+    if (!token) {
+      console.log('🔐 No hay token - Usuario es visitante');
+      setUserRole(0);
+      setUserId(0);
+      return;
+    }
+
+    const userData = await AsyncStorage.getItem('userData');
+    if (userData) {
+      try {
         const user: UserData = JSON.parse(userData);
+        console.log('👤 Usuario cargado en places:', { id: user.id, role: user.role });
         setUserRole(user.role || 3);
         setUserId(user.id || 0);
-      } else {
+      } catch (parseError) {
+        console.error('❌ Error parseando userData:', parseError);
         setUserRole(0);
         setUserId(0);
       }
-    } catch (e) {
-      console.error('Error loading user data:', e);
+    } else {
+      console.log('📝 No hay userData en places - Usuario es visitante');
       setUserRole(0);
+      setUserId(0);
     }
-  };
+  } catch (e) {
+    console.error('❌ Error loading user data:', e);
+    setUserRole(0);
+    setUserId(0);
+  }
+};
 
   // places
   const fetchPlaces = async () => {

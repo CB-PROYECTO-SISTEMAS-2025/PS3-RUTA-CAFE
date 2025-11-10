@@ -93,55 +93,75 @@ const [modalConfig, setModalConfig] = useState({
   }, [routes, userRole, userId]);
 
   const loadUserData = async () => {
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      setUserToken(token);
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    setUserToken(token);
 
-      const userData = await AsyncStorage.getItem('userData');
-      if (userData) {
+    // 🔥 CRÍTICO: Si no hay token, forzar rol de visitante
+    if (!token) {
+      console.log('🔐 No hay token - Usuario es visitante');
+      setUserRole(0);
+      setUserId(0);
+      return;
+    }
+
+    const userData = await AsyncStorage.getItem('userData');
+    if (userData) {
+      try {
         const user: UserData = JSON.parse(userData);
-        setUserRole(user.role || 3);
+        console.log('👤 Usuario cargado:', { id: user.id, role: user.role });
+        setUserRole(user.role || 3); // Default a usuario normal si no hay rol
         setUserId(user.id || 0);
-      } else {
+      } catch (parseError) {
+        console.error('❌ Error parseando userData:', parseError);
+        // Si hay error al parsear, forzar visitante
         setUserRole(0);
         setUserId(0);
       }
-    } catch {
+    } else {
+      console.log('📝 No hay userData - Usuario es visitante');
       setUserRole(0);
+      setUserId(0);
     }
-  };
+  } catch (error) {
+    console.error('❌ Error en loadUserData:', error);
+    // En caso de error, forzar visitante
+    setUserRole(0);
+    setUserId(0);
+  }
+};
 
-  const fetchRoutes = async () => {
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+const fetchRoutes = async () => {
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+    const headers: any = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes`, {
-        method: 'GET',
-        headers,
-      });
+    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes`, {
+      method: 'GET',
+      headers,
+    });
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          await AsyncStorage.removeItem('userToken');
-          await AsyncStorage.removeItem('userData');
-          setUserToken(null);
-          setUserRole(0);
-        }
-        throw new Error('Error al cargar las rutas');
+    if (!response.ok) {
+      if (response.status === 401) {
+        console.log('🔐 Token inválido - Limpiando sesión');
+        await AsyncStorage.multiRemove(['userToken', 'userData']);
+        setUserToken(null);
+        setUserRole(0); // 🔥 FORZAR VISITANTE
+        setUserId(0);
       }
-
-      const data = await response.json();
-      setRoutes(data);
-    } catch {
-      Alert.alert('Error', 'No se pudieron cargar las rutas');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      throw new Error('Error al cargar las rutas');
     }
-  };
 
+    const data = await response.json();
+    setRoutes(data);
+  } catch {
+    Alert.alert('Error', 'No se pudieron cargar las rutas');
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+};
   const onRefresh = () => {
     setRefreshing(true);
     fetchRoutes();
