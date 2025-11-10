@@ -34,8 +34,36 @@ function RootInner() {
   return (
     <NavThemeProvider value={effectiveTheme === "dark" ? NavyDarkTheme : LightTheme}>
       <Stack>
+        {/* 👇 Mantener tabs sin header */}
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        
+        {/* 👇 Ocultar headers en rutas específicas de Route */}
+        <Stack.Screen name="Route/details" options={{ headerShown: false }} />
+        <Stack.Screen name="Route/create" options={{ headerShown: false }} />
+        <Stack.Screen name="Route/edit" options={{ headerShown: false }} />
+        
+        {/* 👇 Ocultar headers en rutas específicas de Place */}
+        <Stack.Screen name="Place/details" options={{ headerShown: false }} />
+        <Stack.Screen name="Place/comments" options={{ headerShown: false }} />
+        <Stack.Screen name="Place/create" options={{ headerShown: false }} />
+        <Stack.Screen name="Place/edit" options={{ headerShown: false }} />
+        
+        {/* 👇 Ocultar headers en otras rutas específicas */}
+        <Stack.Screen name="indexP" options={{ headerShown: false }} />
+        <Stack.Screen name="indexR" options={{ headerShown: false }} />
+        <Stack.Screen name="Place/favorites" options={{ headerShown: false }} />
+        
+        {/* 👇 Modal puede mantener header si quieres */}
         <Stack.Screen name="modal" options={{ presentation: "modal", title: "Modal" }} />
+        
+        {/* 👇 Para cualquier otra pantalla no cubierta */}
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="register" options={{ headerShown: false }} />
+        
+        {/* 👇 Rutas adicionales que puedan existir */}
+        <Stack.Screen name="advertisement" options={{ headerShown: false }} />
+        <Stack.Screen name="profile" options={{ headerShown: false }} />
+        <Stack.Screen name="settings" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style={effectiveTheme === "dark" ? "light" : "dark"} />
     </NavThemeProvider>

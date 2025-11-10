@@ -914,7 +914,7 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                   </View>
                 </TouchableOpacity>
 
-                <TouchableOpacity
+                {/* <TouchableOpacity
                   onPress={handleDeleteAccount}
                   style={{
                     padding: 14,
@@ -932,7 +932,7 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                       Eliminar cuenta
                     </Text>
                   </View>
-                </TouchableOpacity>
+                </TouchableOpacity> */}
               </>
             )}
           </View>

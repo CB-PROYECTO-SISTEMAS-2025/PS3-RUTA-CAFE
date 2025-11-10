@@ -249,6 +249,11 @@ export default function RouteDetailsScreen() {
 
   const isAdmin = userRole === 2; // conservado
 
+  // 👇 AGREGAR ESTAS LÍNEAS para definir los roles adicionales
+const isSuperAdmin = userRole === 1; // administrador
+const isUser = userRole === 3;
+const isVisitor = userRole === 0;
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: themed.background }}>
@@ -345,24 +350,27 @@ export default function RouteDetailsScreen() {
             <Text style={{ color: themed.text, fontWeight: 'bold', fontSize: 22, flex: 1, marginRight: 12 }}>
               {route.name}
             </Text>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                alignSelf: 'flex-start',
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 999,
-                borderWidth: 1,
-                backgroundColor: pill.bg,
-                borderColor: pill.border,
-              }}
-            >
-              <Ionicons name={getStatusIcon(route.status)} size={16} color={pill.icon} />
-              <Text style={{ color: pill.text, fontWeight: '700', marginLeft: 6, fontSize: 12 }}>
-                {getStatusText(route.status)}
-              </Text>
-            </View>
+{/* 👇 SOLO mostrar el badge si NO es usuario normal o invitado */}
+{(isAdmin || isSuperAdmin) && (
+  <View
+    style={{
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      backgroundColor: pill.bg,
+      borderColor: pill.border,
+    }}
+  >
+    <Ionicons name={getStatusIcon(route.status)} size={16} color={pill.icon} />
+    <Text style={{ color: pill.text, fontWeight: '700', marginLeft: 6, fontSize: 12 }}>
+      {getStatusText(route.status)}
+    </Text>
+  </View>
+)}
           </View>
 
           <Text style={{ color: themed.muted, lineHeight: 22, marginBottom: 12 }}>{route.description}</Text>

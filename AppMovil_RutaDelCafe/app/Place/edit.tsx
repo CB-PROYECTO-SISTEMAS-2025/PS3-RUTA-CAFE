@@ -19,6 +19,51 @@ import * as Location from 'expo-location';
 import WebView from 'react-native-webview';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 
+
+const fetchWithRetry = async (
+  url: string, 
+  options: RequestInit, 
+  maxRetries = 3,
+  timeout = 60000
+): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`📡 Intento ${attempt} de ${maxRetries} para: ${url}`);
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.log(`❌ Intento ${attempt} fallado:`, error instanceof Error ? error.message : 'Error desconocido');
+      
+      if (attempt === maxRetries) {
+        console.log('🚨 Todos los intentos fallaron');
+        throw error;
+      }
+      
+      // Espera progresiva: 1s, 2s, 4s...
+      const delay = 1000 * Math.pow(2, attempt - 1);
+      console.log(`⏳ Reintentando en ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw new Error('Todos los intentos fallaron');
+};
+
 interface Schedule {
   dayOfWeek: string;
   openTime: string;
@@ -686,15 +731,11 @@ const optimizeImageQuality = async (imageUri: string, maxWidth = 800, quality = 
 };
 
 
-// ===== handleSubmit MEJORADO para EDIT =====
-// ===== handleSubmit MEJORADO para EDIT con optimización =====
+// ===== handleSubmit MEJORADO con REINTENTOS =====
 const handleSubmit = async () => {
   if (!validateForm()) return;
   setUpdating(true);
   
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000);
-
   try {
     const token = await AsyncStorage.getItem('userToken');
     if (!token) { 
@@ -702,7 +743,7 @@ const handleSubmit = async () => {
       return; 
     }
 
-    console.log("🔄 Iniciando actualización del lugar...");
+    console.log("🔄 Iniciando actualización del lugar con sistema de reintentos...");
 
     const submitData = new FormData();
     submitData.append('name', formData.name.trim());
@@ -762,17 +803,21 @@ const handleSubmit = async () => {
       } as any);
     }
 
-    console.log("📡 Enviando petición PUT...");
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${id}`, {
-      method: 'PUT',
-      headers: { 
-        Authorization: `Bearer ${token}`,
+    console.log("📡 Enviando petición PUT con reintentos...");
+    
+    // 🛡️ USAR LA NUEVA FUNCIÓN CON REINTENTOS
+    const response = await fetchWithRetry(
+      `${process.env.EXPO_PUBLIC_API_URL}/api/places/${id}`,
+      {
+        method: 'PUT',
+        headers: { 
+          Authorization: `Bearer ${token}`,
+        },
+        body: submitData,
       },
-      body: submitData,
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
+      3, // 3 reintentos
+      120000 // 2 minutos de timeout
+    );
 
     console.log("📨 Respuesta recibida, status:", response.status);
     const text = await response.text();
@@ -785,7 +830,7 @@ const handleSubmit = async () => {
     }
 
     if (response.ok) {
-      console.log("✅ Lugar actualizado exitosamente");
+      console.log("✅ Lugar actualizado exitosamente después de reintentos");
       if (data.statusChanged) {
         setModalConfig({
           title: '¡Solicitud Enviada!',
@@ -805,14 +850,18 @@ const handleSubmit = async () => {
     }
     
   } catch (error) {
-    clearTimeout(timeoutId);
-    
-    console.error("❌ Error en handleSubmit:", error);
+    console.error("❌ Error en handleSubmit después de reintentos:", error);
     
     if (error instanceof Error && error.name === 'AbortError') {
       setModalConfig({
         title: 'Timeout',
         message: 'La actualización tardó demasiado. Intenta con menos imágenes o imágenes más pequeñas.',
+        type: 'error',
+      });
+    } else if (error instanceof Error && error.message.includes('Network request failed')) {
+      setModalConfig({
+        title: 'Error de Conexión',
+        message: 'No se pudo conectar con el servidor después de varios intentos. Verifica tu conexión a internet.',
         type: 'error',
       });
     } else {
@@ -1536,7 +1585,7 @@ const handleSubmit = async () => {
               params.routeId = targetRouteId;
               if (typeof routeName === 'string' && routeName) params.routeName = routeName;
             }
-            router.replace({ pathname: '/Place', params });
+            router.replace({ pathname: '/indexP', params });
           }
         }}
         style={{

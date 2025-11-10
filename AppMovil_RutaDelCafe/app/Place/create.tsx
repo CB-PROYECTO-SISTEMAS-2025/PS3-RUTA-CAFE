@@ -174,9 +174,9 @@ const [modalConfig, setModalConfig] = useState({
               text: 'Ir a mis lugares',
               onPress: () => {
                 if (numericRouteId) {
-                  router.replace({ pathname: '/Place', params: { routeId: String(numericRouteId) } });
+                  router.replace({ pathname: '/indexP', params: { routeId: String(numericRouteId) } });
                 } else {
-                  router.replace('/Place');
+                  router.replace('/indexP');
                 }
               },
             },
@@ -1713,11 +1713,11 @@ const handleSubmit = async () => {
           if (modalConfig.type === 'success') {
             if (numericRouteId) {
               router.replace({
-                pathname: '/Place',
+                pathname: '/indexP',
                 params: { routeId: String(numericRouteId), refresh: Date.now() }
               });
             } else {
-              router.replace({ pathname: '/Place', params: { refresh: Date.now() } });
+              router.replace({ pathname: '/indexP', params: { refresh: Date.now() } });
             }
           }
         }}

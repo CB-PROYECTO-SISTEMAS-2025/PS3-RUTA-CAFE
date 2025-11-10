@@ -224,40 +224,54 @@ const confirmDeleteRoute = async () => {
   }
 };
 
-  // 🎨 estilos del estado (pill) en claro/oscuro
-  const statusStyles = (status: string) => {
-    if (status === 'aprobada') {
-      return {
-        bg: themed.isDark ? '#052e1a' : '#d1fae5',
-        border: themed.isDark ? '#10b981' : '#10b981',
-        text: themed.isDark ? '#6ee7b7' : '#065f46',
-      };
-    }
-    if (status === 'rechazada') {
-      return {
-        bg: themed.isDark ? '#2f0b0b' : '#fee2e2',
-        border: themed.isDark ? '#ef4444' : '#ef4444',
-        text: themed.isDark ? '#fecaca' : '#7f1d1d',
-      };
-    }
-    // pendiente
+// 🎨 estilos del estado (pill) en claro/oscuro - OCULTO para usuarios normales
+const statusStyles = (status: string) => {
+  // Si es usuario normal o invitado, no mostrar estado
+  if (isUser || isVisitor) {
     return {
-      bg: themed.isDark ? '#341a05' : '#ffedd5',
-      border: themed.isDark ? '#f59e0b' : '#f59e0b',
-      text: themed.isDark ? '#fde68a' : '#7c2d12',
+      bg: 'transparent',
+      border: 'transparent',
+      text: 'transparent',
     };
+  }
+  
+  if (status === 'aprobada') {
+    return {
+      bg: themed.isDark ? '#052e1a' : '#d1fae5',
+      border: themed.isDark ? '#10b981' : '#10b981',
+      text: themed.isDark ? '#6ee7b7' : '#065f46',
+    };
+  }
+  if (status === 'rechazada') {
+    return {
+      bg: themed.isDark ? '#2f0b0b' : '#fee2e2',
+      border: themed.isDark ? '#ef4444' : '#ef4444',
+      text: themed.isDark ? '#fecaca' : '#7f1d1d',
+    };
+  }
+  // pendiente
+  return {
+    bg: themed.isDark ? '#341a05' : '#ffedd5',
+    border: themed.isDark ? '#f59e0b' : '#f59e0b',
+    text: themed.isDark ? '#fde68a' : '#7c2d12',
   };
+};
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'aprobada':
-        return 'Aprobada';
-      case 'rechazada':
-        return 'Rechazada';
-      default:
-        return 'Pendiente';
-    }
+const getStatusText = (status: string) => {
+  // Si es usuario normal o invitado, no mostrar texto de estado
+  if (isUser || isVisitor) {
+    return '';
+  }
+  
+  switch (status) {
+    case 'aprobada':
+      return 'Aprobada';
+    case 'rechazada':
+      return 'Rechazada';
+    default:
+      return 'Pendiente';
   };
+};
 
   const isTechnician = userRole === 2;
   const isAdmin = userRole === 1;
@@ -305,7 +319,7 @@ const confirmDeleteRoute = async () => {
             ? 'Gestiona tus rutas gastronómicas'
             : 'Descubre las mejores rutas gastronómicas'}
         </Text>
-        <Text style={{ color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 4, fontSize: 12 }}>
+        {/* <Text style={{ color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 4, fontSize: 12 }}>
           {isTechnician
             ? 'Rol: Técnico'
             : isAdmin
@@ -314,7 +328,7 @@ const confirmDeleteRoute = async () => {
             ? 'Rol: Usuario'
             : 'Rol: Visitante'}
           {userToken && ' • Con sesión'}
-        </Text>
+        </Text> */}
       </View>
 
       {/* Alerta de pendiente (técnico) */}
@@ -463,6 +477,7 @@ const confirmDeleteRoute = async () => {
                       borderWidth: 1,
                       backgroundColor: pill.bg,
                       borderColor: pill.border,
+                      display: (isUser || isVisitor) ? 'none' : 'flex',
                     }}
                   >
                     <Text style={{ fontSize: 12, fontWeight: '700', color: pill.text }}>
@@ -510,7 +525,7 @@ const confirmDeleteRoute = async () => {
       <TouchableOpacity
         onPress={() =>
           router.push({
-            pathname: '/Place',
+            pathname: '/indexP',
             params: { routeId: String(route.id), routeName: route.name },
           })
         }
@@ -596,7 +611,7 @@ const confirmDeleteRoute = async () => {
                       <TouchableOpacity
                         onPress={() =>
                           router.push({
-                            pathname: '/Place',
+                            pathname: '/indexP',
                             params: { routeId: String(route.id), routeName: route.name },
                           })
                         }

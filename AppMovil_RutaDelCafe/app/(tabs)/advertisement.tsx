@@ -671,7 +671,7 @@ export default function AdvertisementScreen() {
           marginBottom: isSmallScreen ? 20 : 24 
         }}>
           <TouchableOpacity
-            onPress={() => router.push("/Place/all-places")}
+            onPress={() => router.push("/indexR")}
             activeOpacity={0.9}
             style={{
               flexDirection: "row",

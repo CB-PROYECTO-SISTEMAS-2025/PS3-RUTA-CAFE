@@ -16,8 +16,29 @@ import {
   countPendingPlacesByUser, // 👈 import del contador
 } from "../models/placeModel.js";
 import pool, { SCHEMA } from "../config/db.js";
-import path from "path";
+import fs from 'fs';
+import path from 'path';
 import { findUserWithCity, getAllCities } from "../models/userModel.js";
+
+
+// 🔥 FUNCIÓN PARA ELIMINAR IMAGEN FÍSICA
+const deleteImageFile = (imagePath) => {
+  if (!imagePath) return;
+  
+  try {
+    let fullPath = imagePath;
+    if (imagePath.startsWith('/uploads/')) {
+      fullPath = path.join(process.cwd(), imagePath);
+    }
+    
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+      console.log('🗑️ Imagen eliminada:', fullPath);
+    }
+  } catch (error) {
+    console.error('❌ Error al eliminar imagen:', error);
+  }
+};
 
 // genera URL pública absoluta si viene relativa
 const toPublicUrl = (req, maybeRelative) => {
@@ -337,13 +358,16 @@ export const updatePlaceController = async (req, res) => {
       deleted_additional_image_ids
     });
 
-    // 🔥 NUEVO: Obtener el lugar actual para verificar su estado
+    // 🔥 OBTENER EL LUGAR ACTUAL PARA IMÁGENES
     const currentPlace = await getPlaceById(id);
     if (!currentPlace) {
       return res.status(404).json({ message: "Lugar no encontrado" });
     }
 
     console.log('🎯 Estado actual del lugar:', currentPlace.status);
+
+    // 🔥 OBTENER IMÁGENES ADICIONALES ACTUALES ANTES DE CUALQUIER CAMBIO
+    const currentAdditionalImages = await getImagesByPlaceId(id);
 
     // 🔧 LIMPIAR Y VALIDAR URL SI SE PROPORCIONA
     if (updates.website !== undefined) {
@@ -367,11 +391,11 @@ export const updatePlaceController = async (req, res) => {
       if (allowedFields.includes(k)) filteredUpdates[k] = v;
     }
 
-    // 🔥 NUEVO: Si el lugar está rechazado, cambiar a pendiente
+    // 🔥 SI EL LUGAR ESTÁ RECHAZADO, CAMBIAR A PENDIENTE
     if (currentPlace.status === 'rechazada') {
       console.log('🔄 Lugar rechazado detectado - Cambiando estado a pendiente');
       filteredUpdates.status = 'pendiente';
-      filteredUpdates.rejectionComment = null; // Limpiar el comentario de rechazo
+      filteredUpdates.rejectionComment = null;
     }
 
     if (filteredUpdates.latitude) filteredUpdates.latitude = parseFloat(filteredUpdates.latitude);
@@ -386,12 +410,22 @@ export const updatePlaceController = async (req, res) => {
       if (!r.length) return res.status(400).json({ message: `La ruta ${filteredUpdates.route_id} no existe` });
     }
 
-    // Imagen principal
+    // 🔥 MANEJO DE IMAGEN PRINCIPAL - CON ELIMINACIÓN DE ARCHIVO
     const wantRemoveMain = remove_main_image === '1' || remove_main_image === 'true';
+    let oldMainImageToDelete = null;
+
     if (wantRemoveMain) {
+      // Guardar referencia a la imagen anterior para eliminarla
+      if (currentPlace.image_url) {
+        oldMainImageToDelete = currentPlace.image_url;
+      }
       filteredUpdates.image_url = "";
       console.log("🧹 Se eliminará la imagen principal");
     } else if (req.files && req.files.image && req.files.image[0]) {
+      // Guardar referencia a la imagen anterior
+      if (currentPlace.image_url) {
+        oldMainImageToDelete = currentPlace.image_url;
+      }
       filteredUpdates.image_url = path.posix.join("/uploads/places", req.files.image[0].filename);
       console.log("🖼️ Imagen principal actualizada:", filteredUpdates.image_url);
     } else {
@@ -403,22 +437,36 @@ export const updatePlaceController = async (req, res) => {
     const updated = await updatePlace(id, filteredUpdates, modifiedBy);
     if (!updated) return res.status(400).json({ message: "No se pudo actualizar el lugar" });
 
-    // Imágenes adicionales
-    let updatedImages = [];
+    // 🔥 ELIMINAR IMAGEN PRINCIPAL ANTERIOR DESPUÉS DE ACTUALIZACIÓN EXITOSA
+    if (oldMainImageToDelete) {
+      deleteImageFile(oldMainImageToDelete);
+    }
+
+    // 🔥 MANEJO DE IMÁGENES ADICIONALES - CON ELIMINACIÓN DE ARCHIVOS
+    let imagesToDelete = [];
+    
+    // Procesar imágenes adicionales a eliminar
     try {
       const ids = deleted_additional_image_ids ? JSON.parse(deleted_additional_image_ids) : [];
       if (Array.isArray(ids) && ids.length > 0) {
+        // Obtener las URLs de las imágenes que se van a eliminar
+        const imagesToRemove = currentAdditionalImages.filter(img => ids.includes(img.id));
+        imagesToDelete = imagesToRemove.map(img => img.image_url);
+        
+        // Eliminar de la base de datos
         await pool.query(
           `DELETE FROM \`${SCHEMA}\`.place_images 
            WHERE place_id = ? AND id IN (${ids.map(() => '?').join(',')})`,
           [id, ...ids]
         );
-        console.log(`🧹 Eliminadas ${ids.length} imágenes adicionales`);
+        console.log(`🧹 Eliminadas ${ids.length} imágenes adicionales de la BD`);
       }
     } catch (e) {
       console.error("❌ JSON inválido en deleted_additional_image_ids:", e);
     }
 
+    // Procesar nuevas imágenes adicionales
+    let newAdditionalImages = [];
     if (req.files && req.files.additional_images) {
       try {
         const files = Array.isArray(req.files.additional_images)
@@ -428,7 +476,7 @@ export const updatePlaceController = async (req, res) => {
         if (files.length > 0) {
           const limited = files.slice(0, 8);
           const urls = limited.map(f => path.posix.join("/uploads/places", f.filename));
-          await createPlaceImages(id, urls);
+          newAdditionalImages = await createPlaceImages(id, urls);
           console.log("➕ Añadidas", urls.length, "imágenes adicionales nuevas");
         }
       } catch (imageError) {
@@ -436,9 +484,14 @@ export const updatePlaceController = async (req, res) => {
       }
     }
 
-    updatedImages = await getImagesByPlaceId(id);
+    // 🔥 ELIMINAR ARCHIVOS FÍSICOS DE IMÁGENES ADICIONALES
+    for (const imageUrl of imagesToDelete) {
+      deleteImageFile(imageUrl);
+    }
 
-    // Horarios
+    const updatedImages = await getImagesByPlaceId(id);
+
+    // HORARIOS (sin cambios)
     let updatedSchedules = [];
     if (schedules) {
       try {
@@ -471,7 +524,6 @@ export const updatePlaceController = async (req, res) => {
 
     res.json({
       message: "Lugar actualizado correctamente",
-      // 🔥 NUEVO: Informar si cambió el estado
       statusChanged: currentPlace.status === 'rechazada',
       updatedPlace: merged
     });
@@ -488,6 +540,13 @@ export const deletePlaceController = async (req, res) => {
     if (!existingPlace) return res.status(404).json({ message: "Lugar no encontrado" });
 
     console.log(`🗑️ Eliminando lugar ID: ${id} y sus relaciones...`);
+
+    // 🔥 OBTENER IMÁGENES ANTES DE ELIMINAR
+    const additionalImages = await getImagesByPlaceId(id);
+    const imagesToDelete = [
+      existingPlace.image_url,
+      ...additionalImages.map(img => img.image_url)
+    ].filter(url => url); // Filtrar URLs vacías
 
     // 🔥 ELIMINAR EN ESTE ORDEN para respetar constraints:
     
@@ -528,15 +587,20 @@ export const deletePlaceController = async (req, res) => {
     await deletePlaceSchedules(id);
     console.log("✅ Horarios eliminados");
 
-    // 5. Eliminar imágenes adicionales
+    // 5. Eliminar imágenes adicionales de la BD
     await deletePlaceImages(id);
-    console.log("✅ Imágenes eliminadas");
+    console.log("✅ Imágenes eliminadas de la BD");
 
     // 6. Finalmente eliminar el lugar
     const deleted = await deletePlace(id);
     if (!deleted) return res.status(400).json({ message: "No se pudo eliminar el lugar" });
 
-    console.log("✅ Lugar eliminado completamente");
+    // 🔥 ELIMINAR ARCHIVOS FÍSICOS DESPUÉS DE ELIMINAR DE LA BD
+    for (const imageUrl of imagesToDelete) {
+      deleteImageFile(imageUrl);
+    }
+
+    console.log("✅ Lugar eliminado completamente con todas sus imágenes");
     res.json({ message: "Lugar eliminado permanentemente" });
     
   } catch (error) {

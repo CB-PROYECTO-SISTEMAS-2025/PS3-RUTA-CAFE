@@ -549,32 +549,41 @@ const confirmDeletePlace = async () => {
     setMapError(false);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'aprobada':
-        return { bg: '#ecfdf5', text: '#166534', border: '#86efac' };
-      case 'pendiente':
-        return { bg: '#fef3c7', text: '#854d0e', border: '#facc15' };
-      case 'rechazada':
-        return { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' };
-      default:
-        return { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' };
-    }
-  };
+const getStatusColor = (status: string) => {
+  // Si es usuario normal o invitado, no mostrar estado
+  if (isUser || userRole === 0) {
+    return { bg: 'transparent', text: 'transparent', border: 'transparent' };
+  }
+  
+  switch (status) {
+    case 'aprobada':
+      return { bg: '#ecfdf5', text: '#166534', border: '#86efac' };
+    case 'pendiente':
+      return { bg: '#fef3c7', text: '#854d0e', border: '#facc15' };
+    case 'rechazada':
+      return { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' };
+    default:
+      return { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' };
+  }
+};
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'aprobada':
-        return 'Aprobado';
-      case 'pendiente':
-        return 'Pendiente';
-      case 'rechazada':
-        return 'Rechazado';
-      default:
-        return status;
-    }
-  };
-
+const getStatusText = (status: string) => {
+  // Si es usuario normal o invitado, no mostrar texto de estado
+  if (isUser || userRole === 0) {
+    return '';
+  }
+  
+  switch (status) {
+    case 'aprobada':
+      return 'Aprobado';
+    case 'pendiente':
+      return 'Pendiente';
+    case 'rechazada':
+      return 'Rechazado';
+    default:
+      return status;
+  }
+};
   // Función para obtener información de imágenes de un lugar
   const getPlaceImageInfo = (place: Place) => {
     const hasMainImage = place.image_url ? 1 : 0;
@@ -619,9 +628,9 @@ const confirmDeletePlace = async () => {
         {resolvedRouteName ? (
           <Text style={{ color: '#fff', opacity: 0.9, textAlign: 'center', marginTop: 4 }}>{resolvedRouteName}</Text>
         ) : null}
-        <Text style={{ color: '#fff', opacity: 0.8, textAlign: 'center', marginTop: 4, fontSize: 12 }}>
+        {/* <Text style={{ color: '#fff', opacity: 0.8, textAlign: 'center', marginTop: 4, fontSize: 12 }}>
           {isAdmin ? 'Mostrando tus sitios (aprobados y pendientes)' : 'Mostrando sitios aprobados en el mapa'}
-        </Text>
+        </Text> */}
       </View>
 
       {/* 🔥 NUEVO: Alerta de lugares pendientes para técnicos */}
@@ -649,7 +658,7 @@ const confirmDeletePlace = async () => {
 
       {/* Acciones superiores */}
       <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
-        <TouchableOpacity
+        {/* <TouchableOpacity
           onPress={() => {
             if (router.canGoBack()) router.back();
             else router.replace('/(tabs)/advertisement');
@@ -673,7 +682,7 @@ const confirmDeletePlace = async () => {
         >
           <Ionicons name="arrow-back" size={22} color={themed.accent as string} />
           <Text style={{ color: themed.accent as string, fontWeight: '700' }}>Volver</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {/* 🔥 MODIFICADO: Botón de crear con bloqueo */}
@@ -1014,23 +1023,26 @@ const confirmDeletePlace = async () => {
 
                         {/* Eliminar - SIEMPRE disponible para técnicos */}
                        {/* En la sección de acciones del lugar, cambiar el onPress del botón eliminar: */}
-<TouchableOpacity
-  onPress={() => deletePlace(place)}
-  style={{
-    flex: 1,
-    backgroundColor: themed.softBg,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: themed.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center'
-  }}
->
-  <Ionicons name="trash-outline" size={18} color="#ef4444" />
-  <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>Eliminar</Text>
-</TouchableOpacity>
+{/* Eliminar - OCULTO cuando el lugar está aprobado para técnicos */}
+{place.status !== 'aprobada' && (
+  <TouchableOpacity
+    onPress={() => deletePlace(place)}
+    style={{
+      flex: 1,
+      backgroundColor: themed.softBg,
+      paddingVertical: 8,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: themed.border,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}
+  >
+    <Ionicons name="trash-outline" size={18} color="#ef4444" />
+    <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>Eliminar</Text>
+  </TouchableOpacity>
+)}
                       </>
                     )}
 

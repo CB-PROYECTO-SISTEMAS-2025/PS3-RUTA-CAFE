@@ -115,8 +115,8 @@ export default function SettingsScreen() {
           paddingBottom: 100,
         }}
       >
-        {/* Volver */}
-        <TouchableOpacity
+        
+        {/* <TouchableOpacity
           onPress={handleBack}
           style={{
             backgroundColor: themed.card,
@@ -145,7 +145,7 @@ export default function SettingsScreen() {
           >
             {t("common.back")}
           </Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
         {/* Idioma */}
         <View

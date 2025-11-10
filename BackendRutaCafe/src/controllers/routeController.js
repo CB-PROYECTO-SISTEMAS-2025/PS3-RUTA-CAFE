@@ -1,6 +1,28 @@
 import { createRoute, getAllRoutes, getRouteById, updateRoute, deleteRoute, findRoutesByCityId, findAllPendingRoutes }
     from "../models/routeModel.js";
 import { findUserWithCity, getAllCities } from "../models/userModel.js";
+import fs from 'fs';
+import path from 'path';
+
+const deleteImageFile = (imagePath) => {
+  if (!imagePath) return;
+  
+  try {
+    let fullPath = imagePath;
+    if (imagePath.startsWith('/uploads/')) {
+      fullPath = path.join(process.cwd(), imagePath);
+    }
+    
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+      console.log('🗑️ Imagen eliminada:', fullPath);
+    }
+  } catch (error) {
+    console.error('❌ Error al eliminar imagen:', error);
+  }
+};
+
+
 // Crear nueva ruta
 export const createRouteController = async (req, res) => {
   try {
@@ -182,6 +204,7 @@ export const getRouteByIdController = async (req, res) => {
 
 // Actualizar ruta
 // Actualizar ruta
+// Actualizar ruta
 export const updateRouteController = async (req, res) => {
   try {
     const { id } = req.params;
@@ -189,42 +212,40 @@ export const updateRouteController = async (req, res) => {
     const modifiedBy = req.user.id;
 
     console.log('🔄 Iniciando actualización de ruta ID:', id);
-    console.log('📝 Datos recibidos:', { name, description });
 
-    // 🔥 NUEVO: Obtener la ruta actual para verificar su estado
+    // Obtener ruta actual para obtener la imagen anterior
     const currentRoute = await getRouteById(id);
-    console.log('📊 Ruta actual:', currentRoute);
-    
     if (!currentRoute) {
       return res.status(404).json({ message: "Ruta no encontrada" });
     }
 
-    console.log('🎯 Estado actual de la ruta:', currentRoute.status);
-
-    // 🔥 NUEVO: Si la ruta está rechazada, cambiar a pendiente
     let updates = { name, description };
     if (currentRoute.status === 'rechazada') {
-      console.log('🔄 Ruta rechazada detectada - Cambiando estado a pendiente');
       updates.status = 'pendiente';
-      updates.rejectionComment = null; // Limpiar el comentario de rechazo
+      updates.rejectionComment = null;
     }
 
-    console.log('📤 Updates a aplicar:', updates);
-
-    // Manejar la imagen subida
+    // 🔥 MANEJAR IMAGEN - eliminar anterior si se sube nueva
+    let oldImageToDelete = null;
     if (req.file) {
+      // Guardar referencia a la imagen anterior
+      if (currentRoute.image_url) {
+        oldImageToDelete = currentRoute.image_url;
+      }
       updates.image_url = `/uploads/routes/${req.file.filename}`;
       console.log('🖼️ Nueva imagen subida');
     }
 
     const updated = await updateRoute(id, updates, modifiedBy);
-    console.log('✅ Filas actualizadas en BD:', updated);
-    
     if (updated === 0) return res.status(404).json({ message: "Ruta no encontrada" });
+
+    // 🔥 ELIMINAR IMAGEN ANTERIOR después de actualización exitosa
+    if (oldImageToDelete) {
+      deleteImageFile(oldImageToDelete);
+    }
 
     res.json({ 
       message: "Ruta actualizada correctamente",
-      // 🔥 NUEVO: Informar si cambió el estado
       statusChanged: currentRoute.status === 'rechazada',
       newStatus: currentRoute.status === 'rechazada' ? 'pendiente' : currentRoute.status
     });
@@ -235,11 +256,24 @@ export const updateRouteController = async (req, res) => {
 };
 
 // Eliminar ruta
+// Eliminar ruta
 export const deleteRouteController = async (req, res) => {
     try {
         const { id } = req.params;
+        
+        // 🔥 OBTENER LA RUTA ACTUAL PARA LA IMAGEN
+        const currentRoute = await getRouteById(id);
+        if (!currentRoute) {
+            return res.status(404).json({ message: "Ruta no encontrada" });
+        }
+
         const deleted = await deleteRoute(id);
         if (deleted === 0) return res.status(404).json({ message: "Ruta no encontrada" });
+
+        // 🔥 ELIMINAR LA IMAGEN FÍSICA
+        if (currentRoute.image_url) {
+            deleteImageFile(currentRoute.image_url);
+        }
 
         res.json({ message: "Ruta eliminada correctamente" });
     } catch (error) {

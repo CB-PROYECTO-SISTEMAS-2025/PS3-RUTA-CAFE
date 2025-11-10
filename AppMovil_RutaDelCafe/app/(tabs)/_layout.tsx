@@ -92,6 +92,12 @@ export default function TabLayout() {
           {state.routes.map((route, index) => {
             const { options } = descriptors[route.key];
             const focused = state.index === index;
+            
+            // 👇 Filtramos la ruta "places" para que no aparezca en el navbar
+            if (route.name === "indexP") {
+              return null;
+            }
+            
             const label = (options.title ?? route.name) as string;
             const iconName =
               route.name === "advertisement"
@@ -133,6 +139,17 @@ export default function TabLayout() {
       <Tabs.Screen name="settings" options={{ title: "Ajustes" }} />
       <Tabs.Screen name="indexR" options={{ title: "Rutas" }} />
       <Tabs.Screen name="profile" options={{ title: "Perfil" }} />
+      
+      {/* 👇 NUEVA PANTALLA - AGREGAR JUSTO ANTES DEL CIERRE DE </Tabs> */}
+      <Tabs.Screen 
+        name="indexP" 
+        options={{
+          title: "Sitios",
+          // 🔥 Esto hace que la pantalla esté disponible para navegar
+          // pero NO aparece como ícono en el navbar
+          href: null
+        }} 
+      />
     </Tabs>
   );
 }

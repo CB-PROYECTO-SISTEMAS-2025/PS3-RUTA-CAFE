@@ -144,6 +144,7 @@ export default function PlaceDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [place, setPlace] = useState<Place | null>(null);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+   const [userRole, setUserRole] = useState<number>(0);
 
   // carrusel
   const screenWidth = Dimensions.get('window').width;
@@ -156,10 +157,29 @@ export default function PlaceDetailsScreen() {
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
   const placeId = params.id ? (Array.isArray(params.id) ? params.id[0] : params.id) : null;
+const isAdmin = userRole === 2;
+const isUser = userRole === 3;
+const isVisitor = userRole === 0;
+
+  const loadUser = async () => {
+  try {
+    const userData = await AsyncStorage.getItem('userData');
+    if (userData) {
+      const user = JSON.parse(userData);
+      setUserRole(user.role || 3);
+    } else {
+      setUserRole(0);
+    }
+  } catch (e) {
+    console.error('Error loading user data:', e);
+    setUserRole(0);
+  }
+};
 
 useEffect(() => {
   if (placeId) {
     console.log('🔄 Iniciando carga del lugar ID:', placeId);
+     loadUser(); // 👈 AGREGAR esta línea
     fetchPlace();
   } else {
     console.log('❌ No hay placeId');
@@ -602,30 +622,33 @@ const fetchPlace = async () => {
               </View>
             </View>
 
-            <View
-              style={{
-                alignSelf: 'flex-start',
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 999,
-                borderWidth: 1,
-                backgroundColor:
-                  place.status === 'aprobada' ? (themed.isDark ? '#052e16' : '#ecfdf5') : place.status === 'pendiente' ? (themed.isDark ? '#422006' : '#fef3c7') : (themed.isDark ? '#3f0a0a' : '#fee2e2'),
-                borderColor:
-                  place.status === 'aprobada' ? (themed.isDark ? '#166534' : '#86efac') : place.status === 'pendiente' ? (themed.isDark ? '#854d0e' : '#facc15') : (themed.isDark ? '#991b1b' : '#fca5a5'),
-              }}
-            >
-              <Text
-                style={{
-                  color:
-                    place.status === 'aprobada' ? (themed.isDark ? '#86efac' : '#166534') : place.status === 'pendiente' ? (themed.isDark ? '#facc15' : '#854d0e') : (themed.isDark ? '#fca5a5' : '#991b1b'),
-                  fontWeight: '800',
-                  fontSize: 12,
-                }}
-              >
-                {place.status?.toUpperCase() || 'SIN ESTADO'}
-              </Text>
-            </View>
+          {/* 👇 SOLO mostrar el badge si NO es usuario normal o invitado */}
+{(isAdmin || userRole === 1) && (
+  <View
+    style={{
+      alignSelf: 'flex-start',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      backgroundColor:
+        place.status === 'aprobada' ? (themed.isDark ? '#052e16' : '#ecfdf5') : place.status === 'pendiente' ? (themed.isDark ? '#422006' : '#fef3c7') : (themed.isDark ? '#3f0a0a' : '#fee2e2'),
+      borderColor:
+        place.status === 'aprobada' ? (themed.isDark ? '#166534' : '#86efac') : place.status === 'pendiente' ? (themed.isDark ? '#854d0e' : '#facc15') : (themed.isDark ? '#991b1b' : '#fca5a5'),
+    }}
+  >
+    <Text
+      style={{
+        color:
+          place.status === 'aprobada' ? (themed.isDark ? '#86efac' : '#166534') : place.status === 'pendiente' ? (themed.isDark ? '#facc15' : '#854d0e') : (themed.isDark ? '#fca5a5' : '#991b1b'),
+        fontWeight: '800',
+        fontSize: 12,
+      }}
+    >
+      {place.status?.toUpperCase() || 'SIN ESTADO'}
+    </Text>
+  </View>
+)}
           </View>
 
           {/* Descripción */}

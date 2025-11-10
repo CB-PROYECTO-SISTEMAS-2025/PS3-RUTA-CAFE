@@ -17,6 +17,51 @@ import {
 } from 'react-native';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 
+const fetchWithRetry = async (
+  url: string, 
+  options: RequestInit, 
+  maxRetries = 3,
+  timeout = 60000
+): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`📡 Intento ${attempt} de ${maxRetries} para: ${url}`);
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.log(`❌ Intento ${attempt} fallado:`, error instanceof Error ? error.message : 'Error desconocido');
+      
+      if (attempt === maxRetries) {
+        console.log('🚨 Todos los intentos fallaron');
+        throw error;
+      }
+      
+      // Espera progresiva: 1s, 2s, 4s...
+      const delay = 1000 * Math.pow(2, attempt - 1);
+      console.log(`⏳ Reintentando en ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw new Error('Todos los intentos fallaron');
+};
+
+
 interface Route {
   id: number;
   name: string;
@@ -168,8 +213,8 @@ const [modalConfig, setModalConfig] = useState({
     !errors.name &&
     !errors.description;
 
-  // 💾 Guardar
- const handleSubmit = async () => {
+ // 💾 Guardar CON SISTEMA DE REINTENTOS
+const handleSubmit = async () => {
   // Trim de campos
   const cleanedData = {
     name: formData.name.trim(),
@@ -217,7 +262,7 @@ const [modalConfig, setModalConfig] = useState({
     return;
   }
 
-setSaving(true);
+  setSaving(true);
   try {
     const token = await AsyncStorage.getItem('userToken');
     if (!token) {
@@ -241,11 +286,19 @@ setSaving(true);
       } as any);
     }
 
-    const resp = await fetch(url, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${token}` },
-      body: formDataToSend,
-    });
+    console.log("📡 Enviando petición PUT con reintentos...");
+    
+    // 🛡️ USAR LA NUEVA FUNCIÓN CON REINTENTOS
+    const resp = await fetchWithRetry(
+      url,
+      {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formDataToSend,
+      },
+      3, // 3 reintentos
+      120000 // 2 minutos de timeout
+    );
 
     const text = await resp.text();
 
@@ -277,11 +330,27 @@ setSaving(true);
     
     setModalVisible(true);
   } catch (e: any) {
-    setModalConfig({
-      title: 'Error',
-      message: e?.message || 'No se pudo actualizar la ruta',
-      type: 'error',
-    });
+    console.error("❌ Error después de reintentos:", e);
+    
+    if (e instanceof Error && e.name === 'AbortError') {
+      setModalConfig({
+        title: 'Timeout',
+        message: 'La actualización tardó demasiado. Intenta con una imagen más pequeña.',
+        type: 'error',
+      });
+    } else if (e instanceof Error && e.message.includes('Network request failed')) {
+      setModalConfig({
+        title: 'Error de Conexión',
+        message: 'No se pudo conectar con el servidor después de varios intentos. Verifica tu conexión a internet.',
+        type: 'error',
+      });
+    } else {
+      setModalConfig({
+        title: 'Error',
+        message: e?.message || 'No se pudo actualizar la ruta',
+        type: 'error',
+      });
+    }
     setModalVisible(true);
   } finally {
     setSaving(false);
