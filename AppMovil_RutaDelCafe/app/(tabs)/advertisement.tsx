@@ -671,7 +671,7 @@ export default function AdvertisementScreen() {
           marginBottom: isSmallScreen ? 20 : 24 
         }}>
           <TouchableOpacity
-            onPress={() => router.push("/Place/all-places")}
+            onPress={() => router.push("/all-places")}
             activeOpacity={0.9}
             style={{
               flexDirection: "row",
@@ -694,7 +694,7 @@ export default function AdvertisementScreen() {
               fontWeight: "bold", 
               fontSize: responsiveSizes.buttonText 
             }}>
-              🗺️ Ver mapa de lugares
+              🗺️ Cómo llegar!
             </Text>
           </TouchableOpacity>
         </View>

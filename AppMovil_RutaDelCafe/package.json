@@ -3,12 +3,18 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "expo start",
+    "prestart": "node -e \"const fs=require('fs');const os=require('os');const interfaces=os.networkInterfaces();let wifiIP='192.168.1.100';for(const name in interfaces){for(const net of interfaces[name]){if(net.family==='IPv4'&&!net.internal){if(name.toLowerCase().includes('wi-fi')||name.toLowerCase().includes('wlan')){wifiIP=net.address;break}}}}fs.writeFileSync('.env.local','EXPO_PUBLIC_API_URL=http://'+wifiIP+':4000','utf8');process.env.EXPO_PACKAGER_PROXY_URL='http://'+wifiIP+':8081';process.env.REACT_NATIVE_PACKAGER_HOSTNAME=wifiIP;console.log('✅ IP automática:',wifiIP)\"",
+    "start": "expo start --lan --tunnel",
+    "preandroid": "node -e \"const fs=require('fs');const os=require('os');const interfaces=os.networkInterfaces();let wifiIP='192.168.1.100';for(const name in interfaces){for(const net of interfaces[name]){if(net.family==='IPv4'&&!net.internal){if(name.toLowerCase().includes('wi-fi')||name.toLowerCase().includes('wlan')){wifiIP=net.address;break}}}}fs.writeFileSync('.env.local','EXPO_PUBLIC_API_URL=http://'+wifiIP+':4000','utf8');process.env.EXPO_PACKAGER_PROXY_URL='http://'+wifiIP+':8081';process.env.REACT_NATIVE_PACKAGER_HOSTNAME=wifiIP;console.log('✅ IP automática:',wifiIP)\"",
+    "android": "expo run:android --lan",
+    "preios": "node -e \"const fs=require('fs');const os=require('os');const interfaces=os.networkInterfaces();let wifiIP='192.168.1.100';for(const name in interfaces){for(const net of interfaces[name]){if(net.family==='IPv4'&&!net.internal){if(name.toLowerCase().includes('wi-fi')||name.toLowerCase().includes('wlan')){wifiIP=net.address;break}}}}fs.writeFileSync('.env.local','EXPO_PUBLIC_API_URL=http://'+wifiIP+':4000','utf8');process.env.EXPO_PACKAGER_PROXY_URL='http://'+wifiIP+':8081';process.env.REACT_NATIVE_PACKAGER_HOSTNAME=wifiIP;console.log('✅ IP automática:',wifiIP)\"",
+    "ios": "expo run:ios --lan",
+    "preweb": "node -e \"const fs=require('fs');const os=require('os');const interfaces=os.networkInterfaces();let wifiIP='192.168.1.100';for(const name in interfaces){for(const net of interfaces[name]){if(net.family==='IPv4'&&!net.internal){if(name.toLowerCase().includes('wi-fi')||name.toLowerCase().includes('wlan')){wifiIP=net.address;break}}}}fs.writeFileSync('.env.local','EXPO_PUBLIC_API_URL=http://'+wifiIP+':4000','utf8');process.env.EXPO_PACKAGER_PROXY_URL='http://'+wifiIP+':8081';process.env.REACT_NATIVE_PACKAGER_HOSTNAME=wifiIP;console.log('✅ IP automática:',wifiIP)\"",
+    "web": "expo start --web --lan",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
-    "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "update-ip": "node -e \"const fs=require('fs');const os=require('os');const interfaces=os.networkInterfaces();let wifiIP='192.168.1.100';for(const name in interfaces){for(const net of interfaces[name]){if(net.family==='IPv4'&&!net.internal){if(name.toLowerCase().includes('wi-fi')||name.toLowerCase().includes('wlan')){wifiIP=net.address;break}}}}fs.writeFileSync('.env.local','EXPO_PUBLIC_API_URL=http://'+wifiIP+':4000','utf8');process.env.EXPO_PACKAGER_PROXY_URL='http://'+wifiIP+':8081';process.env.REACT_NATIVE_PACKAGER_HOSTNAME=wifiIP;console.log('✅ IP automática:',wifiIP)\"",
+    "start:ip": "expo start --lan --tunnel"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -16,7 +22,7 @@
     "@react-native-picker/picker": "2.11.1",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
-    "@react-navigation/native": "^7.1.18",
+    "@react-navigation/native": "^7.1.19",
     "@react-navigation/stack": "^7.4.9",
     "expo": "~54.0.7",
     "expo-constants": "~18.0.8",

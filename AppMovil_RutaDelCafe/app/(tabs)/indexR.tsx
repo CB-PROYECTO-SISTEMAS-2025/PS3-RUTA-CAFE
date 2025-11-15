@@ -49,6 +49,9 @@ const normalizeImageUrl = (url?: string | null) => {
   return url;
 };
 
+// Tipos de filtro
+type FilterType = 'todas' | 'mis-rutas' | 'aprobadas' | 'pendientes' | 'rechazadas';
+
 function RoutesScreen() {
   const router = useRouter();
   const themed = useThemedStyles(); // 🎨 tema
@@ -62,12 +65,13 @@ function RoutesScreen() {
   const [hasPendingRoutes, setHasPendingRoutes] = useState(false);
   const [userToken, setUserToken] = useState<string | null>(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-const [routeToDelete, setRouteToDelete] = useState<Route | null>(null);
-const [modalConfig, setModalConfig] = useState({
-  title: '',
-  message: '',
-  type: 'success' as 'success' | 'error',
-});
+  const [routeToDelete, setRouteToDelete] = useState<Route | null>(null);
+  const [modalConfig, setModalConfig] = useState({
+    title: '',
+    message: '',
+    type: 'success' as 'success' | 'error',
+  });
+  const [activeFilter, setActiveFilter] = useState<FilterType>('todas');
 
   useEffect(() => {
     loadUserData();
@@ -75,22 +79,50 @@ const [modalConfig, setModalConfig] = useState({
   }, []);
 
   useEffect(() => {
+    applyFilters();
+  }, [routes, userRole, userId, activeFilter]);
+
+  const applyFilters = () => {
+    let filtered = [...routes];
+
     if (userRole === 2) {
-      const userRoutes = routes.filter(r => r.createdBy === userId);
-      setFilteredRoutes(userRoutes);
-      const pending = userRoutes.some(r => r.status === 'pendiente');
-      setHasPendingRoutes(pending);
+      // Técnico: aplicar filtros específicos
+      switch (activeFilter) {
+        case 'mis-rutas':
+          filtered = routes.filter(r => r.createdBy === userId);
+          break;
+        case 'aprobadas':
+          filtered = routes.filter(r => r.status === 'aprobada');
+          break;
+        case 'pendientes':
+          filtered = routes.filter(r => r.status === 'pendiente' && r.createdBy === userId);
+          break;
+        case 'rechazadas':
+          filtered = routes.filter(r => r.status === 'rechazada' && r.createdBy === userId);
+          break;
+        case 'todas':
+        default:
+          // Todas las rutas (sus rutas + rutas aprobadas de otros)
+          filtered = routes.filter(r => r.createdBy === userId || r.status === 'aprobada');
+          break;
+      }
+      
+      // Verificar si tiene rutas pendientes propias
+      const userPendingRoutes = routes.filter(r => r.createdBy === userId && r.status === 'pendiente');
+      setHasPendingRoutes(userPendingRoutes.length > 0);
     } else if (userRole === 3 || userRole === 0) {
-      setFilteredRoutes(routes.filter(r => r.status === 'aprobada'));
+      filtered = routes.filter(r => r.status === 'aprobada');
       setHasPendingRoutes(false);
     } else if (userRole === 1) {
-      setFilteredRoutes(routes);
+      // Admin ve todas las rutas sin filtro
       setHasPendingRoutes(false);
     } else {
-      setFilteredRoutes(routes.filter(r => r.status === 'aprobada'));
+      filtered = routes.filter(r => r.status === 'aprobada');
       setHasPendingRoutes(false);
     }
-  }, [routes, userRole, userId]);
+
+    setFilteredRoutes(filtered);
+  };
 
   const loadUserData = async () => {
     try {
@@ -160,69 +192,75 @@ const [modalConfig, setModalConfig] = useState({
   };
 
   const handleDelete = async (route: Route) => {
-  setRouteToDelete(route);
-  setModalConfig({
-    title: 'Confirmar Eliminación',
-    message: `¿Estás seguro de que quieres eliminar la ruta "${route.name}"? Esta acción no se puede deshacer.`,
-    type: 'error',
-  });
-  setDeleteModalVisible(true);
-};
-
-const confirmDeleteRoute = async () => {
-  if (!routeToDelete) return;
-  
-  try {
-    const token = await AsyncStorage.getItem('userToken');
-    if (!token) {
-      setModalConfig({
-        title: 'Error',
-        message: 'Sesión expirada. Por favor inicia sesión nuevamente.',
-        type: 'error',
-      });
-      setDeleteModalVisible(true);
+    // Solo permitir eliminar rutas propias
+    if (route.createdBy !== userId) {
+      Alert.alert('Error', 'Solo puedes eliminar tus propias rutas');
       return;
     }
-
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes/${routeToDelete.id}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (response.ok) {
-      setModalConfig({
-        title: '¡Éxito!',
-        message: 'Ruta eliminada correctamente',
-        type: 'success',
-      });
-      setDeleteModalVisible(true);
-      fetchRoutes(); // Recargar la lista
-    } else if (response.status === 401) {
-      await AsyncStorage.removeItem('userToken');
-      await AsyncStorage.removeItem('userData');
-      setModalConfig({
-        title: 'Sesión Expirada',
-        message: 'Por favor inicia sesión nuevamente.',
-        type: 'error',
-      });
-      setDeleteModalVisible(true);
-    } else {
-      throw new Error('Error al eliminar la ruta');
-    }
-  } catch {
+    
+    setRouteToDelete(route);
     setModalConfig({
-      title: 'Error',
-      message: 'No se pudo eliminar la ruta',
+      title: 'Confirmar Eliminación',
+      message: `¿Estás seguro de que quieres eliminar la ruta "${route.name}"? Esta acción no se puede deshacer.`,
       type: 'error',
     });
     setDeleteModalVisible(true);
-  } finally {
-    setRouteToDelete(null);
-  }
-};
+  };
+
+  const confirmDeleteRoute = async () => {
+    if (!routeToDelete) return;
+    
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        setModalConfig({
+          title: 'Error',
+          message: 'Sesión expirada. Por favor inicia sesión nuevamente.',
+          type: 'error',
+        });
+        setDeleteModalVisible(true);
+        return;
+      }
+
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/routes/${routeToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        setModalConfig({
+          title: '¡Éxito!',
+          message: 'Ruta eliminada correctamente',
+          type: 'success',
+        });
+        setDeleteModalVisible(true);
+        fetchRoutes(); // Recargar la lista
+      } else if (response.status === 401) {
+        await AsyncStorage.removeItem('userToken');
+        await AsyncStorage.removeItem('userData');
+        setModalConfig({
+          title: 'Sesión Expirada',
+          message: 'Por favor inicia sesión nuevamente.',
+          type: 'error',
+        });
+        setDeleteModalVisible(true);
+      } else {
+        throw new Error('Error al eliminar la ruta');
+      }
+    } catch {
+      setModalConfig({
+        title: 'Error',
+        message: 'No se pudo eliminar la ruta',
+        type: 'error',
+      });
+      setDeleteModalVisible(true);
+    } finally {
+      setRouteToDelete(null);
+    }
+  };
 
   // 🎨 estilos del estado (pill) en claro/oscuro
   const statusStyles = (status: string) => {
@@ -259,10 +297,24 @@ const confirmDeleteRoute = async () => {
     }
   };
 
+  const getFilterText = (filter: FilterType) => {
+    switch (filter) {
+      case 'todas': return 'Todas';
+      case 'mis-rutas': return 'Mis Rutas';
+      case 'aprobadas': return 'Aprobadas';
+      case 'pendientes': return 'Pendientes';
+      case 'rechazadas': return 'Rechazadas';
+      default: return 'Todas';
+    }
+  };
+
   const isTechnician = userRole === 2;
   const isAdmin = userRole === 1;
   const isUser = userRole === 3;
   const isVisitor = userRole === 0;
+
+  // Función para determinar si una ruta es del usuario actual
+  const isMyRoute = (route: Route) => route.createdBy === userId;
 
   if (loading) {
     return (
@@ -298,11 +350,11 @@ const confirmDeleteRoute = async () => {
         }}
       >
         <Text style={{ color: '#fff', fontSize: 22, fontWeight: 'bold', textAlign: 'center' }}>
-          {isTechnician ? 'Mis Rutas' : 'Rutas Disponibles'}
+          {isTechnician ? 'Todas las Rutas' : 'Rutas Disponibles'}
         </Text>
         <Text style={{ color: 'rgba(255,255,255,0.9)', textAlign: 'center', marginTop: 4 }}>
           {isTechnician
-            ? 'Gestiona tus rutas gastronómicas'
+            ? 'Tus rutas y rutas aprobadas de otros'
             : 'Descubre las mejores rutas gastronómicas'}
         </Text>
         <Text style={{ color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 4, fontSize: 12 }}>
@@ -316,6 +368,54 @@ const confirmDeleteRoute = async () => {
           {userToken && ' • Con sesión'}
         </Text>
       </View>
+
+      {/* Filtros para técnicos */}
+      {isTechnician && (
+        <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
+          <Text style={{ color: themed.text, fontWeight: '600', marginBottom: 8, fontSize: 16 }}>
+            Filtrar por:
+          </Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={{ marginBottom: 8 }}
+          >
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['todas', 'mis-rutas', 'aprobadas', 'pendientes', 'rechazadas'] as FilterType[]).map((filter) => (
+                <TouchableOpacity
+                  key={filter}
+                  onPress={() => setActiveFilter(filter)}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                    backgroundColor: activeFilter === filter 
+                      ? (themed.accent as string)
+                      : (themed.isDark ? '#374151' : '#e5e7eb'),
+                    borderWidth: 1,
+                    borderColor: activeFilter === filter 
+                      ? (themed.accent as string)
+                      : (themed.isDark ? '#4b5563' : '#d1d5db'),
+                  }}
+                >
+                  <Text style={{
+                    color: activeFilter === filter ? '#fff' : themed.text,
+                    fontSize: 14,
+                    fontWeight: '600',
+                  }}>
+                    {getFilterText(filter)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+          
+          {/* Contador de resultados */}
+          <Text style={{ color: themed.muted, fontSize: 12 }}>
+            {filteredRoutes.length} {filteredRoutes.length === 1 ? 'ruta encontrada' : 'rutas encontradas'}
+          </Text>
+        </View>
+      )}
 
       {/* Alerta de pendiente (técnico) */}
       {isTechnician && hasPendingRoutes && (
@@ -387,7 +487,7 @@ const confirmDeleteRoute = async () => {
 
       {/* Lista de rutas */}
       <ScrollView
-        style={{ flex: 1, paddingHorizontal: 24, marginTop: 24 }}
+        style={{ flex: 1, paddingHorizontal: 24, marginTop: 16 }}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
@@ -414,17 +514,35 @@ const confirmDeleteRoute = async () => {
                 textAlign: 'center',
               }}
             >
-              {isTechnician ? 'No hay rutas creadas' : 'No hay rutas disponibles'}
+              {isTechnician ? 'No hay rutas disponibles' : 'No hay rutas disponibles'}
             </Text>
             <Text style={{ color: themed.muted, textAlign: 'center', marginTop: 8 }}>
               {isTechnician
-                ? '¡Comienza creando tu primera ruta gastronómica!'
+                ? `No se encontraron rutas con el filtro "${getFilterText(activeFilter)}"`
                 : 'Pronto habrá nuevas rutas disponibles'}
             </Text>
+            {isTechnician && activeFilter !== 'todas' && (
+              <TouchableOpacity
+                onPress={() => setActiveFilter('todas')}
+                style={{
+                  marginTop: 16,
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                  backgroundColor: themed.accent as string,
+                  borderRadius: 12,
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '600' }}>
+                  Ver todas las rutas
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           filteredRoutes.map(route => {
             const pill = statusStyles(route.status);
+            const isMyRouteItem = isMyRoute(route);
+            
             return (
               <View
                 key={route.id}
@@ -443,7 +561,6 @@ const confirmDeleteRoute = async () => {
                 }}
               >
                 {route.image_url ? (
-                  // 🔥 CAMBIO ESPECÍFICO AQUÍ - Usar normalizeImageUrl
                   <Image
                     source={{ uri: normalizeImageUrl(route.image_url) }}
                     style={{ width: '100%', height: 160, borderRadius: 12, marginBottom: 12 }}
@@ -452,9 +569,16 @@ const confirmDeleteRoute = async () => {
                 ) : null}
 
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                  <Text style={{ color: themed.text, fontWeight: 'bold', fontSize: 18, flex: 1 }}>
-                    {route.name}
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: themed.text, fontWeight: 'bold', fontSize: 18 }}>
+                      {route.name}
+                    </Text>
+                    {isTechnician && (
+                      <Text style={{ color: themed.muted, fontSize: 12, marginTop: 2 }}>
+                        {isMyRouteItem ? 'Mi ruta' : 'Ruta de otro usuario'}
+                      </Text>
+                    )}
+                  </View>
                   <View
                     style={{
                       paddingHorizontal: 10,
@@ -475,7 +599,7 @@ const confirmDeleteRoute = async () => {
                   {route.description}
                 </Text>
 
-                {route.status === 'rechazada' && route.rejectionComment ? (
+                {route.status === 'rechazada' && route.rejectionComment && isMyRouteItem && (
                   <View
                     style={{
                       backgroundColor: themed.isDark ? '#2f0b0b' : '#fef2f2',
@@ -496,101 +620,103 @@ const confirmDeleteRoute = async () => {
                       {route.rejectionComment}
                     </Text>
                   </View>
-                ) : null}
+                )}
 
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={{ color: themed.muted, fontSize: 12 }}>
                     {new Date(route.createdAt).toLocaleDateString()}
                   </Text>
 
-{isTechnician ? (
-  <View style={{ flexDirection: 'row', gap: 8 }}>
-    {/* Botón "Ver Sitios" SOLO para rutas aprobadas */}
-    {route.status === 'aprobada' ? (
-      <TouchableOpacity
-        onPress={() =>
-          router.push({
-            pathname: '/Place',
-            params: { routeId: String(route.id), routeName: route.name },
-          })
-        }
-        style={{
-          backgroundColor: themed.isDark ? '#0b1220' : '#fff7ed',
-          borderColor: themed.accent as string,
-          borderWidth: 1,
-          paddingHorizontal: 10,
-          paddingVertical: 8,
-          borderRadius: 10,
-          flexDirection: 'row',
-          alignItems: 'center',
-        }}
-      >
-        <Ionicons name="locate-outline" size={18} color={themed.accent as string} />
-        <Text style={{ color: themed.accent, fontWeight: '600', fontSize: 13, marginLeft: 6 }}>
-          Ver Sitios
-        </Text>
-      </TouchableOpacity>
-    ) : (
-      // Estado bloqueado para pendiente/rechazada
-      <View style={{
-        backgroundColor: themed.isDark ? '#2a2a2a' : '#f3f4f6',
-        borderColor: themed.isDark ? '#4b5563' : '#d1d5db',
-        borderWidth: 1,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        borderRadius: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
-      }}>
-        <Ionicons 
-          name="lock-closed" 
-          size={16} 
-          color={themed.isDark ? '#9ca3af' : '#6b7280'} 
-        />
-        <Text style={{ 
-          color: themed.isDark ? '#9ca3af' : '#6b7280', 
-          fontWeight: '500', 
-          fontSize: 12, 
-          marginLeft: 6 
-        }}>
-          {route.status === 'pendiente' ? 'En revisión' : 'Ruta rechazada'}
-        </Text>
-      </View>
-    )}
+                  {isTechnician ? (
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {/* Botón "Ver Sitios" SOLO para rutas aprobadas */}
+                      {route.status === 'aprobada' ? (
+                        <TouchableOpacity
+                          onPress={() =>
+                            router.push({
+                              pathname: '/Place',
+                              params: { routeId: String(route.id), routeName: route.name },
+                            })
+                          }
+                          style={{
+                            backgroundColor: themed.isDark ? '#0b1220' : '#fff7ed',
+                            borderColor: themed.accent as string,
+                            borderWidth: 1,
+                            paddingHorizontal: 10,
+                            paddingVertical: 8,
+                            borderRadius: 10,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Ionicons name="locate-outline" size={18} color={themed.accent as string} />
+                          <Text style={{ color: themed.accent, fontWeight: '600', fontSize: 13, marginLeft: 6 }}>
+                            Ver Sitios
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        // Estado bloqueado para pendiente/rechazada (solo mostrar para mis rutas)
+                        isMyRouteItem && (
+                          <View style={{
+                            backgroundColor: themed.isDark ? '#2a2a2a' : '#f3f4f6',
+                            borderColor: themed.isDark ? '#4b5563' : '#d1d5db',
+                            borderWidth: 1,
+                            paddingHorizontal: 10,
+                            paddingVertical: 8,
+                            borderRadius: 10,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                          }}>
+                            <Ionicons 
+                              name="lock-closed" 
+                              size={16} 
+                              color={themed.isDark ? '#9ca3af' : '#6b7280'} 
+                            />
+                            <Text style={{ 
+                              color: themed.isDark ? '#9ca3af' : '#6b7280', 
+                              fontWeight: '500', 
+                              fontSize: 12, 
+                              marginLeft: 6 
+                            }}>
+                              {route.status === 'pendiente' ? 'En revisión' : 'Ruta rechazada'}
+                            </Text>
+                          </View>
+                        )
+                      )}
 
-    {/* Botones de editar y eliminar (mantener igual) */}
-    {(route.status === 'pendiente' || route.status === 'rechazada') && (
-      <>
-        <TouchableOpacity
-          onPress={() =>
-            router.push({
-              pathname: '/Route/edit',
-              params: { id: route.id.toString() },
-            })
-          }
-          style={{
-            backgroundColor: themed.isDark ? '#34240f' : '#fed7aa',
-            padding: 8,
-            borderRadius: 10,
-          }}
-        >
-          <Ionicons name="pencil" size={20} color={themed.accent as string} />
-        </TouchableOpacity>
+                      {/* Botones de editar y eliminar SOLO para mis rutas (en cualquier estado) */}
+                      {isMyRouteItem && (
+                        <>
+                          <TouchableOpacity
+                            onPress={() =>
+                              router.push({
+                                pathname: '/Route/edit',
+                                params: { id: route.id.toString() },
+                              })
+                            }
+                            style={{
+                              backgroundColor: themed.isDark ? '#34240f' : '#fed7aa',
+                              padding: 8,
+                              borderRadius: 10,
+                            }}
+                          >
+                            <Ionicons name="pencil" size={20} color={themed.accent as string} />
+                          </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => handleDelete(route)}
-          style={{
-            backgroundColor: themed.isDark ? '#4a2e0b' : '#fdba74',
-            padding: 8,
-            borderRadius: 10,
-          }}
-        >
-          <Ionicons name="trash" size={20} color={themed.accent as string} />
-        </TouchableOpacity>
-      </>
-    )}
-  </View>
-) : (
+                          <TouchableOpacity
+                            onPress={() => handleDelete(route)}
+                            style={{
+                              backgroundColor: themed.isDark ? '#4a2e0b' : '#fdba74',
+                              padding: 8,
+                              borderRadius: 10,
+                            }}
+                          >
+                            <Ionicons name="trash" size={20} color={themed.accent as string} />
+                          </TouchableOpacity>
+                        </>
+                      )}
+                    </View>
+                  ) : (
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       {/* Ver Sitios */}
                       <TouchableOpacity
@@ -647,152 +773,152 @@ const confirmDeleteRoute = async () => {
           })
         )}
 
-{/* Modal de Confirmación de Eliminación */}
-<Modal
-  animationType="fade"
-  transparent={true}
-  visible={deleteModalVisible}
-  onRequestClose={() => setDeleteModalVisible(false)}
->
-  <View style={{ 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)'
-  }}>
-    <View style={{
-      backgroundColor: themed.card,
-      borderRadius: 20,
-      padding: 24,
-      margin: 20,
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 4,
-      elevation: 5,
-      minWidth: '80%'
-    }}>
-      {/* Icono */}
-      <View style={{
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        backgroundColor: modalConfig.type === 'success' 
-          ? (themed.isDark ? '#059669' : '#10b981') 
-          : (themed.isDark ? '#dc2626' : '#ef4444'),
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 16
-      }}>
-        <Ionicons 
-          name={modalConfig.type === 'success' ? "checkmark" : "alert-circle"} 
-          size={32} 
-          color="#fff" 
-        />
-      </View>
-
-      {/* Título */}
-      <Text style={{
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: themed.text,
-        textAlign: 'center',
-        marginBottom: 8
-      }}>
-        {modalConfig.title}
-      </Text>
-
-      {/* Mensaje */}
-      <Text style={{
-        fontSize: 16,
-        color: themed.muted,
-        textAlign: 'center',
-        marginBottom: 24,
-        lineHeight: 22
-      }}>
-        {modalConfig.message}
-      </Text>
-
-      {/* Botones */}
-      <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
-        {modalConfig.type === 'error' ? (
-          // Modal de confirmación (eliminar)
-          <>
-            <TouchableOpacity
-              onPress={() => {
-                setDeleteModalVisible(false);
-                setRouteToDelete(null);
-              }}
-              style={{
-                flex: 1,
-                backgroundColor: themed.softBg,
-                borderWidth: 1,
-                borderColor: themed.border,
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                borderRadius: 12,
-                alignItems: 'center'
-              }}
-            >
-              <Text style={{
-                color: themed.text,
-                fontSize: 16,
-                fontWeight: '600',
-                textAlign: 'center'
-              }}>
-                Cancelar
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={confirmDeleteRoute}
-              style={{
-                flex: 1,
-                backgroundColor: '#ef4444',
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                borderRadius: 12,
-                alignItems: 'center'
-              }}
-            >
-              <Text style={{
-                color: '#fff',
-                fontSize: 16,
-                fontWeight: '600',
-                textAlign: 'center'
-              }}>
-                Eliminar
-              </Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          // Modal de resultado (éxito/error)
-          <TouchableOpacity
-            onPress={() => setDeleteModalVisible(false)}
-            style={{
-              backgroundColor: modalConfig.type === 'success' 
-                ? (themed.accent as string)
-                : (themed.isDark ? '#dc2626' : '#ef4444'),
-              paddingHorizontal: 32,
-              paddingVertical: 12,
-              borderRadius: 12,
-              minWidth: 120
-            }}
-          >
-            <Text style={{
-              color: '#fff',
-              fontSize: 16,
-              fontWeight: '600',
-              textAlign: 'center'
+        {/* Modal de Confirmación de Eliminación */}
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={deleteModalVisible}
+          onRequestClose={() => setDeleteModalVisible(false)}
+        >
+          <View style={{ 
+            flex: 1, 
+            justifyContent: 'center', 
+            alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.5)'
+          }}>
+            <View style={{
+              backgroundColor: themed.card,
+              borderRadius: 20,
+              padding: 24,
+              margin: 20,
+              alignItems: 'center',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.25,
+              shadowRadius: 4,
+              elevation: 5,
+              minWidth: '80%'
             }}>
-              {modalConfig.type === 'success' ? 'Continuar' : 'Entendido'}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
-  </View>
-</Modal>
+              {/* Icono */}
+              <View style={{
+                width: 60,
+                height: 60,
+                borderRadius: 30,
+                backgroundColor: modalConfig.type === 'success' 
+                  ? (themed.isDark ? '#059669' : '#10b981') 
+                  : (themed.isDark ? '#dc2626' : '#ef4444'),
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginBottom: 16
+              }}>
+                <Ionicons 
+                  name={modalConfig.type === 'success' ? "checkmark" : "alert-circle"} 
+                  size={32} 
+                  color="#fff" 
+                />
+              </View>
+
+              {/* Título */}
+              <Text style={{
+                fontSize: 20,
+                fontWeight: 'bold',
+                color: themed.text,
+                textAlign: 'center',
+                marginBottom: 8
+              }}>
+                {modalConfig.title}
+              </Text>
+
+              {/* Mensaje */}
+              <Text style={{
+                fontSize: 16,
+                color: themed.muted,
+                textAlign: 'center',
+                marginBottom: 24,
+                lineHeight: 22
+              }}>
+                {modalConfig.message}
+              </Text>
+
+              {/* Botones */}
+              <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
+                {modalConfig.type === 'error' ? (
+                  // Modal de confirmación (eliminar)
+                  <>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setDeleteModalVisible(false);
+                        setRouteToDelete(null);
+                      }}
+                      style={{
+                        flex: 1,
+                        backgroundColor: themed.softBg,
+                        borderWidth: 1,
+                        borderColor: themed.border,
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        borderRadius: 12,
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Text style={{
+                        color: themed.text,
+                        fontSize: 16,
+                        fontWeight: '600',
+                        textAlign: 'center'
+                      }}>
+                        Cancelar
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={confirmDeleteRoute}
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#ef4444',
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        borderRadius: 12,
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Text style={{
+                        color: '#fff',
+                        fontSize: 16,
+                        fontWeight: '600',
+                        textAlign: 'center'
+                      }}>
+                        Eliminar
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  // Modal de resultado (éxito/error)
+                  <TouchableOpacity
+                    onPress={() => setDeleteModalVisible(false)}
+                    style={{
+                      backgroundColor: modalConfig.type === 'success' 
+                        ? (themed.accent as string)
+                        : (themed.isDark ? '#dc2626' : '#ef4444'),
+                      paddingHorizontal: 32,
+                      paddingVertical: 12,
+                      borderRadius: 12,
+                      minWidth: 120
+                    }}
+                  >
+                    <Text style={{
+                      color: '#fff',
+                      fontSize: 16,
+                      fontWeight: '600',
+                      textAlign: 'center'
+                    }}>
+                      {modalConfig.type === 'success' ? 'Continuar' : 'Entendido'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </View>
+        </Modal>
         
       </ScrollView>
     </View>

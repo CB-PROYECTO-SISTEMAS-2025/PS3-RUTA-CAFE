@@ -25,25 +25,53 @@ export const updateProfile = async (req, res) => {
 
 export const updateProfilePhoto = async (req, res) => {
   try {
-    const { photoUrl } = req.body;
+    console.log("📸 Iniciando actualización de foto...");
+    console.log("📁 Archivo recibido:", req.file);
+    console.log("📊 Cuerpo recibido:", req.body);
     
-    if (!photoUrl) {
-      return res.status(400).json({ message: "URL de foto es requerida" });
+    let photoData;
+
+    if (req.file) {
+      // Si viene como archivo multipart (FormData)
+      console.log("📁 Imagen recibida como archivo:", {
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size
+      });
+      
+      // Convertir buffer a base64
+      photoData = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    } else if (req.body.photo) {
+      // Si viene como base64 en JSON
+      console.log("📊 Imagen recibida como base64");
+      photoData = req.body.photo;
+    } else {
+      return res.status(400).json({ 
+        message: "Datos de foto son requeridos (photo o archivo)" 
+      });
     }
 
-    const result = await updateUserPhoto(req.user.id, photoUrl);
+    console.log("👤 ID de usuario:", req.user.id);
+    console.log("📏 Longitud de datos:", photoData.length);
+
+    const result = await updateUserPhoto(req.user.id, photoData);
     
     if (result.success) {
+      console.log("✅ Foto actualizada exitosamente");
       res.json({ 
         message: "Foto de perfil actualizada correctamente",
-        photoUrl 
+        photoUrl: result.photoUrl 
       });
     } else {
+      console.log("❌ Error en updateUserPhoto:", result.message);
       res.status(404).json({ message: result.message });
     }
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error al actualizar foto de perfil" });
+    console.error("❌ Error en updateProfilePhoto:", error);
+    res.status(500).json({ 
+      message: "Error al actualizar foto de perfil",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
@@ -64,8 +92,25 @@ export const removeProfilePhoto = async (req, res) => {
 
 export const deleteProfile = async (req, res) => {
   try {
-    await deleteUser(req.user.id);
-    res.json({ message: "Cuenta eliminada correctamente" });
+    // Verificar que el usuario tenga rol 3 (usuario normal)
+    const user = await findUserById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    if (user.role !== 3) {
+      return res.status(403).json({ 
+        message: "Solo los usuarios normales pueden eliminar sus cuentas. Los administradores y técnicos deben contactar con soporte." 
+      });
+    }
+
+    const result = await deleteUser(req.user.id);
+    
+    if (result.success) {
+      res.json({ message: "Cuenta eliminada correctamente" });
+    } else {
+      res.status(400).json({ message: result.message });
+    }
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Error al eliminar cuenta" });

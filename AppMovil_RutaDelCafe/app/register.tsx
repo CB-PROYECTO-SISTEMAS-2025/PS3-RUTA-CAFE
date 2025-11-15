@@ -119,13 +119,39 @@ export default function RegisterScreen() {
     }
   };
 
+  // Función mejorada para validar email con emojis
   const isValidEmail = (email: string): { isValid: boolean; message: string } => {
     try {
       if (!email) return { isValid: false, message: "El correo electrónico es requerido" };
+      
+      // Validar que no contenga emojis
+      const emojiRegex = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{238C}\u{1F1F3}\u{1F1F4}]/gu;
+      if (emojiRegex.test(email)) {
+        return { isValid: false, message: "El correo electrónico no puede contener emojis" };
+      }
+      
+      // Validar caracteres especiales no permitidos
+      const invalidCharsRegex = /[<>{}[\]\\]/;
+      if (invalidCharsRegex.test(email)) {
+        return { isValid: false, message: "El correo electrónico contiene caracteres no permitidos" };
+      }
+      
+      // Validar formato básico de email
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
         return { isValid: false, message: "Formato de correo electrónico inválido" };
       }
+      
+      // Validar longitud máxima
+      if (email.length > 254) {
+        return { isValid: false, message: "El correo electrónico es demasiado largo" };
+      }
+      
+      // Validar que no tenga espacios
+      if (/\s/.test(email)) {
+        return { isValid: false, message: "El correo electrónico no puede contener espacios" };
+      }
+      
       return { isValid: true, message: "" };
     } catch (error) {
       console.error("Error validating email:", error);
@@ -327,9 +353,16 @@ export default function RegisterScreen() {
     }
   };
 
+  // Función mejorada para manejar cambios en el email
   const handleEmailChange = (text: string) => {
     try {
-      handleChange("email", text.toLowerCase());
+      // Limpiar el texto de emojis y caracteres no permitidos antes de guardar
+      const cleanedText = text
+        .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{238C}\u{1F1F3}\u{1F1F4}]/gu, '')
+        .replace(/[<>{}[\]\\]/g, '')
+        .toLowerCase();
+      
+      handleChange("email", cleanedText);
     } catch (error) {
       console.error("Error handling email change:", error);
     }
@@ -446,7 +479,7 @@ export default function RegisterScreen() {
         return { isValid: false, message: "El apellido materno solo puede contener letras" };
       }
 
-      // Validación de email
+      // Validación de email mejorada
       const emailValidation = isValidEmail(formData.email);
       if (!emailValidation.isValid) {
         return { isValid: false, message: emailValidation.message };
@@ -519,6 +552,7 @@ export default function RegisterScreen() {
         role: 3,
       };
 
+      // Solo enviar la foto si existe
       if (formData.photo) {
         submitData.photo = formData.photo;
       }

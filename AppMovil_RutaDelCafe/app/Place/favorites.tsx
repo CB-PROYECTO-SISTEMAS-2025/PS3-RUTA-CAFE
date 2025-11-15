@@ -125,7 +125,7 @@ export default function FavoritesScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: themed.background }}>
-      {/* Header */}
+      {/* Header - SIN la barra naranja con texto negro */}
       <View style={{
         backgroundColor: themed.accent,
         paddingHorizontal: 24,

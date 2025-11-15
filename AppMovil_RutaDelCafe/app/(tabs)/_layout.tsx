@@ -11,10 +11,10 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import { useTheme } from "../../hooks/theme-context"; // 👈 usamos directamente el contexto
+import { useTheme } from "../../hooks/theme-context";
 
 export default function TabLayout() {
-  const { theme, effectiveTheme } = useTheme(); // 👈 así el componente se actualiza automáticamente
+  const { theme, effectiveTheme } = useTheme();
   const isDark = effectiveTheme === "dark";
 
   const COLORS = {
@@ -93,14 +93,12 @@ export default function TabLayout() {
             const { options } = descriptors[route.key];
             const focused = state.index === index;
             const label = (options.title ?? route.name) as string;
-            const iconName =
-              route.name === "advertisement"
-                ? "home-outline"
-                : route.name === "settings"
-                ? "settings-outline"
-                : route.name === "indexR"
-                ? "fast-food-outline"
-                : "person-circle-outline";
+            
+            let iconName = "help-outline";
+            if (route.name === "advertisement") iconName = focused ? "home" : "home-outline";
+            else if (route.name === "settings") iconName = focused ? "settings" : "settings-outline";
+            else if (route.name === "indexR") iconName = focused ? "fast-food" : "fast-food-outline";
+            else if (route.name === "profile") iconName = focused ? "person-circle" : "person-circle-outline";
 
             const onPress = () => {
               const event = navigation.emit({
@@ -122,17 +120,16 @@ export default function TabLayout() {
     );
   }
 
-  // 👇 esta línea hace que Tabs se re-renderice cuando cambia el tema
   return (
     <Tabs
-      key={effectiveTheme} // 🔥 esto fuerza que el layout se regenere al cambiar el tema
+      key={effectiveTheme}
       tabBar={(p) => <MyTabBar {...p} />}
       screenOptions={{ headerShown: false }}
     >
       <Tabs.Screen name="advertisement" options={{ title: "Home" }} />
-      <Tabs.Screen name="settings" options={{ title: "Ajustes" }} />
       <Tabs.Screen name="indexR" options={{ title: "Rutas" }} />
       <Tabs.Screen name="profile" options={{ title: "Perfil" }} />
+      <Tabs.Screen name="settings" options={{ title: "Ajustes" }} />
     </Tabs>
   );
 }

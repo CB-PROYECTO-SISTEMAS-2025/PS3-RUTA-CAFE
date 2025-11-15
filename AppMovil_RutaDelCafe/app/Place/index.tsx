@@ -34,7 +34,7 @@ interface Place {
   route_id: number;
   route_name?: string;
   status: 'pendiente' | 'aprobada' | 'rechazada';
-  rejectionComment?: string; // 🔥 NUEVO: Campo de comentario de rechazo
+  rejectionComment?: string;
   website?: string;
   phoneNumber?: string;
   image_url?: string | null;
@@ -104,12 +104,10 @@ const getFullSchedule = (schedules: Schedule[]) => {
 const normalizeImages = (p: Place): string[] => {
   let imgs: string[] = [];
   
-  // Imagen principal (puede ser null)
   if (p.image_url) {
     imgs.push(p.image_url);
   }
 
-  // Imágenes adicionales del nuevo sistema
   if (Array.isArray(p.additional_images)) {
     const additionalUrls = p.additional_images
       .map((img: any) => {
@@ -120,7 +118,7 @@ const normalizeImages = (p: Place): string[] => {
     imgs = [...imgs, ...additionalUrls];
   }
 
-  return imgs.slice(0, 3); // Mostrar máximo 3 imágenes en la lista
+  return imgs.slice(0, 3);
 };
 
 export default function PlacesMapScreen() {
@@ -150,13 +148,13 @@ export default function PlacesMapScreen() {
   const [currentPlaceImages, setCurrentPlaceImages] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-const [placeToDelete, setPlaceToDelete] = useState<Place | null>(null);
-const [modalConfig, setModalConfig] = useState({
-  title: '',
-  message: '',
-  type: 'success' as 'success' | 'error',
-});
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [placeToDelete, setPlaceToDelete] = useState<Place | null>(null);
+  const [modalConfig, setModalConfig] = useState({
+    title: '',
+    message: '',
+    type: 'success' as 'success' | 'error',
+  });
 
   const webViewRef = useRef<WebView>(null);
   const isAdmin = userRole === 2;
@@ -168,7 +166,7 @@ const [modalConfig, setModalConfig] = useState({
     loadUser();
   }, []);
 
-   useEffect(() => {
+  useEffect(() => {
     fetchPlaces();
   }, [numericRouteId, refresh, forceRefresh]);
 
@@ -176,13 +174,11 @@ const [modalConfig, setModalConfig] = useState({
     if (places.length > 0) setMapKey((p) => p + 1);
   }, [places]);
 
-  // 🔥 NUEVO: Verificar si el usuario tiene lugares pendientes
   const userHasPendingPlaces = useMemo(() => {
     if (!isAdmin) return false;
     return places.some(place => place.createdBy === userId && place.status === 'pendiente');
   }, [places, userId, isAdmin]);
 
-  // 🔥 NUEVO: Función para manejar acciones bloqueadas
   const handleBlockedAction = (place: Place, actionName: string) => {
     if (place.status === 'rechazada') {
       Alert.alert(
@@ -195,7 +191,6 @@ const [modalConfig, setModalConfig] = useState({
     return false;
   };
 
-  // user
   const loadUser = async () => {
     try {
       const userData = await AsyncStorage.getItem('userData');
@@ -213,7 +208,6 @@ const [modalConfig, setModalConfig] = useState({
     }
   };
 
-  // places
   const fetchPlaces = async () => {
     setLoading(true);
     setMapLoaded(false);
@@ -242,7 +236,7 @@ const [modalConfig, setModalConfig] = useState({
         image_url: p.image_url,
         additional_images_count: p.additional_images?.length || 0,
         status: p.status,
-        rejectionComment: p.rejectionComment // 🔥 NUEVO: Incluir comentario de rechazo
+        rejectionComment: p.rejectionComment
       })));
 
       const normalized = data
@@ -276,7 +270,6 @@ const [modalConfig, setModalConfig] = useState({
     fetchPlaces();
   };
 
-  // 🔥 NUEVO: Manejo de creación de lugares con bloqueo
   const handleCreatePlace = () => {
     if (userHasPendingPlaces) {
       Alert.alert(
@@ -292,49 +285,49 @@ const [modalConfig, setModalConfig] = useState({
     });
   };
 
- const deletePlace = async (place: Place) => {
-  setPlaceToDelete(place);
-  setModalConfig({
-    title: 'Confirmar Eliminación',
-    message: `¿Estás seguro de que quieres eliminar el lugar "${place.name}"? Esta acción no se puede deshacer.`,
-    type: 'error',
-  });
-  setDeleteModalVisible(true);
-};
-
-const confirmDeletePlace = async () => {
-  if (!placeToDelete) return;
-  
-  try {
-    const token = await AsyncStorage.getItem('userToken');
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${placeToDelete.id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    
-    if (response.ok) {
-      setModalConfig({
-        title: '¡Éxito!',
-        message: 'Lugar eliminado correctamente',
-        type: 'success',
-      });
-      setDeleteModalVisible(true);
-      fetchPlaces(); // Recargar la lista
-    } else {
-      throw new Error('Error al eliminar el lugar');
-    }
-  } catch (error) {
+  const deletePlace = async (place: Place) => {
+    setPlaceToDelete(place);
     setModalConfig({
-      title: 'Error',
-      message: 'No se pudo eliminar el lugar',
+      title: 'Confirmar Eliminación',
+      message: `¿Estás seguro de que quieres eliminar el lugar "${place.name}"? Esta acción no se puede deshacer.`,
       type: 'error',
     });
     setDeleteModalVisible(true);
-    console.error(error);
-  } finally {
-    setPlaceToDelete(null);
-  }
-};
+  };
+
+  const confirmDeletePlace = async () => {
+    if (!placeToDelete) return;
+    
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/places/${placeToDelete.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        setModalConfig({
+          title: '¡Éxito!',
+          message: 'Lugar eliminado correctamente',
+          type: 'success',
+        });
+        setDeleteModalVisible(true);
+        fetchPlaces();
+      } else {
+        throw new Error('Error al eliminar el lugar');
+      }
+    } catch (error) {
+      setModalConfig({
+        title: 'Error',
+        message: 'No se pudo eliminar el lugar',
+        type: 'error',
+      });
+      setDeleteModalVisible(true);
+      console.error(error);
+    } finally {
+      setPlaceToDelete(null);
+    }
+  };
 
   const toggleLike = async (placeId: number) => {
     try {
@@ -378,7 +371,6 @@ const confirmDeletePlace = async () => {
     }
   };
 
-  // Función para abrir el modal de imágenes
   const openImagesModal = (place: Place) => {
     const images = normalizeImages(place);
     if (images.length === 0) {
@@ -390,7 +382,6 @@ const confirmDeletePlace = async () => {
     setImagesModalOpen(true);
   };
 
-  // visibilidad por rol (misma lógica)
   const visiblePlaces = useMemo(() => {
     if (isAdmin) return places.filter((p) => p.createdBy === userId);
     return places.filter((p) => p.status === 'aprobada');
@@ -401,7 +392,6 @@ const confirmDeletePlace = async () => {
     (visiblePlaces.length > 0 ? visiblePlaces[0].route_name : undefined) ||
     (numericRouteId ? `Ruta #${numericRouteId}` : undefined);
 
-  // === HTML del mapa con color del tema ===
   const getMapHtml = () => {
     const placesData = visiblePlaces.map((p) => ({
       id: p.id,
@@ -426,7 +416,6 @@ const confirmDeletePlace = async () => {
       initialZoom = 14;
     }
 
-    // Tomamos el color acento (ej. naranja) y fondo para popup del mapa según tema
     const accent = typeof themed.accent === 'string' ? themed.accent : '#ea580c';
     const card = typeof themed.card === 'string' ? themed.card : '#ffffff';
     const text = typeof themed.text === 'string' ? themed.text : '#0f172a';
@@ -575,7 +564,6 @@ const confirmDeletePlace = async () => {
     }
   };
 
-  // Función para obtener información de imágenes de un lugar
   const getPlaceImageInfo = (place: Place) => {
     const hasMainImage = place.image_url ? 1 : 0;
     const additionalCount = place.additional_images?.length || 0;
@@ -586,6 +574,181 @@ const confirmDeletePlace = async () => {
       additionalCount,
       totalImages
     };
+  };
+
+  // 🔥 NUEVO: Función para renderizar botones responsivos
+  const renderActionButtons = (place: Place) => {
+    const buttons = [];
+
+    // Botón Ver Detalles - SIEMPRE disponible
+    buttons.push(
+      <TouchableOpacity
+        key="details"
+        onPress={() => router.push(`/Place/details?id=${place.id}`)}
+        style={{
+          flex: 1,
+          minHeight: 40,
+          backgroundColor: themed.softBg,
+          paddingVertical: 8,
+          paddingHorizontal: 4,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: themed.border,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginHorizontal: 2,
+        }}
+      >
+        <Ionicons name="eye-outline" size={16} color={themed.accent as string} />
+        <Text style={{ 
+          color: themed.text, 
+          fontSize: 12, 
+          fontWeight: '600',
+          marginTop: 2,
+          textAlign: 'center'
+        }} numberOfLines={1}>
+          Detalles
+        </Text>
+      </TouchableOpacity>
+    );
+
+    if (isAdmin) {
+      // Botón Editar - para administradores
+      buttons.push(
+        <TouchableOpacity
+          key="edit"
+          onPress={() => router.push(`/Place/edit?id=${place.id}`)}
+          style={{
+            flex: 1,
+            minHeight: 40,
+            backgroundColor: themed.softBg,
+            paddingVertical: 8,
+            paddingHorizontal: 4,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: themed.border,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginHorizontal: 2,
+          }}
+        >
+          <Ionicons name="create-outline" size={16} color="#3b82f6" />
+          <Text style={{ 
+            color: themed.text, 
+            fontSize: 12, 
+            fontWeight: '600',
+            marginTop: 2,
+            textAlign: 'center'
+          }} numberOfLines={1}>
+            Editar
+          </Text>
+        </TouchableOpacity>
+      );
+
+      // Botón Eliminar - para administradores
+      buttons.push(
+        <TouchableOpacity
+          key="delete"
+          onPress={() => deletePlace(place)}
+          style={{
+            flex: 1,
+            minHeight: 40,
+            backgroundColor: themed.softBg,
+            paddingVertical: 8,
+            paddingHorizontal: 4,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: themed.border,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginHorizontal: 2,
+          }}
+        >
+          <Ionicons name="trash-outline" size={16} color="#ef4444" />
+          <Text style={{ 
+            color: themed.text, 
+            fontSize: 12, 
+            fontWeight: '600',
+            marginTop: 2,
+            textAlign: 'center'
+          }} numberOfLines={1}>
+            Eliminar
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+
+    if (isUser) {
+      // Botón Like - para usuarios
+      buttons.push(
+        <TouchableOpacity
+          key="like"
+          onPress={() => toggleLike(place.id)}
+          style={{
+            flex: 1,
+            minHeight: 40,
+            backgroundColor: themed.softBg,
+            paddingVertical: 8,
+            paddingHorizontal: 4,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: themed.border,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginHorizontal: 2,
+          }}
+        >
+          <Ionicons 
+            name={place.user_liked ? 'heart' : 'heart-outline'} 
+            size={16} 
+            color="#ec4899" 
+          />
+          <Text style={{ 
+            color: themed.text, 
+            fontSize: 12, 
+            fontWeight: '600',
+            marginTop: 2,
+            textAlign: 'center'
+          }} numberOfLines={1}>
+            {place.user_liked ? 'Quitar' : 'Like'}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+
+    // Botón Comentarios - para todos
+    buttons.push(
+      <TouchableOpacity
+        key="comments"
+        onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
+        style={{
+          flex: 1,
+          minHeight: 40,
+          backgroundColor: themed.successBg,
+          paddingVertical: 8,
+          paddingHorizontal: 4,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: themed.successBorder,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginHorizontal: 2,
+        }}
+      >
+        <Ionicons name="chatbubble-outline" size={16} color={themed.successText as string} />
+        <Text style={{ 
+          color: themed.successText as string, 
+          fontSize: 12, 
+          fontWeight: '600',
+          marginTop: 2,
+          textAlign: 'center'
+        }} numberOfLines={1}>
+          Comentarios
+        </Text>
+      </TouchableOpacity>
+    );
+
+    return buttons;
   };
 
   if (loading) {
@@ -624,7 +787,7 @@ const confirmDeletePlace = async () => {
         </Text>
       </View>
 
-      {/* 🔥 NUEVO: Alerta de lugares pendientes para técnicos */}
+      {/* Alerta de lugares pendientes para técnicos */}
       {isAdmin && userHasPendingPlaces && (
         <View style={{ 
           marginHorizontal: 24, 
@@ -676,7 +839,6 @@ const confirmDeletePlace = async () => {
         </TouchableOpacity>
 
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {/* 🔥 MODIFICADO: Botón de crear con bloqueo */}
           {isAdmin && !userHasPendingPlaces && (
             <TouchableOpacity
               onPress={handleCreatePlace}
@@ -700,7 +862,6 @@ const confirmDeletePlace = async () => {
             </TouchableOpacity>
           )}
 
-          {/* 🔥 NUEVO: Botón bloqueado cuando hay lugares pendientes */}
           {isAdmin && userHasPendingPlaces && (
             <TouchableOpacity
               style={{
@@ -889,7 +1050,7 @@ const confirmDeletePlace = async () => {
 
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <Text style={{ color: themed.text, fontWeight: '800', fontSize: 16, paddingRight: 8 }} numberOfLines={1}>
+                        <Text style={{ color: themed.text, fontWeight: '800', fontSize: 16, paddingRight: 8, flex: 1 }} numberOfLines={1}>
                           {place.name}
                         </Text>
                         <View style={{ 
@@ -918,7 +1079,7 @@ const confirmDeletePlace = async () => {
                         {place.description}
                       </Text>
 
-                      {/* 🔥 NUEVO: Mostrar comentario de rechazo si existe */}
+                      {/* Mostrar comentario de rechazo si existe */}
                       {place.status === 'rechazada' && place.rejectionComment && (
                         <View style={{ 
                           backgroundColor: '#fef2f2', 
@@ -970,136 +1131,15 @@ const confirmDeletePlace = async () => {
                     </View>
                   </View>
 
-                  {/* 🔥 MODIFICADO: Acciones con bloqueo para lugares rechazados */}
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-                    {/* Ver detalles - SIEMPRE disponible */}
-                    <TouchableOpacity
-                      onPress={() => router.push(`/Place/details?id=${place.id}`)}
-                      style={{
-                        flex: 1,
-                        backgroundColor: themed.softBg,
-                        paddingVertical: 8,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: themed.border,
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      <Text style={{ color: themed.text, fontWeight: '700' }}>Ver detalles</Text>
-                    </TouchableOpacity>
-
-                    {isAdmin && (
-                      <>
-                        {/* Editar - BLOQUEADO si está rechazado */}
-                         <TouchableOpacity
-      onPress={() => router.push(`/Place/edit?id=${place.id}`)}
-      style={{
-        flex: 1,
-        backgroundColor: themed.softBg,
-        paddingVertical: 8,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: themed.border,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
-    >
-      <Ionicons name="create-outline" size={18} color="#3b82f6" />
-      <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>
-        Editar
-      </Text>
-    </TouchableOpacity>
-
-                        {/* Eliminar - SIEMPRE disponible para técnicos */}
-                       {/* En la sección de acciones del lugar, cambiar el onPress del botón eliminar: */}
-<TouchableOpacity
-  onPress={() => deletePlace(place)}
-  style={{
-    flex: 1,
-    backgroundColor: themed.softBg,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: themed.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center'
-  }}
->
-  <Ionicons name="trash-outline" size={18} color="#ef4444" />
-  <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>Eliminar</Text>
-</TouchableOpacity>
-                      </>
-                    )}
-
-{isUser ? (
-  <>
-    {/* Like - PERMITIDO incluso cuando está rechazado */}
-    <TouchableOpacity
-      onPress={() => toggleLike(place.id)}
-      style={{
-        flex: 1,
-        backgroundColor: themed.softBg,
-        paddingVertical: 8,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: themed.border,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
-    >
-      <Ionicons 
-        name={place.user_liked ? 'heart' : 'heart-outline'} 
-        size={18} 
-        color="#ec4899" 
-      />
-      <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>
-        {place.user_liked ? 'Quitar' : 'Like'}
-      </Text>
-    </TouchableOpacity>
-
-    {/* Comentarios - PERMITIDO incluso cuando está rechazado */}
-    <TouchableOpacity
-      onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
-      style={{
-        flex: 1,
-        backgroundColor: themed.successBg,
-        paddingVertical: 8,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: themed.successBorder,
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
-    >
-      <Text style={{ color: themed.successText as string, fontWeight: '700' }}>
-        Comentarios
-      </Text>
-    </TouchableOpacity>
-  </>
-) : (
-  // Visitante: solo ver comentarios (PERMITIDO incluso cuando está rechazado)
-  <TouchableOpacity
-    onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
-    style={{
-      flex: 1,
-      backgroundColor: themed.successBg,
-      paddingVertical: 8,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: themed.successBorder,
-      alignItems: 'center',
-      justifyContent: 'center'
-    }}
-  >
-    <Text style={{ color: themed.successText as string, fontWeight: '700' }}>
-      Comentarios
-    </Text>
-  </TouchableOpacity>
-)}
+                  {/* 🔥 MODIFICADO: Botones responsivos */}
+                  <View style={{ 
+                    flexDirection: 'row', 
+                    gap: 4, 
+                    marginTop: 12,
+                    flexWrap: 'wrap',
+                    justifyContent: 'space-between'
+                  }}>
+                    {renderActionButtons(place)}
                   </View>
                 </View>
               );
@@ -1154,7 +1194,7 @@ const confirmDeletePlace = async () => {
         </View>
       </Modal>
 
-      {/* Bottom sheet - MODIFICADO para mostrar comentario de rechazo */}
+      {/* Bottom sheet */}
       <Modal visible={infoOpen} transparent animationType="slide" onRequestClose={() => setInfoOpen(false)}>
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' }}>
           <View
@@ -1188,7 +1228,7 @@ const confirmDeletePlace = async () => {
                   {selectedPlace.route_name || resolvedRouteName || (numericRouteId ? `Ruta #${numericRouteId}` : '—')}
                 </Text>
 
-                {/* 🔥 NUEVO: Mostrar comentario de rechazo en el modal */}
+                {/* Mostrar comentario de rechazo en el modal */}
                 {selectedPlace.status === 'rechazada' && selectedPlace.rejectionComment && (
                   <View style={{ 
                     backgroundColor: '#fef2f2', 
@@ -1342,151 +1382,151 @@ const confirmDeletePlace = async () => {
       </Modal>
 
       {/* Modal de Confirmación de Eliminación */}
-<Modal
-  animationType="fade"
-  transparent={true}
-  visible={deleteModalVisible}
-  onRequestClose={() => setDeleteModalVisible(false)}
->
-  <View style={{ 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)'
-  }}>
-    <View style={{
-      backgroundColor: themed.card,
-      borderRadius: 20,
-      padding: 24,
-      margin: 20,
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 4,
-      elevation: 5,
-      minWidth: '80%'
-    }}>
-      {/* Icono */}
-      <View style={{
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        backgroundColor: modalConfig.type === 'success' 
-          ? (themed.isDark ? '#059669' : '#10b981') 
-          : (themed.isDark ? '#dc2626' : '#ef4444'),
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 16
-      }}>
-        <Ionicons 
-          name={modalConfig.type === 'success' ? "checkmark" : "alert-circle"} 
-          size={32} 
-          color="#fff" 
-        />
-      </View>
-
-      {/* Título */}
-      <Text style={{
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: themed.text,
-        textAlign: 'center',
-        marginBottom: 8
-      }}>
-        {modalConfig.title}
-      </Text>
-
-      {/* Mensaje */}
-      <Text style={{
-        fontSize: 16,
-        color: themed.muted,
-        textAlign: 'center',
-        marginBottom: 24,
-        lineHeight: 22
-      }}>
-        {modalConfig.message}
-      </Text>
-
-      {/* Botones */}
-      <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
-        {modalConfig.type === 'error' ? (
-          // Modal de confirmación (eliminar)
-          <>
-            <TouchableOpacity
-              onPress={() => {
-                setDeleteModalVisible(false);
-                setPlaceToDelete(null);
-              }}
-              style={{
-                flex: 1,
-                backgroundColor: themed.softBg,
-                borderWidth: 1,
-                borderColor: themed.border,
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                borderRadius: 12,
-                alignItems: 'center'
-              }}
-            >
-              <Text style={{
-                color: themed.text,
-                fontSize: 16,
-                fontWeight: '600',
-                textAlign: 'center'
-              }}>
-                Cancelar
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={confirmDeletePlace}
-              style={{
-                flex: 1,
-                backgroundColor: '#ef4444',
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                borderRadius: 12,
-                alignItems: 'center'
-              }}
-            >
-              <Text style={{
-                color: '#fff',
-                fontSize: 16,
-                fontWeight: '600',
-                textAlign: 'center'
-              }}>
-                Eliminar
-              </Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          // Modal de resultado (éxito/error)
-          <TouchableOpacity
-            onPress={() => setDeleteModalVisible(false)}
-            style={{
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={deleteModalVisible}
+        onRequestClose={() => setDeleteModalVisible(false)}
+      >
+        <View style={{ 
+          flex: 1, 
+          justifyContent: 'center', 
+          alignItems: 'center',
+          backgroundColor: 'rgba(0,0,0,0.5)'
+        }}>
+          <View style={{
+            backgroundColor: themed.card,
+            borderRadius: 20,
+            padding: 24,
+            margin: 20,
+            alignItems: 'center',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4,
+            elevation: 5,
+            minWidth: '80%'
+          }}>
+            {/* Icono */}
+            <View style={{
+              width: 60,
+              height: 60,
+              borderRadius: 30,
               backgroundColor: modalConfig.type === 'success' 
-                ? (themed.accent as string)
+                ? (themed.isDark ? '#059669' : '#10b981') 
                 : (themed.isDark ? '#dc2626' : '#ef4444'),
-              paddingHorizontal: 32,
-              paddingVertical: 12,
-              borderRadius: 12,
-              minWidth: 120
-            }}
-          >
-            <Text style={{
-              color: '#fff',
-              fontSize: 16,
-              fontWeight: '600',
-              textAlign: 'center'
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: 16
             }}>
-              {modalConfig.type === 'success' ? 'Continuar' : 'Entendido'}
+              <Ionicons 
+                name={modalConfig.type === 'success' ? "checkmark" : "alert-circle"} 
+                size={32} 
+                color="#fff" 
+              />
+            </View>
+
+            {/* Título */}
+            <Text style={{
+              fontSize: 20,
+              fontWeight: 'bold',
+              color: themed.text,
+              textAlign: 'center',
+              marginBottom: 8
+            }}>
+              {modalConfig.title}
             </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
-  </View>
-</Modal>
+
+            {/* Mensaje */}
+            <Text style={{
+              fontSize: 16,
+              color: themed.muted,
+              textAlign: 'center',
+              marginBottom: 24,
+              lineHeight: 22
+            }}>
+              {modalConfig.message}
+            </Text>
+
+            {/* Botones */}
+            <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
+              {modalConfig.type === 'error' ? (
+                // Modal de confirmación (eliminar)
+                <>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setDeleteModalVisible(false);
+                      setPlaceToDelete(null);
+                    }}
+                    style={{
+                      flex: 1,
+                      backgroundColor: themed.softBg,
+                      borderWidth: 1,
+                      borderColor: themed.border,
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                      borderRadius: 12,
+                      alignItems: 'center'
+                    }}
+                  >
+                    <Text style={{
+                      color: themed.text,
+                      fontSize: 16,
+                      fontWeight: '600',
+                      textAlign: 'center'
+                    }}>
+                      Cancelar
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={confirmDeletePlace}
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#ef4444',
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                      borderRadius: 12,
+                      alignItems: 'center'
+                    }}
+                  >
+                    <Text style={{
+                      color: '#fff',
+                      fontSize: 16,
+                      fontWeight: '600',
+                      textAlign: 'center'
+                    }}>
+                      Eliminar
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                // Modal de resultado (éxito/error)
+                <TouchableOpacity
+                  onPress={() => setDeleteModalVisible(false)}
+                  style={{
+                    backgroundColor: modalConfig.type === 'success' 
+                      ? (themed.accent as string)
+                      : (themed.isDark ? '#dc2626' : '#ef4444'),
+                    paddingHorizontal: 32,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    minWidth: 120
+                  }}
+                >
+                  <Text style={{
+                    color: '#fff',
+                    fontSize: 16,
+                    fontWeight: '600',
+                    textAlign: 'center'
+                  }}>
+                    {modalConfig.type === 'success' ? 'Continuar' : 'Entendido'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
