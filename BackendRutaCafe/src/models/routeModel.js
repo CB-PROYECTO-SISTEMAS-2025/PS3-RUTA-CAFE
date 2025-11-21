@@ -17,8 +17,8 @@ export const getAllRoutes = async (viewer = { role: 0, userId: null }) => {
   const params = [];
 
   if (viewer.role === 2 && viewer.userId) {
-    // Técnico: solo sus rutas (cualquier estado)
-    where = "WHERE createdBy = ?";
+    // Técnico: sus rutas (cualquier estado) + todas las rutas aprobadas de otros
+    where = "WHERE (createdBy = ? OR status = 'aprobada')";
     params.push(viewer.userId);
   } else if (viewer.role === 3 || viewer.role === 0 || !viewer.role) {
     // Usuario logueado normal o visitante: solo aprobadas
@@ -70,7 +70,6 @@ export const getRouteById = async (id) => {
   return rows[0];
 };
 
-// Actualizar ruta
 // Actualizar ruta
 export const updateRoute = async (id, updates, modifiedBy) => {
   const fields = Object.keys(updates).map((k) => `${k} = ?`).join(", ");

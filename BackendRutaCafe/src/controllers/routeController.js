@@ -1,28 +1,6 @@
 import { createRoute, getAllRoutes, getRouteById, updateRoute, deleteRoute, findRoutesByCityId, findAllPendingRoutes }
     from "../models/routeModel.js";
 import { findUserWithCity, getAllCities } from "../models/userModel.js";
-import fs from 'fs';
-import path from 'path';
-
-const deleteImageFile = (imagePath) => {
-  if (!imagePath) return;
-  
-  try {
-    let fullPath = imagePath;
-    if (imagePath.startsWith('/uploads/')) {
-      fullPath = path.join(process.cwd(), imagePath);
-    }
-    
-    if (fs.existsSync(fullPath)) {
-      fs.unlinkSync(fullPath);
-      console.log('🗑️ Imagen eliminada:', fullPath);
-    }
-  } catch (error) {
-    console.error('❌ Error al eliminar imagen:', error);
-  }
-};
-
-
 // Crear nueva ruta
 export const createRouteController = async (req, res) => {
   try {
@@ -59,6 +37,7 @@ export const createRouteController = async (req, res) => {
     res.status(500).json({ message: "Error interno del servidor" });
   }
 };
+
 // Listar todas las rutas
 export const getRoutesController = async (req, res) => {
     try {
@@ -70,6 +49,7 @@ export const getRoutesController = async (req, res) => {
         res.status(500).json({ message: "Error interno del servidor" });
     }
 };
+
 // Listar todas las rutas PENDIENTES
 export const getPendingRoutesController = async (req, res) => {
   try {
@@ -84,6 +64,7 @@ export const getPendingRoutesController = async (req, res) => {
     res.status(500).json({ message: "Error interno del servidor" });
   }
 };
+
 // Obtener rutas de la ciudad del admin
 export const getRoutesByAdminCity = async (req, res) => {
   try {
@@ -114,6 +95,7 @@ export const getRoutesByAdminCity = async (req, res) => {
     res.status(500).json({ message: "Error en el servidor" });
   }
 };
+
 // Obtener rutas por ciudad específica
 export const getRoutesBySpecificCity = async (req, res) => {
   try {
@@ -141,6 +123,7 @@ export const getRoutesBySpecificCity = async (req, res) => {
     });
   }
 };
+
 // Aprobar o rechazar ruta
 export const approveRejectRoute = async (req, res) => {
   try {
@@ -179,6 +162,7 @@ export const approveRejectRoute = async (req, res) => {
     res.status(500).json({ message: "Error interno del servidor" });
   }
 };
+
 // Obtener ruta por ID
 export const getRouteByIdController = async (req, res) => {
     try {
@@ -191,6 +175,7 @@ export const getRouteByIdController = async (req, res) => {
     if ((role === 0 || role === 3) && route.status !== "aprobada") {
       return res.status(403).json({ message: "No autorizado" });
     }
+    // 🔥 CAMBIO: Permitir que técnicos vean sus propias rutas en cualquier estado
     if (role === 2 && uid && route.createdBy !== uid) {
       return res.status(403).json({ message: "No autorizado" });
     }
@@ -204,7 +189,6 @@ export const getRouteByIdController = async (req, res) => {
 
 // Actualizar ruta
 // Actualizar ruta
-// Actualizar ruta
 export const updateRouteController = async (req, res) => {
   try {
     const { id } = req.params;
@@ -213,10 +197,20 @@ export const updateRouteController = async (req, res) => {
 
     console.log('🔄 Iniciando actualización de ruta ID:', id);
 
-    // Obtener ruta actual para obtener la imagen anterior
+    // Obtener ruta actual para obtener la imagen anterior y propiedad
     const currentRoute = await getRouteById(id);
     if (!currentRoute) {
       return res.status(404).json({ message: "Ruta no encontrada" });
+    }
+
+    // 🔥 NUEVO: Verificar que el usuario sea el creador de la ruta
+    if (req.user.role === 2 && currentRoute.createdBy !== req.user.id) {
+      return res.status(403).json({ message: "No tienes permisos para editar esta ruta" });
+    }
+
+    // 🔥 NUEVO: Verificar que el usuario sea el creador de la ruta
+    if (req.user.role === 2 && currentRoute.createdBy !== req.user.id) {
+      return res.status(403).json({ message: "No tienes permisos para editar esta ruta" });
     }
 
     let updates = { name, description };
@@ -260,6 +254,18 @@ export const updateRouteController = async (req, res) => {
 export const deleteRouteController = async (req, res) => {
     try {
         const { id } = req.params;
+        
+        // 🔥 NUEVO: Verificar que el usuario sea el creador de la ruta (para técnicos)
+        if (req.user.role === 2) {
+          const currentRoute = await getRouteById(id);
+          if (!currentRoute) {
+            return res.status(404).json({ message: "Ruta no encontrada" });
+          }
+          if (currentRoute.createdBy !== req.user.id) {
+            return res.status(403).json({ message: "No tienes permisos para eliminar esta ruta" });
+          }
+        }
+
         
         // 🔥 OBTENER LA RUTA ACTUAL PARA LA IMAGEN
         const currentRoute = await getRouteById(id);

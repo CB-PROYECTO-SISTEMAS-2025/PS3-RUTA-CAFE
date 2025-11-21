@@ -44,6 +44,7 @@ interface User {
   City_id: number;
   cityName: string;
   photo: string;
+  role: number;
 }
 
 interface EditedData {
@@ -58,6 +59,7 @@ interface EditedData {
   photo: string;
   notifications: boolean;
 }
+
 interface ModalConfig {
   title: string;
   message: string;
@@ -106,12 +108,12 @@ function ProfileScreen() {
   const [showPhoneCodePicker, setShowPhoneCodePicker] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-const [modalConfig, setModalConfig] = useState<ModalConfig>({
-  title: '',
-  message: '',
-  type: 'success',
-  action: '',
-});
+  const [modalConfig, setModalConfig] = useState<ModalConfig>({
+    title: '',
+    message: '',
+    type: 'success',
+    action: '',
+  });
 
   const [editedData, setEditedData] = useState<EditedData>({
     name: "",
@@ -126,126 +128,36 @@ const [modalConfig, setModalConfig] = useState<ModalConfig>({
     notifications: true,
   });
 
+  const [imageKey, setImageKey] = useState(Date.now());
+  const [imageError, setImageError] = useState(false);
+
   useEffect(() => {
     loadUserData();
   }, []);
 
-  
- useFocusEffect(
-  React.useCallback(() => {
-    const checkAuth = async () => {
-      const token = await AsyncStorage.getItem("userToken");
-      if (!token) {
-        router.replace("/login");
-      }
-    };
-    
-    checkAuth();
-  }, [router])
-);
-
-  // CORREGIR esta función - líneas ~89-100
-const showModal = (type: 'success' | 'error', message: string, action: 'logout' | 'delete' | 'save' | '' = '') => {
-  const titles: { [key: string]: string } = {
-    success: '¡Éxito!',
-    error: 'Error',
-    logout: 'Cerrar Sesión',
-    delete: 'Eliminar Cuenta',
-    save: 'Guardar Cambios' // Agregar esta línea
-  };
-  
-  setModalConfig({
-    title: action && titles[action] ? titles[action] : titles[type],
-    message,
-    type,
-    action,
-  });
-  setModalVisible(true);
-};
-
-  const handleModalAction = async () => {
-    setModalVisible(false);
-    
-    switch (modalConfig.action) {
-      case 'logout':
-        await handleLogoutConfirm();
-        break;
-      case 'delete':
-        await handleDeleteConfirm();
-        break;
-      case 'save':
-        if (modalConfig.type === 'success') {
-          loadUserData();
-          setEditMode(false);
+  useFocusEffect(
+    React.useCallback(() => {
+      const checkAuth = async () => {
+        const token = await AsyncStorage.getItem("userToken");
+        if (!token) {
+          router.replace("/login");
         }
-        break;
-      default:
-        break;
+      };
+      checkAuth();
+    }, [router])
+  );
+
+  const buildImageUrl = (filename: string | null) => {
+    if (!filename) return "";
+    
+    if (filename.startsWith('http')) {
+      return filename;
     }
-  };
-
-  const handleLogoutConfirm = async () => {
-    await AsyncStorage.removeItem("userToken");
-    await AsyncStorage.removeItem("userData");
-    router.replace("/login");
-  };
-
-  const handleDeleteConfirm = async () => {
-    try {
-      const token = await AsyncStorage.getItem("userToken");
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/api/users/profile`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!response.ok) throw new Error("Error al eliminar la cuenta");
-      
-      showModal("success", "Cuenta eliminada correctamente", "delete");
-    } catch {
-      showModal("error", "Error al eliminar la cuenta");
-    }
-  };
-
-  const getCityFlag = (cityId: number) => {
-    const imgStyle = { width: 40, height: 24 };
-    switch (cityId) {
-      case 1: return <Image source={LaPazFlag} style={imgStyle} resizeMode="contain" />;
-      case 2: return <Image source={CochabambaFlag} style={imgStyle} resizeMode="contain" />;
-      case 3: return <Image source={SantaCruzFlag} style={imgStyle} resizeMode="contain" />;
-      case 4: return <Image source={OruroFlag} style={imgStyle} resizeMode="contain" />;
-      case 5: return <Image source={PotosiFlag} style={imgStyle} resizeMode="contain" />;
-      case 6: return <Image source={TarijaFlag} style={imgStyle} resizeMode="contain" />;
-      case 7: return <Image source={ChuquisacaFlag} style={imgStyle} resizeMode="contain" />;
-      case 8: return <Image source={BeniFlag} style={imgStyle} resizeMode="contain" />;
-      case 9: return <Image source={PandoFlag} style={imgStyle} resizeMode="contain" />;
-      default: return null;
-    }
-  };
-
-  const validateTextInput = (text: string, currentValue: string): string => {
-    const onlyLettersAndSpacesRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]*$/;
-    return onlyLettersAndSpacesRegex.test(text) ? text : currentValue;
-  };
-
-  const handleTextChange = (field: keyof EditedData, text: string) => {
-    if (field === "name" || field === "lastName" || field === "secondLastName") {
-      const cleanedText = validateTextInput(text, editedData[field] as string);
-      setEditedData({ ...editedData, [field]: cleanedText });
-    } else {
-      setEditedData({ ...editedData, [field]: text });
-    }
-  };
-
-  const extractPhoneData = (fullPhone: string) => {
-    let phoneCode = "+591";
-    let phoneNumber = "";
-    const foundCode = phoneCodes.find((code) => fullPhone?.startsWith(code.code));
-    if (foundCode) {
-      phoneCode = foundCode.code;
-      phoneNumber = fullPhone.substring(foundCode.code.length);
-    } else {
-      phoneNumber = fullPhone || "";
-    }
-    return { phoneCode, phoneNumber };
+    
+    const baseUrl = process.env.EXPO_PUBLIC_API_URL;
+    const imageUrl = `${baseUrl}/uploads/users/${filename}`;
+    
+    return imageUrl;
   };
 
   const loadUserData = async () => {
@@ -276,6 +188,8 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
       const userCity = cityItems.find((c) => c.value === data.user.City_id);
       const cityName = userCity ? userCity.name : "";
 
+      const userPhotoUrl = buildImageUrl(data.user.photo);
+
       setEditedData({
         name: data.user.name,
         lastName: data.user.lastName,
@@ -285,16 +199,146 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
         phone: phoneNumber,
         City_id: data.user.City_id || 0,
         cityName,
-        photo: data.user.photo || "",
+        photo: userPhotoUrl,
         notifications: true,
       });
-    } catch {
+
+      setImageKey(Date.now());
+      setImageError(false);
+
+    } catch (error) {
+      console.error("❌ Error cargando datos:", error);
       showModal("error", "Error al cargar los datos del perfil");
       const token = await AsyncStorage.getItem("userToken");
       if (!token) router.replace("/login");
     } finally {
       setLoading(false);
     }
+  };
+
+
+  const validateEmailInput = (text: string, currentValue: string): string => {
+  // Expresión regular que permite solo caracteres alfanuméricos y símbolos comunes de email
+  const emailRegex = /^[a-zA-Z0-9@._+-]*$/;
+  return emailRegex.test(text) ? text : currentValue;
+  };
+
+
+  const showModal = (type: 'success' | 'error', message: string, action: 'logout' | 'delete' | 'save' | '' = '') => {
+    const titles: { [key: string]: string } = {
+      success: '¡Éxito!',
+      error: 'Error',
+      logout: 'Cerrar Sesión',
+      delete: 'Eliminar Cuenta',
+      save: 'Guardar Cambios'
+    };
+    
+    setModalConfig({
+      title: action && titles[action] ? titles[action] : titles[type],
+      message,
+      type,
+      action,
+    });
+    setModalVisible(true);
+  };
+
+  const handleModalAction = async () => {
+    setModalVisible(false);
+    
+    switch (modalConfig.action) {
+      case 'logout':
+        await handleLogoutConfirm();
+        break;
+      case 'delete':
+        await handleDeleteConfirm();
+        break;
+      case 'save':
+        if (modalConfig.type === 'success') {
+          loadUserData();
+          setEditMode(false);
+        }
+        break;
+      default:
+        break;
+    }
+  };
+
+
+  const handleLogoutConfirm = async () => {
+    await AsyncStorage.removeItem("userToken");
+    await AsyncStorage.removeItem("userData");
+    router.replace("/login");
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      const token = await AsyncStorage.getItem("userToken");
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/api/users/profile`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Error al eliminar la cuenta");
+      }
+      
+      // Después de eliminar la cuenta, redirigir al login
+      await AsyncStorage.removeItem("userToken");
+      await AsyncStorage.removeItem("userData");
+      router.replace("/login");
+    } catch (error: any) {
+      console.error("❌ Error eliminando cuenta:", error);
+      showModal("error", error.message || "Error al eliminar la cuenta");
+    }
+  };
+
+  const getCityFlag = (cityId: number) => {
+    const imgStyle = { width: 40, height: 24 };
+    switch (cityId) {
+      case 1: return <Image source={LaPazFlag} style={imgStyle} resizeMode="contain" />;
+      case 2: return <Image source={CochabambaFlag} style={imgStyle} resizeMode="contain" />;
+      case 3: return <Image source={SantaCruzFlag} style={imgStyle} resizeMode="contain" />;
+      case 4: return <Image source={OruroFlag} style={imgStyle} resizeMode="contain" />;
+      case 5: return <Image source={PotosiFlag} style={imgStyle} resizeMode="contain" />;
+      case 6: return <Image source={TarijaFlag} style={imgStyle} resizeMode="contain" />;
+      case 7: return <Image source={ChuquisacaFlag} style={imgStyle} resizeMode="contain" />;
+      case 8: return <Image source={BeniFlag} style={imgStyle} resizeMode="contain" />;
+      case 9: return <Image source={PandoFlag} style={imgStyle} resizeMode="contain" />;
+      default: return null;
+    }
+  };
+
+  const validateTextInput = (text: string, currentValue: string): string => {
+    const onlyLettersAndSpacesRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]*$/;
+    return onlyLettersAndSpacesRegex.test(text) ? text : currentValue;
+  };
+
+  // En la función handleTextChange, agrega esta condición para el campo email:
+  const handleTextChange = (field: keyof EditedData, text: string) => {
+    if (field === "name" || field === "lastName" || field === "secondLastName") {
+      const cleanedText = validateTextInput(text, editedData[field] as string);
+      setEditedData({ ...editedData, [field]: cleanedText });
+    } else if (field === "email") {
+      // Aplicar validación específica para email que previene emojis
+      const cleanedText = validateEmailInput(text, editedData[field] as string);
+      setEditedData({ ...editedData, [field]: cleanedText });
+    } else {
+      setEditedData({ ...editedData, [field]: text });
+    }
+  };
+
+  const extractPhoneData = (fullPhone: string) => {
+    let phoneCode = "+591";
+    let phoneNumber = "";
+    const foundCode = phoneCodes.find((code) => fullPhone?.startsWith(code.code));
+    if (foundCode) {
+      phoneCode = foundCode.code;
+      phoneNumber = fullPhone.substring(foundCode.code.length);
+    } else {
+      phoneNumber = fullPhone || "";
+    }
+    return { phoneCode, phoneNumber };
   };
 
   const getMaxPhoneLength = () => {
@@ -375,6 +419,9 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
       const { phoneCode, phoneNumber } = extractPhoneData(user.phone || "");
       const userCity = cityItems.find((c) => c.value === user.City_id);
       const cityName = userCity ? userCity.name : "";
+      
+      const userPhotoUrl = buildImageUrl(user.photo);
+      
       setEditedData({
         name: user.name,
         lastName: user.lastName,
@@ -384,9 +431,65 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
         phone: phoneNumber,
         City_id: user.City_id || 0,
         cityName,
-        photo: user.photo || "",
+        photo: userPhotoUrl,
         notifications: true,
       });
+      
+      setImageKey(Date.now());
+      setImageError(false);
+    }
+  };
+
+  const uploadPhoto = async (uri: string) => {
+    setUploadingPhoto(true);
+    try {
+      const token = await AsyncStorage.getItem("userToken");
+      if (!token) {
+        showModal("error", "No se encontró el token de autenticación");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('photo', {
+        uri: uri,
+        type: 'image/jpeg',
+        name: `user_${user?.id}_${Date.now()}.jpg`
+      } as any);
+
+      const uploadResponse = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/api/users/profile/photo`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData
+        }
+      );
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error("Error al subir la foto");
+      }
+
+      const result = await uploadResponse.json();
+      const newPhotoUrl = buildImageUrl(result.photoUrl);
+      
+      setEditedData(prev => ({ 
+        ...prev, 
+        photo: newPhotoUrl 
+      }));
+      
+      setImageKey(Date.now());
+      setImageError(false);
+      
+      showModal("success", "Foto de perfil actualizada correctamente");
+      
+    } catch (error: any) {
+      console.error("❌ Error uploading photo:", error);
+      showModal("error", error.message || "Error al subir la foto");
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -436,53 +539,6 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
     }
   };
 
-  const uploadPhoto = async (uri: string) => {
-    setUploadingPhoto(true);
-    try {
-      const token = await AsyncStorage.getItem("userToken");
-
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      return new Promise<void>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-          try {
-            const base64data = reader.result as string;
-
-            const uploadResponse = await fetch(
-              `${process.env.EXPO_PUBLIC_API_URL}/api/users/profile/photo`,
-              {
-                method: "PUT",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ photoUrl: base64data }),
-              }
-            );
-
-            if (!uploadResponse.ok) throw new Error("Error al subir la foto");
-
-            const result = await uploadResponse.json();
-            setEditedData({ ...editedData, photo: result.photoUrl });
-            showModal("success", "Foto de perfil actualizada correctamente", "save");
-            loadUserData();
-            resolve();
-          } catch (error) {
-            reject(error);
-          }
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    } catch {
-      showModal("error", "Error al subir la foto");
-    } finally {
-      setUploadingPhoto(false);
-    }
-  };
-
   const handleRemovePhoto = async () => {
     try {
       const token = await AsyncStorage.getItem("userToken");
@@ -493,9 +549,12 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
 
       if (!response.ok) throw new Error("Error al eliminar la foto");
 
-      setEditedData({ ...editedData, photo: "" });
-      showModal("success", "Foto de perfil eliminada correctamente", "save");
-      loadUserData();
+      setEditedData(prev => ({ ...prev, photo: "" }));
+      setImageKey(Date.now());
+      setImageError(false);
+      
+      showModal("success", "Foto de perfil eliminada correctamente");
+      
     } catch {
       showModal("error", "Error al eliminar la foto");
     }
@@ -527,6 +586,14 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
     "Selecciona una ciudad";
   const handleGoHome = () => router.replace("/(tabs)/advertisement");
 
+  const handleImageError = () => {
+    setImageError(true);
+  };
+
+  const handleImageLoad = () => {
+    setImageError(false);
+  };
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: themed.background }}>
@@ -546,7 +613,7 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1,
-            paddingBottom: tabBarHeight + 32,
+            paddingBottom: 120, // Más espacio para evitar la barra naranja
             paddingHorizontal: 20,
             paddingTop: 20,
           }}
@@ -557,36 +624,48 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
           <View
             style={{
               width: "100%",
-              height: 240,
+              height: 200,
               alignItems: "center",
               justifyContent: "center",
-              marginBottom: 24,
+              marginBottom: 20,
               backgroundColor: themed.accent,
-              borderRadius: 32,
+              borderRadius: 24,
               paddingHorizontal: 20,
-              paddingVertical: 20,
+              paddingVertical: 16,
             }}
           >
             <View style={{ alignItems: "center" }}>
               <View style={{ position: "relative", marginBottom: 12 }}>
-                {editedData.photo ? (
-                  <Image
-                    source={{ uri: editedData.photo }}
-                    style={{
-                      width: 96,
-                      height: 96,
-                      borderRadius: 999,
-                      borderWidth: 4,
-                      borderColor: "#FFFFFF",
-                    }}
-                    resizeMode="cover"
-                  />
+                {editedData.photo && !imageError ? (
+                  <View style={{
+                    width: 96,
+                    height: 96,
+                    borderRadius: 48,
+                    borderWidth: 4,
+                    borderColor: "#FFFFFF",
+                    overflow: 'hidden',
+                    backgroundColor: '#f8f9fa'
+                  }}>
+                    <Image
+                      key={imageKey}
+                      source={{ 
+                        uri: editedData.photo + `?t=${imageKey}`,
+                      }}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                      }}
+                      resizeMode="cover"
+                      onError={handleImageError}
+                      onLoad={handleImageLoad}
+                    />
+                  </View>
                 ) : (
                   <View
                     style={{
                       width: 96,
                       height: 96,
-                      borderRadius: 999,
+                      borderRadius: 48,
                       backgroundColor: "rgba(255,255,255,0.2)",
                       borderWidth: 4,
                       borderColor: "#FFFFFF",
@@ -599,30 +678,65 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                 )}
 
                 {editMode && (
-                  <View style={{ position: "absolute", bottom: -8, left: 0, right: 0, flexDirection: "row", justifyContent: "center", gap: 8 }}>
+                  <View style={{ 
+                    position: "absolute", 
+                    bottom: -8, 
+                    left: 0, 
+                    right: 0, 
+                    flexDirection: "row", 
+                    justifyContent: "center", 
+                    gap: 8 
+                  }}>
                     <TouchableOpacity
                       onPress={handleTakePhoto}
                       disabled={uploadingPhoto}
-                      style={{ backgroundColor: "#FFFFFF", padding: 8, borderRadius: 999, elevation: 3 }}
+                      style={{ 
+                        backgroundColor: "#FFFFFF", 
+                        padding: 8, 
+                        borderRadius: 999, 
+                        elevation: 3,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.2,
+                        shadowRadius: 3,
+                      }}
                     >
                       <Ionicons name="camera" size={16} color={themed.accent as string} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={handleChoosePhoto}
                       disabled={uploadingPhoto}
-                      style={{ backgroundColor: "#FFFFFF", padding: 8, borderRadius: 999, elevation: 3 }}
+                      style={{ 
+                        backgroundColor: "#FFFFFF", 
+                        padding: 8, 
+                        borderRadius: 999, 
+                        elevation: 3,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.2,
+                        shadowRadius: 3,
+                      }}
                     >
                       <Ionicons name="image" size={16} color={themed.accent as string} />
                     </TouchableOpacity>
-                    {editedData.photo ? (
+                    {editedData.photo && !imageError && (
                       <TouchableOpacity
                         onPress={handleRemovePhoto}
                         disabled={uploadingPhoto}
-                        style={{ backgroundColor: "#FFFFFF", padding: 8, borderRadius: 999, elevation: 3 }}
+                        style={{ 
+                          backgroundColor: "#FFFFFF", 
+                          padding: 8, 
+                          borderRadius: 999, 
+                          elevation: 3,
+                          shadowColor: '#000',
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.2,
+                          shadowRadius: 3,
+                        }}
                       >
                         <Ionicons name="trash" size={16} color="#ef4444" />
                       </TouchableOpacity>
-                    ) : null}
+                    )}
                   </View>
                 )}
 
@@ -630,9 +744,12 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                   <View
                     style={{
                       position: "absolute",
-                      inset: 0 as any,
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
                       backgroundColor: "rgba(0,0,0,0.5)",
-                      borderRadius: 999,
+                      borderRadius: 48,
                       alignItems: "center",
                       justifyContent: "center",
                     }}
@@ -642,10 +759,10 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                 )}
               </View>
 
-              <Text style={{ fontSize: 22, fontWeight: "bold", color: "#FFFFFF", textAlign: "center" }}>
+              <Text style={{ fontSize: 20, fontWeight: "bold", color: "#FFFFFF", textAlign: "center" }}>
                 {editedData.name} {editedData.lastName}
               </Text>
-              <Text style={{ color: "#FFFFFF", opacity: 0.9, marginTop: 4, textAlign: "center" }}>
+              <Text style={{ color: "#FFFFFF", opacity: 0.9, marginTop: 2, textAlign: "center", fontSize: 14 }}>
                 {editedData.email}
               </Text>
             </View>
@@ -657,7 +774,7 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
               backgroundColor: themed.card,
               borderRadius: 16,
               padding: 16,
-              marginBottom: 16,
+              marginBottom: 12,
               borderWidth: 1,
               borderColor: themed.border,
             }}
@@ -672,7 +789,7 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
               { key: "secondLastName" as keyof EditedData, label: "Apellido Materno", placeholder: "Opcional" },
             ].map((f) => (
               <View key={f.key} style={{ marginBottom: 12 }}>
-                <Text style={{ fontWeight: "600", marginBottom: 6, color: themed.muted }}>{f.label}</Text>
+                <Text style={{ fontWeight: "600", marginBottom: 6, color: themed.muted, fontSize: 14 }}>{f.label}</Text>
                 {editMode ? (
                   <View style={{ borderRadius: 12, borderWidth: 1, borderColor: themed.border, backgroundColor: themed.isDark ? "#0B1220" : "#FFFFFF" }}>
                     <TextInput
@@ -682,11 +799,11 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                       placeholderTextColor={themed.muted as string}
                       autoCapitalize="words"
                       editable={!saving}
-                      style={{ color: themed.text, height: 52, paddingHorizontal: 14, fontSize: 16 }}
+                      style={{ color: themed.text, height: 48, paddingHorizontal: 14, fontSize: 16 }}
                     />
                   </View>
                 ) : (
-                  <Text style={{ color: editedData[f.key] ? themed.text : themed.muted, fontSize: 16, paddingVertical: 10 }}>
+                  <Text style={{ color: editedData[f.key] ? themed.text : themed.muted, fontSize: 16, paddingVertical: 8 }}>
                     {(editedData[f.key] as string) || "No especificado"}
                   </Text>
                 )}
@@ -695,7 +812,7 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
 
             {/* Correo */}
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontWeight: "600", marginBottom: 6, color: themed.muted }}>Correo Electrónico *</Text>
+              <Text style={{ fontWeight: "600", marginBottom: 6, color: themed.muted, fontSize: 14 }}>Correo Electrónico *</Text>
               {editMode ? (
                 <View style={{ borderRadius: 12, borderWidth: 1, borderColor: themed.border, backgroundColor: themed.isDark ? "#0B1220" : "#FFFFFF" }}>
                   <TextInput
@@ -707,11 +824,11 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                     autoCapitalize="none"
                     autoCorrect={false}
                     editable={!saving}
-                    style={{ color: themed.text, height: 52, paddingHorizontal: 14, fontSize: 16 }}
+                    style={{ color: themed.text, height: 48, paddingHorizontal: 14, fontSize: 16 }}
                   />
                 </View>
               ) : (
-                <Text style={{ color: editedData.email ? themed.text : themed.muted, fontSize: 16, paddingVertical: 10 }}>
+                <Text style={{ color: editedData.email ? themed.text : themed.muted, fontSize: 16, paddingVertical: 8 }}>
                   {editedData.email || "No especificado"}
                 </Text>
               )}
@@ -719,7 +836,7 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
 
             {/* Teléfono */}
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontWeight: "600", marginBottom: 6, color: themed.muted }}>Teléfono *</Text>
+              <Text style={{ fontWeight: "600", marginBottom: 6, color: themed.muted, fontSize: 14 }}>Teléfono *</Text>
               {editMode ? (
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <TouchableOpacity
@@ -735,7 +852,7 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                       marginRight: 8,
                       paddingHorizontal: 12,
                       minWidth: 64,
-                      height: 52,
+                      height: 48,
                       justifyContent: "center",
                     }}
                   >
@@ -750,12 +867,12 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                       keyboardType="number-pad"
                       editable={!saving}
                       maxLength={getMaxPhoneLength()}
-                      style={{ color: themed.text, height: 52, paddingHorizontal: 14, fontSize: 16 }}
+                      style={{ color: themed.text, height: 48, paddingHorizontal: 14, fontSize: 16 }}
                     />
                   </View>
                 </View>
               ) : (
-                <Text style={{ color: editedData.phone ? themed.text : themed.muted, fontSize: 16, paddingVertical: 10 }}>
+                <Text style={{ color: editedData.phone ? themed.text : themed.muted, fontSize: 16, paddingVertical: 8 }}>
                   {editedData.phoneCode} {editedData.phone || "No especificado"}
                 </Text>
               )}
@@ -763,14 +880,14 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
 
             {/* Ciudad */}
             <View style={{ marginBottom: 4 }}>
-              <Text style={{ fontWeight: "600", marginBottom: 8, color: themed.muted }}>Ciudad *</Text>
+              <Text style={{ fontWeight: "600", marginBottom: 6, color: themed.muted, fontSize: 14 }}>Ciudad *</Text>
               {editMode ? (
                 <TouchableOpacity
                   onPress={() => {
                     Keyboard.dismiss();
                     setShowCityPicker(true);
                   }}
-                  style={{ padding: 14, borderRadius: 12, backgroundColor: themed.isDark ? "#0B1220" : "#FFFFFF", borderWidth: 1, borderColor: themed.border }}
+                  style={{ padding: 12, borderRadius: 12, backgroundColor: themed.isDark ? "#0B1220" : "#FFFFFF", borderWidth: 1, borderColor: themed.border }}
                 >
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
                     {getCityFlag(editedData.City_id)}
@@ -790,55 +907,56 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
             </View>
           </View>
 
-          {/* Favoritos */}
-          <TouchableOpacity
-            onPress={() => router.push("/Place/favorites")}
-            style={{
-              marginBottom: 12,
-              padding: 14,
-              borderRadius: 12,
-              backgroundColor: themed.isDark ? "#4c0519" : "#ffe4e6",
-              borderWidth: 1,
-              borderColor: themed.isDark ? "#9f1239" : "#f9a8d4",
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Ionicons name="heart" size={22} color={themed.isDark ? "#f472b6" : "#ec4899"} />
-              <Text style={{ color: themed.isDark ? "#f9a8d4" : "#9d174d", fontWeight: "600", fontSize: 16, marginLeft: 10 }}>
-                Mis Lugares Favoritos
+          {/* Botones de acción rápida */}
+          <View style={{ marginBottom: 12, gap: 8 }}>
+            {/* Favoritos */}
+            <TouchableOpacity
+              onPress={() => router.push("/Place/favorites")}
+              style={{
+                padding: 14,
+                borderRadius: 12,
+                backgroundColor: themed.isDark ? "#4c0519" : "#ffe4e6",
+                borderWidth: 1,
+                borderColor: themed.isDark ? "#9f1239" : "#f9a8d4",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons name="heart" size={20} color={themed.isDark ? "#f472b6" : "#ec4899"} />
+                <Text style={{ color: themed.isDark ? "#f9a8d4" : "#9d174d", fontWeight: "600", fontSize: 14, marginLeft: 10 }}>
+                  Mis Lugares Favoritos
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={themed.isDark ? "#f9a8d4" : "#ec4899"} />
+            </TouchableOpacity>
+
+            {/* Ir a Home */}
+            <TouchableOpacity
+              onPress={handleGoHome}
+              style={{
+                padding: 14,
+                borderRadius: 12,
+                backgroundColor: themed.isDark ? "#0b1220" : "#fff7ed",
+                borderWidth: 1,
+                borderColor: themed.isDark ? "#1f2a44" : "#fdba74",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="arrow-back-outline" size={18} color={themed.accent as string} />
+              <Text style={{ color: themed.accent, fontWeight: "600", fontSize: 14, marginLeft: 8 }}>
+                Volver a la página principal
               </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={themed.isDark ? "#f9a8d4" : "#ec4899"} />
-          </TouchableOpacity>
+            </TouchableOpacity>
+          </View>
 
-          {/* Ir a Home */}
-          <TouchableOpacity
-            onPress={handleGoHome}
-            style={{
-              marginBottom: 12,
-              padding: 14,
-              borderRadius: 12,
-              backgroundColor: themed.isDark ? "#0b1220" : "#fff7ed",
-              borderWidth: 1,
-              borderColor: themed.isDark ? "#1f2a44" : "#fdba74",
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Ionicons name="arrow-back-outline" size={20} color={themed.accent as string} />
-            <Text style={{ color: themed.accent, fontWeight: "600", fontSize: 16, marginLeft: 8 }}>
-              Volver a la página principal
-            </Text>
-          </TouchableOpacity>
-
-          {/* Acciones */}
-          <View style={{ marginTop: 8 }}>
+          {/* Acciones principales */}
+          <View style={{ gap: 10, marginBottom: 20 }}>
             {editMode ? (
-              <View style={{ flexDirection: "row" }}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
                 <TouchableOpacity
                   onPress={handleCancel}
                   disabled={saving}
@@ -847,7 +965,6 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                     padding: 14,
                     borderRadius: 12,
                     alignItems: "center",
-                    marginRight: 6,
                     backgroundColor: themed.isDark ? "#0b1220" : "#fff7ed",
                     borderWidth: 1,
                     borderColor: themed.accent,
@@ -863,7 +980,6 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                     padding: 14,
                     borderRadius: 12,
                     alignItems: "center",
-                    marginLeft: 6,
                     backgroundColor: themed.accent,
                   }}
                 >
@@ -881,15 +997,14 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                   style={{
                     padding: 14,
                     borderRadius: 12,
-                    marginBottom: 10,
                     backgroundColor: themed.accent,
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Ionicons name="pencil-outline" size={20} color="#FFFFFF" />
-                    <Text style={{ color: "#FFFFFF", fontWeight: "700", marginLeft: 8 }}>Editar perfil</Text>
+                    <Ionicons name="pencil-outline" size={18} color="#FFFFFF" />
+                    <Text style={{ color: "#FFFFFF", fontWeight: "700", marginLeft: 8, fontSize: 14 }}>Editar perfil</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -898,7 +1013,6 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                   style={{
                     padding: 14,
                     borderRadius: 12,
-                    marginBottom: 10,
                     backgroundColor: themed.isDark ? "#0b1220" : "#fff7ed",
                     borderWidth: 1,
                     borderColor: themed.accent,
@@ -907,38 +1021,43 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                   }}
                 >
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Ionicons name="log-out-outline" size={20} color={themed.accent as string} />
-                    <Text style={{ color: themed.accent, fontWeight: "600", marginLeft: 8 }}>
+                    <Ionicons name="log-out-outline" size={18} color={themed.accent as string} />
+                    <Text style={{ color: themed.accent, fontWeight: "600", marginLeft: 8, fontSize: 14 }}>
                       Cerrar sesión
                     </Text>
                   </View>
                 </TouchableOpacity>
 
-                {/* <TouchableOpacity
-                  onPress={handleDeleteAccount}
-                  style={{
-                    padding: 14,
-                    borderRadius: 12,
-                    backgroundColor: themed.isDark ? "#2f0b0b" : "#fef2f2",
-                    borderWidth: 1,
-                    borderColor: themed.isDark ? "#7f1d1d" : "#ef4444",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Ionicons name="trash-outline" size={20} color="#dc2626" />
-                    <Text style={{ color: "#dc2626", fontWeight: "600", marginLeft: 8 }}>
-                      Eliminar cuenta
-                    </Text>
-                  </View>
-                </TouchableOpacity> */}
+                {/* ✅ BOTÓN ELIMINAR CUENTA - SOLO PARA ROL 3 */}
+                {user?.role === 3 && (
+                  <TouchableOpacity
+                    onPress={handleDeleteAccount}
+                    style={{
+                      padding: 14,
+                      borderRadius: 12,
+                      backgroundColor: themed.isDark ? "#450a0a" : "#fef2f2",
+                      borderWidth: 1,
+                      borderColor: themed.isDark ? "#991b1b" : "#fecaca",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Ionicons name="trash-outline" size={18} color={themed.isDark ? "#fca5a5" : "#ef4444"} />
+                      <Text style={{ 
+                        color: themed.isDark ? "#fca5a5" : "#ef4444", 
+                        fontWeight: "600", 
+                        marginLeft: 8,
+                        fontSize: 14 
+                      }}>
+                        Eliminar cuenta
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
               </>
             )}
           </View>
-
-          {/* Spacer final (altura de tabbar) */}
-          <View style={{ height: tabBarHeight }} />
         </ScrollView>
       </TouchableWithoutFeedback>
 
@@ -1092,7 +1211,6 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
             {/* Botones */}
             <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
               {modalConfig.type === 'error' && !modalConfig.action ? (
-                // Modal de error simple
                 <TouchableOpacity
                   onPress={() => setModalVisible(false)}
                   style={{
@@ -1114,7 +1232,6 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                   </Text>
                 </TouchableOpacity>
               ) : modalConfig.action === 'logout' || modalConfig.action === 'delete' ? (
-                // Modal de confirmación (logout/delete)
                 <>
                   <TouchableOpacity
                     onPress={() => setModalVisible(false)}
@@ -1162,39 +1279,34 @@ const showModal = (type: 'success' | 'error', message: string, action: 'logout' 
                   </TouchableOpacity>
                 </>
               ) : (
-                // Modal de éxito (guardar/eliminar cuenta exitoso)
                 <TouchableOpacity
-  onPress={() => {
-    setModalVisible(false);
-    if (modalConfig.action === 'delete' && modalConfig.type === 'success') {
-      AsyncStorage.removeItem("userToken");
-      AsyncStorage.removeItem("userData");
-      router.replace("/login");
-    } else if (modalConfig.action === 'save' && modalConfig.type === 'success') {
-      loadUserData();
-      setEditMode(false);
-    }
-  }}
-  style={{
-    backgroundColor: modalConfig.type === 'success' 
-      ? (themed.accent as string)
-      : (themed.isDark ? '#dc2626' : '#ef4444'),
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 12,
-    flex: 1,
-    alignItems: 'center'
-  }}
->
-  <Text style={{
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center'
-  }}>
-    Aceptar
-  </Text>
-</TouchableOpacity>
+                  onPress={() => {
+                    setModalVisible(false);
+                    if (modalConfig.action === 'save' && modalConfig.type === 'success') {
+                      loadUserData();
+                      setEditMode(false);
+                    }
+                  }}
+                  style={{
+                    backgroundColor: modalConfig.type === 'success' 
+                      ? (themed.accent as string)
+                      : (themed.isDark ? '#dc2626' : '#ef4444'),
+                    paddingHorizontal: 32,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    flex: 1,
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text style={{
+                    color: '#fff',
+                    fontSize: 16,
+                    fontWeight: '600',
+                    textAlign: 'center'
+                  }}>
+                    Aceptar
+                  </Text>
+                </TouchableOpacity>
               )}
             </View>
           </View>
