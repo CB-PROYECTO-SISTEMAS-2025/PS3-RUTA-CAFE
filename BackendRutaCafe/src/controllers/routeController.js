@@ -1,6 +1,28 @@
 import { createRoute, getAllRoutes, getRouteById, updateRoute, deleteRoute, findRoutesByCityId, findAllPendingRoutes }
     from "../models/routeModel.js";
 import { findUserWithCity, getAllCities } from "../models/userModel.js";
+import fs from 'fs';
+import path from 'path';
+
+// 🔥 AGREGAR ESTA FUNCIÓN (de tu versión antigua)
+const deleteImageFile = (imagePath) => {
+  if (!imagePath) return;
+  
+  try {
+    let fullPath = imagePath;
+    if (imagePath.startsWith('/uploads/')) {
+      fullPath = path.join(process.cwd(), imagePath);
+    }
+    
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+      console.log('🗑️ Imagen eliminada:', fullPath);
+    }
+  } catch (error) {
+    console.error('❌ Error al eliminar imagen:', error);
+  }
+};
+
 // Crear nueva ruta
 export const createRouteController = async (req, res) => {
   try {
@@ -188,7 +210,6 @@ export const getRouteByIdController = async (req, res) => {
 };
 
 // Actualizar ruta
-// Actualizar ruta
 export const updateRouteController = async (req, res) => {
   try {
     const { id } = req.params;
@@ -203,12 +224,7 @@ export const updateRouteController = async (req, res) => {
       return res.status(404).json({ message: "Ruta no encontrada" });
     }
 
-    // 🔥 NUEVO: Verificar que el usuario sea el creador de la ruta
-    if (req.user.role === 2 && currentRoute.createdBy !== req.user.id) {
-      return res.status(403).json({ message: "No tienes permisos para editar esta ruta" });
-    }
-
-    // 🔥 NUEVO: Verificar que el usuario sea el creador de la ruta
+    // 🔥 NUEVO: Verificar que el usuario sea el creador de la ruta (de la versión nueva)
     if (req.user.role === 2 && currentRoute.createdBy !== req.user.id) {
       return res.status(403).json({ message: "No tienes permisos para editar esta ruta" });
     }
@@ -250,12 +266,11 @@ export const updateRouteController = async (req, res) => {
 };
 
 // Eliminar ruta
-// Eliminar ruta
 export const deleteRouteController = async (req, res) => {
     try {
         const { id } = req.params;
         
-        // 🔥 NUEVO: Verificar que el usuario sea el creador de la ruta (para técnicos)
+        // 🔥 NUEVO: Verificar que el usuario sea el creador de la ruta (para técnicos) - de la versión nueva
         if (req.user.role === 2) {
           const currentRoute = await getRouteById(id);
           if (!currentRoute) {
@@ -266,7 +281,6 @@ export const deleteRouteController = async (req, res) => {
           }
         }
 
-        
         // 🔥 OBTENER LA RUTA ACTUAL PARA LA IMAGEN
         const currentRoute = await getRouteById(id);
         if (!currentRoute) {

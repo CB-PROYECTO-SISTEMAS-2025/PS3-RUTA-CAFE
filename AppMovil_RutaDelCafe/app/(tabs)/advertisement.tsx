@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   View,
-  Dimensions,
   ScrollView,
   FlatList,
   Linking,
@@ -48,7 +47,6 @@ export default function AdvertisementScreen() {
   const [ads, setAds] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList<any> | null>(null);
-  const carouselRef = useRef<FlatList<any> | null>(null);
 
   // 🎨 Degradado del header según tema
   const gradientColors = useMemo<Triple<ColorValue>>(
@@ -129,23 +127,6 @@ export default function AdvertisementScreen() {
     fetchPublicAds();
   }, []);
 
-  // 🎠 Carrusel automático principal
-  useEffect(() => {
-    const dataToShow = getActiveAds();
-    if (dataToShow.length <= 1) return;
-
-    const id = setInterval(() => {
-      const next = (currentIndex + 1) % dataToShow.length;
-      setCurrentIndex(next);
-      flatListRef.current?.scrollToOffset({
-        offset: next * itemWidth,
-        animated: true,
-      });
-    }, 5000);
-
-    return () => clearInterval(id);
-  }, [ads, currentIndex, itemWidth]);
-
   // Calcular días hasta el vencimiento
   const getDaysUntilExpiry = (endDate: string) => {
     const end = new Date(endDate);
@@ -194,6 +175,36 @@ export default function AdvertisementScreen() {
       !isExpiringSoon(ad.end_date)
     );
   };
+  const [carouselReady, setCarouselReady] = useState(false);
+
+// 🔥 VERSIÓN CON useRef CORREGIDO
+const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+// 🎠 CARRUSEL AUTOMÁTICO - VERSIÓN FUNCIONAL
+useEffect(() => {
+  const dataToShow = getActiveAds();
+  if (dataToShow.length <= 1 || !carouselReady) return;
+
+  console.log('🔄 Iniciando carrusel con', dataToShow.length, 'elementos');
+
+  const interval = setInterval(() => {
+    setCurrentIndex(prev => {
+      const nextIndex = (prev + 1) % dataToShow.length;
+      console.log('🎯 Moviendo al índice:', nextIndex);
+      
+      // Método 1: Intentar con scrollToIndex primero
+      flatListRef.current?.scrollToIndex({
+        index: nextIndex,
+        animated: true,
+        viewPosition: 0.5,
+      });
+      
+      return nextIndex;
+    });
+  }, 3000);
+
+  return () => clearInterval(interval);
+}, [ads.length, carouselReady]);
 
   // Obtener color según días restantes
   const getExpiryColor = (days: number) => {
@@ -641,8 +652,8 @@ export default function AdvertisementScreen() {
       <ScrollView
         contentContainerStyle={{
           flexGrow: 1,
-          paddingBottom: isSmallScreen ? 60 : 80, // 🔼 AUMENTADO el padding bottom
-          minHeight: Math.max(screenHeight, 800), // 🔼 Aseguramos altura mínima
+          paddingBottom: isSmallScreen ? 60 : 80,
+          minHeight: Math.max(screenHeight, 800),
         }}
         style={{ 
           marginTop: isSmallScreen ? 100 : 120, 
@@ -698,49 +709,106 @@ export default function AdvertisementScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-
-        {/* Carrusel principal con TODAS las publicidades activas */}
-        <View style={{ marginBottom: isSmallScreen ? 28 : 32 }}>
-          <Text style={{ 
-            fontSize: responsiveSizes.sectionTitle, 
-            fontWeight: "bold", 
-            color: themed.accent, 
-            marginBottom: isSmallScreen ? 12 : 16 
-          }}>
-            🎯 Publicidades Destacadas
-          </Text>
-          {activeAds.length > 0 ? (
-            <FlatList
-              ref={flatListRef}
-              data={activeAds}
-              renderItem={renderAd}
-              keyExtractor={(item) => String(item.id)}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              snapToInterval={itemWidth}
-              snapToAlignment="start"
-              decelerationRate="fast"
-              pagingEnabled
-            />
-          ) : (
-            <View style={{ 
-              padding: isSmallScreen ? 16 : 20, 
-              backgroundColor: themed.card, 
-              borderRadius: 16, 
-              alignItems: 'center',
-              borderWidth: 1,
-              borderColor: themed.border,
-            }}>
-              <Text style={{ 
-                color: themed.text, 
-                textAlign: 'center',
-                fontSize: responsiveSizes.bodyText
-              }}>
-                No hay publicidades activas en este momento
-              </Text>
-            </View>
-          )}
+{/* Carrusel principal */}
+<View style={{ marginBottom: isSmallScreen ? 28 : 32 }}>
+  <Text style={{ 
+    fontSize: responsiveSizes.sectionTitle, 
+    fontWeight: "bold", 
+    color: themed.accent, 
+    marginBottom: isSmallScreen ? 12 : 16 
+  }}>
+    🎯 Publicidades Destacadas
+  </Text>
+  
+  {activeAds.length > 0 ? (
+    <>
+      <FlatList
+        ref={flatListRef}
+        data={activeAds}
+        renderItem={renderAd}
+        keyExtractor={(item) => `ad-${item.id}`}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={itemWidth + 16}
+        snapToAlignment="center"
+        decelerationRate="fast"
+        pagingEnabled
+        // 🔥 CRÍTICO: Esperar a que el FlatList esté listo
+        onLayout={() => {
+          console.log('📐 FlatList listo');
+          setCarouselReady(true);
+        }}
+        onScrollToIndexFailed={(error) => {
+          console.log('❌ Error en scrollToIndex:', error);
+          // Fallback: usar scrollToOffset
+          const offset = error.averageItemLength * error.index;
+          flatListRef.current?.scrollToOffset({
+            offset: offset,
+            animated: true,
+          });
+        }}
+        // 🔥 SIMPLIFICAR: No usar getItemLayout por ahora
+        // getItemLayout={(data, index) => ({
+        //   length: itemWidth + 16,
+        //   offset: (itemWidth + 16) * index,
+        //   index,
+        // })}
+      />
+      
+      {/* Indicadores */}
+      {activeAds.length > 1 && (
+        <View style={{
+          flexDirection: 'row',
+          justifyContent: 'center',
+          alignItems: 'center',
+          marginTop: 12,
+          gap: 6,
+        }}>
+          {activeAds.map((_, index) => (
+            <TouchableOpacity
+              key={index}
+              onPress={() => {
+                setCurrentIndex(index);
+                flatListRef.current?.scrollToIndex({
+                  index: index,
+                  animated: true,
+                });
+              }}
+            >
+              <View
+                style={{
+                  width: index === currentIndex ? 20 : 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: index === currentIndex 
+                    ? (themed.accent as string) 
+                    : (themed.isDark ? '#374151' : '#d1d5db'),
+                }}
+              />
+            </TouchableOpacity>
+          ))}
         </View>
+      )}
+    </>
+  ) : (
+    <View style={{ 
+      padding: isSmallScreen ? 16 : 20, 
+      backgroundColor: themed.card, 
+      borderRadius: 16, 
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: themed.border,
+    }}>
+      <Text style={{ 
+        color: themed.text, 
+        textAlign: 'center',
+        fontSize: responsiveSizes.bodyText
+      }}>
+        No hay publicidades activas en este momento
+      </Text>
+    </View>
+  )}
+</View>
 
         {/* Sección AUTOMÁTICA: Publicidades que vencen pronto */}
         {expiringAds.length > 0 && (
@@ -795,13 +863,20 @@ export default function AdvertisementScreen() {
           </View>
         )}
 
-        {/* Acerca de nosotros */}
+        {/* Acerca de nosotros - CENTRADO */}
         <View style={{ 
           alignItems: "center", 
           marginTop: isSmallScreen ? 20 : 32,
           marginBottom: isSmallScreen ? 16 : 24,
+          paddingHorizontal: isSmallScreen ? 20 : 24,
         }}>
-          <TouchableOpacity onPress={() => router.push("/about-us")}>
+          <TouchableOpacity 
+            onPress={() => router.push("/about-us")}
+            style={{
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             <View
               style={{
                 backgroundColor: (themed.accent as string) + "22",
@@ -856,9 +931,9 @@ export default function AdvertisementScreen() {
         
         {/* Texto final - CON MÁS MARGEN SUPERIOR */}
         <View style={{ 
-          marginBottom: isSmallScreen ? 40 : 60, // 🔼 AUMENTADO significativamente
+          marginBottom: isSmallScreen ? 40 : 60,
           paddingHorizontal: isSmallScreen ? 12 : 16,
-          marginTop: isSmallScreen ? 8 : 16, // 🔼 Agregado margen superior
+          marginTop: isSmallScreen ? 8 : 16,
         }}>
           <Text style={{ 
             fontSize: responsiveSizes.bodyText, 

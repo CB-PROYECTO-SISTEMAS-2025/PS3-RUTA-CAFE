@@ -17,18 +17,21 @@ import {
 } from 'react-native';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 
+// 🛡️ SISTEMA DE REINTENTOS MEJORADO
 const fetchWithRetry = async (
   url: string, 
   options: RequestInit, 
   maxRetries = 3,
-  timeout = 60000
+  timeout = 30000 // Reducir timeout a 30s
 ): Promise<Response> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`📡 Intento ${attempt} de ${maxRetries} para: ${url}`);
+      
+      // Crear controller para timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
       
       const response = await fetch(url, {
         ...options,
@@ -38,17 +41,27 @@ const fetchWithRetry = async (
       clearTimeout(timeoutId);
       
       if (!response.ok) {
+        // Si es error 4xx/5xx, no reintentar (excepto 408, 429, 500-504)
+        if (response.status >= 400 && response.status < 500 && 
+            ![408, 429].includes(response.status)) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
       return response;
     } catch (error) {
-      clearTimeout(timeoutId);
       console.log(`❌ Intento ${attempt} fallado:`, error instanceof Error ? error.message : 'Error desconocido');
       
       if (attempt === maxRetries) {
         console.log('🚨 Todos los intentos fallaron');
         throw error;
+      }
+      
+      // Si es abort (timeout), reintentar inmediatamente
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('⏰ Timeout, reintentando inmediatamente...');
+        continue;
       }
       
       // Espera progresiva: 1s, 2s, 4s...
@@ -71,15 +84,35 @@ interface Route {
 }
 
 // 🔧 Normaliza URLs que vengan con host local para que funcionen en producción
+// 🔧 FUNCIÓN MEJORADA - Normaliza URLs de imágenes
 const normalizeImageUrl = (url?: string | null) => {
   if (!url) return '';
-  // si ya es relativa, mantener
-  if (url.startsWith('/uploads/')) return `${process.env.EXPO_PUBLIC_API_URL}${url}`;
-  // si viene con host de dev, convertir a relativa si detectamos /uploads/
-  if (url.includes('192.168.') || url.includes('localhost')) {
-    const m = url.match(/\/uploads\/.+$/);
-    return m ? `${process.env.EXPO_PUBLIC_API_URL}${m[0]}` : url;
+  
+  console.log('🖼️ URL original:', url);
+  
+  // Si ya es una URL completa (http/https), mantenerla
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
   }
+  
+  // Si es una ruta relativa (/uploads/...), construir la URL completa
+  if (url.startsWith('/uploads/')) {
+    const normalizedUrl = `${process.env.EXPO_PUBLIC_API_URL}${url}`;
+    console.log('🖼️ URL normalizada:', normalizedUrl);
+    return normalizedUrl;
+  }
+  
+  // Si viene con host local de desarrollo, convertir
+  if (url.includes('192.168.') || url.includes('localhost') || url.includes('127.0.0.1')) {
+    const match = url.match(/\/uploads\/.+$/);
+    if (match) {
+      const normalizedUrl = `${process.env.EXPO_PUBLIC_API_URL}${match[0]}`;
+      console.log('🖼️ URL convertida desde local:', normalizedUrl);
+      return normalizedUrl;
+    }
+  }
+  
+  console.log('🖼️ URL final (sin cambios):', url);
   return url;
 };
 

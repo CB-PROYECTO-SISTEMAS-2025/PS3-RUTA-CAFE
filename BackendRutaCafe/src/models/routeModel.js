@@ -1,4 +1,3 @@
-// src/models/routeModel.js
 import pool, { SCHEMA } from "../config/db.js";
 
 // Crear ruta
@@ -11,7 +10,7 @@ export const createRoute = async ({ name, description, status, image_url, create
   return result.insertId;
 };
 
-// Obtener todas las rutas
+// Obtener todas las rutas (VERSIÓN MEJORADA - de la nueva)
 export const getAllRoutes = async (viewer = { role: 0, userId: null }) => {
   let where = "";
   const params = [];

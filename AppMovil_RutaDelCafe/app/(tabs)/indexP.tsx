@@ -108,7 +108,6 @@ const normalizeImages = (p: Place): string[] => {
     imgs.push(p.image_url);
   }
 
-
   if (Array.isArray(p.additional_images)) {
     const additionalUrls = p.additional_images
       .map((img: any) => {
@@ -121,6 +120,9 @@ const normalizeImages = (p: Place): string[] => {
 
   return imgs.slice(0, 3);
 };
+
+// Tipos de filtro para técnicos
+type FilterType = 'todas' | 'mis-lugares' | 'aprobadas' | 'pendientes' | 'rechazadas';
 
 export default function PlacesMapScreen() {
   const themed = useThemedStyles();
@@ -142,6 +144,7 @@ export default function PlacesMapScreen() {
   const [mapKey, setMapKey] = useState(0);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterType>('todas');
 
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
@@ -175,14 +178,11 @@ export default function PlacesMapScreen() {
     if (places.length > 0) setMapKey((p) => p + 1);
   }, [places]);
 
-
-  
-
   // 🔥 NUEVO: Verificar si el usuario tiene lugares pendientes
   const userHasPendingPlaces = useMemo(() => {
-    if (!isAdmin) return false;
+    if (userRole !== 2) return false; // Solo para técnicos
     return places.some(place => place.createdBy === userId && place.status === 'pendiente');
-  }, [places, userId, isAdmin]);
+  }, [places, userId, userRole]);
 
   const handleBlockedAction = (place: Place, actionName: string) => {
     if (place.status === 'rechazada') {
@@ -197,41 +197,41 @@ export default function PlacesMapScreen() {
   };
 
   // user
- const loadUser = async () => {
-  try {
-    const token = await AsyncStorage.getItem('userToken');
-    
-    // 🔥 CRÍTICO: Si no hay token, forzar rol de visitante
-    if (!token) {
-      console.log('🔐 No hay token - Usuario es visitante');
-      setUserRole(0);
-      setUserId(0);
-      return;
-    }
+  const loadUser = async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      
+      // 🔥 CRÍTICO: Si no hay token, forzar rol de visitante
+      if (!token) {
+        console.log('🔐 No hay token - Usuario es visitante');
+        setUserRole(0);
+        setUserId(0);
+        return;
+      }
 
-    const userData = await AsyncStorage.getItem('userData');
-    if (userData) {
-      try {
-        const user: UserData = JSON.parse(userData);
-        console.log('👤 Usuario cargado en places:', { id: user.id, role: user.role });
-        setUserRole(user.role || 3);
-        setUserId(user.id || 0);
-      } catch (parseError) {
-        console.error('❌ Error parseando userData:', parseError);
+      const userData = await AsyncStorage.getItem('userData');
+      if (userData) {
+        try {
+          const user: UserData = JSON.parse(userData);
+          console.log('👤 Usuario cargado en places:', { id: user.id, role: user.role });
+          setUserRole(user.role || 3);
+          setUserId(user.id || 0);
+        } catch (parseError) {
+          console.error('❌ Error parseando userData:', parseError);
+          setUserRole(0);
+          setUserId(0);
+        }
+      } else {
+        console.log('📝 No hay userData en places - Usuario es visitante');
         setUserRole(0);
         setUserId(0);
       }
-    } else {
-      console.log('📝 No hay userData en places - Usuario es visitante');
+    } catch (e) {
+      console.error('❌ Error loading user data:', e);
       setUserRole(0);
       setUserId(0);
     }
-  } catch (e) {
-    console.error('❌ Error loading user data:', e);
-    setUserRole(0);
-    setUserId(0);
-  }
-};
+  };
 
   const fetchPlaces = async () => {
     setLoading(true);
@@ -407,10 +407,62 @@ export default function PlacesMapScreen() {
     setImagesModalOpen(true);
   };
 
-  const visiblePlaces = useMemo(() => {
-    if (isAdmin) return places.filter((p) => p.createdBy === userId);
-    return places.filter((p) => p.status === 'aprobada');
-  }, [isAdmin, places, userId]);
+ // 🎯 NUEVA LÓGICA DE FILTROS PARA TÉCNICOS - CORREGIDA
+const visiblePlaces = useMemo(() => {
+  let filtered = [...places];
+  
+  // 🔥 CRÍTICO: Si es visitante (role = 0), solo mostrar lugares aprobados
+  if (userRole === 0) {
+    return places.filter(p => p.status === 'aprobada');
+  }
+
+  if (userRole === 2) { // Técnico
+    switch (activeFilter) {
+      case 'mis-lugares':
+        // Solo sus lugares (en cualquier estado)
+        filtered = places.filter(p => p.createdBy === userId);
+        break;
+      case 'aprobadas':
+        // Solo sus lugares aprobados
+        filtered = places.filter(p => p.status === 'aprobada' && p.createdBy === userId);
+        break;
+      case 'pendientes':
+        // Solo sus lugares pendientes
+        filtered = places.filter(p => p.status === 'pendiente' && p.createdBy === userId);
+        break;
+      case 'rechazadas':
+        // Solo sus lugares rechazados
+        filtered = places.filter(p => p.status === 'rechazada' && p.createdBy === userId);
+        break;
+      case 'todas':
+      default:
+        // ✅ CORREGIDO: Todos los lugares aprobados de ESTA RUTA (incluyendo otros técnicos)
+        // Esto permite que los técnicos vean lugares aprobados de otros técnicos en la misma ruta
+        filtered = places.filter(p => p.status === 'aprobada');
+        break;
+    }
+  } else if (userRole === 3 || userRole === 0) {
+    // Usuarios normales y visitantes: solo lugares aprobados
+    filtered = places.filter(p => p.status === 'aprobada');
+  } else if (userRole === 1) {
+    // Admin ve todos los lugares sin filtro
+    // (mantener lógica actual del admin si es necesario)
+  }
+
+  return filtered;
+}, [places, userRole, userId, activeFilter]);
+
+  // 🎯 FUNCIONES DE FILTRO PARA TÉCNICOS
+  const getFilterText = (filter: FilterType) => {
+    switch (filter) {
+      case 'todas': return 'Todas';
+      case 'mis-lugares': return 'Mis Lugares';
+      case 'aprobadas': return 'Aprobadas';
+      case 'pendientes': return 'Pendientes';
+      case 'rechazadas': return 'Rechazadas';
+      default: return 'Todas';
+    }
+  };
 
   const resolvedRouteName =
     routeName ||
@@ -563,41 +615,42 @@ export default function PlacesMapScreen() {
     setMapError(false);
   };
 
-const getStatusColor = (status: string) => {
-  // Si es usuario normal o invitado, no mostrar estado
-  if (isUser || userRole === 0) {
-    return { bg: 'transparent', text: 'transparent', border: 'transparent' };
-  }
-  
-  switch (status) {
-    case 'aprobada':
-      return { bg: '#ecfdf5', text: '#166534', border: '#86efac' };
-    case 'pendiente':
-      return { bg: '#fef3c7', text: '#854d0e', border: '#facc15' };
-    case 'rechazada':
-      return { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' };
-    default:
-      return { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' };
-  }
-};
+  const getStatusColor = (status: string) => {
+    // Si es usuario normal o invitado, no mostrar estado
+    if (isUser || userRole === 0) {
+      return { bg: 'transparent', text: 'transparent', border: 'transparent' };
+    }
+    
+    switch (status) {
+      case 'aprobada':
+        return { bg: '#ecfdf5', text: '#166534', border: '#86efac' };
+      case 'pendiente':
+        return { bg: '#fef3c7', text: '#854d0e', border: '#facc15' };
+      case 'rechazada':
+        return { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' };
+      default:
+        return { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' };
+    }
+  };
 
-const getStatusText = (status: string) => {
-  // Si es usuario normal o invitado, no mostrar texto de estado
-  if (isUser || userRole === 0) {
-    return '';
-  }
-  
-  switch (status) {
-    case 'aprobada':
-      return 'Aprobado';
-    case 'pendiente':
-      return 'Pendiente';
-    case 'rechazada':
-      return 'Rechazado';
-    default:
-      return status;
-  }
-};
+  const getStatusText = (status: string) => {
+    // Si es usuario normal o invitado, no mostrar texto de estado
+    if (isUser || userRole === 0) {
+      return '';
+    }
+    
+    switch (status) {
+      case 'aprobada':
+        return 'Aprobado';
+      case 'pendiente':
+        return 'Pendiente';
+      case 'rechazada':
+        return 'Rechazado';
+      default:
+        return status;
+    }
+  };
+
   const getPlaceImageInfo = (place: Place) => {
     const hasMainImage = place.image_url ? 1 : 0;
     const additionalCount = place.additional_images?.length || 0;
@@ -608,181 +661,6 @@ const getStatusText = (status: string) => {
       additionalCount,
       totalImages
     };
-  };
-
-  // 🔥 NUEVO: Función para renderizar botones responsivos
-  const renderActionButtons = (place: Place) => {
-    const buttons = [];
-
-    // Botón Ver Detalles - SIEMPRE disponible
-    buttons.push(
-      <TouchableOpacity
-        key="details"
-        onPress={() => router.push(`/Place/details?id=${place.id}`)}
-        style={{
-          flex: 1,
-          minHeight: 40,
-          backgroundColor: themed.softBg,
-          paddingVertical: 8,
-          paddingHorizontal: 4,
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: themed.border,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginHorizontal: 2,
-        }}
-      >
-        <Ionicons name="eye-outline" size={16} color={themed.accent as string} />
-        <Text style={{ 
-          color: themed.text, 
-          fontSize: 12, 
-          fontWeight: '600',
-          marginTop: 2,
-          textAlign: 'center'
-        }} numberOfLines={1}>
-          Detalles
-        </Text>
-      </TouchableOpacity>
-    );
-
-    if (isAdmin) {
-      // Botón Editar - para administradores
-      buttons.push(
-        <TouchableOpacity
-          key="edit"
-          onPress={() => router.push(`/Place/edit?id=${place.id}`)}
-          style={{
-            flex: 1,
-            minHeight: 40,
-            backgroundColor: themed.softBg,
-            paddingVertical: 8,
-            paddingHorizontal: 4,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: themed.border,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginHorizontal: 2,
-          }}
-        >
-          <Ionicons name="create-outline" size={16} color="#3b82f6" />
-          <Text style={{ 
-            color: themed.text, 
-            fontSize: 12, 
-            fontWeight: '600',
-            marginTop: 2,
-            textAlign: 'center'
-          }} numberOfLines={1}>
-            Editar
-          </Text>
-        </TouchableOpacity>
-      );
-
-      // Botón Eliminar - para administradores
-      buttons.push(
-        <TouchableOpacity
-          key="delete"
-          onPress={() => deletePlace(place)}
-          style={{
-            flex: 1,
-            minHeight: 40,
-            backgroundColor: themed.softBg,
-            paddingVertical: 8,
-            paddingHorizontal: 4,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: themed.border,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginHorizontal: 2,
-          }}
-        >
-          <Ionicons name="trash-outline" size={16} color="#ef4444" />
-          <Text style={{ 
-            color: themed.text, 
-            fontSize: 12, 
-            fontWeight: '600',
-            marginTop: 2,
-            textAlign: 'center'
-          }} numberOfLines={1}>
-            Eliminar
-          </Text>
-        </TouchableOpacity>
-      );
-    }
-
-    if (isUser) {
-      // Botón Like - para usuarios
-      buttons.push(
-        <TouchableOpacity
-          key="like"
-          onPress={() => toggleLike(place.id)}
-          style={{
-            flex: 1,
-            minHeight: 40,
-            backgroundColor: themed.softBg,
-            paddingVertical: 8,
-            paddingHorizontal: 4,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: themed.border,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginHorizontal: 2,
-          }}
-        >
-          <Ionicons 
-            name={place.user_liked ? 'heart' : 'heart-outline'} 
-            size={16} 
-            color="#ec4899" 
-          />
-          <Text style={{ 
-            color: themed.text, 
-            fontSize: 12, 
-            fontWeight: '600',
-            marginTop: 2,
-            textAlign: 'center'
-          }} numberOfLines={1}>
-            {place.user_liked ? 'Quitar' : 'Like'}
-          </Text>
-        </TouchableOpacity>
-      );
-    }
-
-    // Botón Comentarios - para todos
-    buttons.push(
-      <TouchableOpacity
-        key="comments"
-        onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
-        style={{
-          flex: 1,
-          minHeight: 40,
-          backgroundColor: themed.successBg,
-          paddingVertical: 8,
-          paddingHorizontal: 4,
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: themed.successBorder,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginHorizontal: 2,
-        }}
-      >
-        <Ionicons name="chatbubble-outline" size={16} color={themed.successText as string} />
-        <Text style={{ 
-          color: themed.successText as string, 
-          fontSize: 12, 
-          fontWeight: '600',
-          marginTop: 2,
-          textAlign: 'center'
-        }} numberOfLines={1}>
-          Comentarios
-        </Text>
-      </TouchableOpacity>
-    );
-
-    return buttons;
   };
 
   if (loading) {
@@ -816,10 +694,61 @@ const getStatusText = (status: string) => {
         {resolvedRouteName ? (
           <Text style={{ color: '#fff', opacity: 0.9, textAlign: 'center', marginTop: 4 }}>{resolvedRouteName}</Text>
         ) : null}
-        {/* <Text style={{ color: '#fff', opacity: 0.8, textAlign: 'center', marginTop: 4, fontSize: 12 }}>
-          {isAdmin ? 'Mostrando tus sitios (aprobados y pendientes)' : 'Mostrando sitios aprobados en el mapa'}
-        </Text> */}
+        <Text style={{ color: '#fff', opacity: 0.8, textAlign: 'center', marginTop: 4, fontSize: 12 }}>
+          {userRole === 2 
+            ? `Mostrando: ${getFilterText(activeFilter).toLowerCase()}`
+            : 'Mostrando sitios aprobados en el mapa'
+          }
+        </Text>
       </View>
+
+      {/* 🎯 FILTROS PARA TÉCNICOS */}
+      {userRole === 2 && (
+        <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
+          <Text style={{ color: themed.text, fontWeight: '600', marginBottom: 8, fontSize: 16 }}>
+            Filtrar por:
+          </Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={{ marginBottom: 8 }}
+          >
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['todas', 'mis-lugares', 'aprobadas', 'pendientes', 'rechazadas'] as FilterType[]).map((filter) => (
+                <TouchableOpacity
+                  key={filter}
+                  onPress={() => setActiveFilter(filter)}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                    backgroundColor: activeFilter === filter 
+                      ? (themed.accent as string)
+                      : (themed.isDark ? '#374151' : '#e5e7eb'),
+                    borderWidth: 1,
+                    borderColor: activeFilter === filter 
+                      ? (themed.accent as string)
+                      : (themed.isDark ? '#4b5563' : '#d1d5db'),
+                  }}
+                >
+                  <Text style={{
+                    color: activeFilter === filter ? '#fff' : themed.text,
+                    fontSize: 14,
+                    fontWeight: '600',
+                  }}>
+                    {getFilterText(filter)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+          
+          {/* Contador de resultados */}
+          <Text style={{ color: themed.muted, fontSize: 12 }}>
+            {visiblePlaces.length} {visiblePlaces.length === 1 ? 'lugar encontrado' : 'lugares encontrados'}
+          </Text>
+        </View>
+      )}
 
       {/* Alerta de lugares pendientes para técnicos */}
       {isAdmin && userHasPendingPlaces && (
@@ -846,32 +775,6 @@ const getStatusText = (status: string) => {
 
       {/* Acciones superiores */}
       <View style={{ paddingHorizontal: 24, marginTop: 16 }}>
-        {/* <TouchableOpacity
-          onPress={() => {
-            if (router.canGoBack()) router.back();
-            else router.replace('/(tabs)/advertisement');
-          }}
-          style={{
-            backgroundColor: themed.softBg,
-            borderWidth: 1,
-            borderColor: themed.accent,
-            paddingVertical: 12,
-            borderRadius: 12,
-            shadowColor: '#000',
-            shadowOpacity: 0.08,
-            shadowRadius: 4,
-            shadowOffset: { width: 0, height: 1 },
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            marginBottom: 12,
-          }}
-        >
-          <Ionicons name="arrow-back" size={22} color={themed.accent as string} />
-          <Text style={{ color: themed.accent as string, fontWeight: '700' }}>Volver</Text>
-        </TouchableOpacity> */}
-
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {isAdmin && !userHasPendingPlaces && (
             <TouchableOpacity
@@ -990,6 +893,7 @@ const getStatusText = (status: string) => {
 
         <ScrollView
           style={{ flex: 1, paddingHorizontal: 24 }}
+           contentContainerStyle={{ paddingBottom: 100 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           showsVerticalScrollIndicator={false}
         >
@@ -1010,13 +914,27 @@ const getStatusText = (status: string) => {
                 No hay lugares disponibles
               </Text>
               <Text style={{ color: themed.muted as string, textAlign: 'center', marginTop: 6 }}>
-                {isAdmin 
-                  ? userHasPendingPlaces
-                    ? 'Tienes lugares pendientes de aprobación'
-                    : 'Crea tu primer lugar para comenzar'
+                {userRole === 2 
+                  ? `No se encontraron lugares con el filtro "${getFilterText(activeFilter)}"`
                   : 'No hay lugares aprobados para mostrar'
                 }
               </Text>
+              {userRole === 2 && activeFilter !== 'todas' && (
+                <TouchableOpacity
+                  onPress={() => setActiveFilter('todas')}
+                  style={{
+                    marginTop: 16,
+                    paddingHorizontal: 20,
+                    paddingVertical: 10,
+                    backgroundColor: themed.accent as string,
+                    borderRadius: 12,
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '600' }}>
+                    Ver todos los lugares
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             visiblePlaces.map((place) => {
@@ -1165,7 +1083,7 @@ const getStatusText = (status: string) => {
                     </View>
                   </View>
 
-                  {/* 🔥 MODIFICADO: Acciones con bloqueo para lugares rechazados */}
+                  {/* Acciones */}
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
                     {/* Ver detalles - SIEMPRE disponible */}
                     <TouchableOpacity
@@ -1186,118 +1104,116 @@ const getStatusText = (status: string) => {
 
                     {isAdmin && (
                       <>
-                        {/* Editar - BLOQUEADO si está rechazado */}
-                         <TouchableOpacity
-      onPress={() => router.push(`/Place/edit?id=${place.id}`)}
-      style={{
-        flex: 1,
-        backgroundColor: themed.softBg,
-        paddingVertical: 8,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: themed.border,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
-    >
-      <Ionicons name="create-outline" size={18} color="#3b82f6" />
-      <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>
-        Editar
-      </Text>
-    </TouchableOpacity>
+                        {/* Editar */}
+                        <TouchableOpacity
+                          onPress={() => router.push(`/Place/edit?id=${place.id}`)}
+                          style={{
+                            flex: 1,
+                            backgroundColor: themed.softBg,
+                            paddingVertical: 8,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: themed.border,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Ionicons name="create-outline" size={18} color="#3b82f6" />
+                          <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>
+                            Editar
+                          </Text>
+                        </TouchableOpacity>
 
-                        {/* Eliminar - SIEMPRE disponible para técnicos */}
-                       {/* En la sección de acciones del lugar, cambiar el onPress del botón eliminar: */}
-{/* Eliminar - OCULTO cuando el lugar está aprobado para técnicos */}
-{place.status !== 'aprobada' && (
-  <TouchableOpacity
-    onPress={() => deletePlace(place)}
-    style={{
-      flex: 1,
-      backgroundColor: themed.softBg,
-      paddingVertical: 8,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: themed.border,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center'
-    }}
-  >
-    <Ionicons name="trash-outline" size={18} color="#ef4444" />
-    <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>Eliminar</Text>
-  </TouchableOpacity>
-)}
+                        {/* Eliminar - OCULTO cuando el lugar está aprobado para técnicos */}
+                        {place.status !== 'aprobada' && (
+                          <TouchableOpacity
+                            onPress={() => deletePlace(place)}
+                            style={{
+                              flex: 1,
+                              backgroundColor: themed.softBg,
+                              paddingVertical: 8,
+                              borderRadius: 12,
+                              borderWidth: 1,
+                              borderColor: themed.border,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                            <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>Eliminar</Text>
+                          </TouchableOpacity>
+                        )}
                       </>
                     )}
 
-{isUser ? (
-  <>
-    {/* Like - PERMITIDO incluso cuando está rechazado */}
-    <TouchableOpacity
-      onPress={() => toggleLike(place.id)}
-      style={{
-        flex: 1,
-        backgroundColor: themed.softBg,
-        paddingVertical: 8,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: themed.border,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
-    >
-      <Ionicons 
-        name={place.user_liked ? 'heart' : 'heart-outline'} 
-        size={18} 
-        color="#ec4899" 
-      />
-      <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>
-        {place.user_liked ? 'Quitar' : 'Like'}
-      </Text>
-    </TouchableOpacity>
+                    {isUser ? (
+                      <>
+                        {/* Like - PERMITIDO incluso cuando está rechazado */}
+                        <TouchableOpacity
+                          onPress={() => toggleLike(place.id)}
+                          style={{
+                            flex: 1,
+                            backgroundColor: themed.softBg,
+                            paddingVertical: 8,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: themed.border,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Ionicons 
+                            name={place.user_liked ? 'heart' : 'heart-outline'} 
+                            size={18} 
+                            color="#ec4899" 
+                          />
+                          <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>
+                            {place.user_liked ? 'Quitar' : 'Like'}
+                          </Text>
+                        </TouchableOpacity>
 
-    {/* Comentarios - PERMITIDO incluso cuando está rechazado */}
-    <TouchableOpacity
-      onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
-      style={{
-        flex: 1,
-        backgroundColor: themed.successBg,
-        paddingVertical: 8,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: themed.successBorder,
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
-    >
-      <Text style={{ color: themed.successText as string, fontWeight: '700' }}>
-        Comentarios
-      </Text>
-    </TouchableOpacity>
-  </>
-) : (
-  // Visitante: solo ver comentarios (PERMITIDO incluso cuando está rechazado)
-  <TouchableOpacity
-    onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
-    style={{
-      flex: 1,
-      backgroundColor: themed.successBg,
-      paddingVertical: 8,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: themed.successBorder,
-      alignItems: 'center',
-      justifyContent: 'center'
-    }}
-  >
-    <Text style={{ color: themed.successText as string, fontWeight: '700' }}>
-      Comentarios
-    </Text>
-  </TouchableOpacity>
-)}
+                        {/* Comentarios - PERMITIDO incluso cuando está rechazado */}
+                        <TouchableOpacity
+                          onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
+                          style={{
+                            flex: 1,
+                            backgroundColor: themed.successBg,
+                            paddingVertical: 8,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: themed.successBorder,
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Text style={{ color: themed.successText as string, fontWeight: '700' }}>
+                            Comentarios
+                          </Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      // Visitante: solo ver comentarios (PERMITIDO incluso cuando está rechazado)
+                      <TouchableOpacity
+                        onPress={() => router.push(`/Place/comments?id=${place.id}&name=${place.name}`)}
+                        style={{
+                          flex: 1,
+                          backgroundColor: themed.successBg,
+                          paddingVertical: 8,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: themed.successBorder,
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Text style={{ color: themed.successText as string, fontWeight: '700' }}>
+                          Comentarios
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               );

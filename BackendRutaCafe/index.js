@@ -11,16 +11,15 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Configurar __dirname para ES modules
+// ✅ VERSIÓN CORREGIDA - REEMPLAZAR COMPLETAMENTE
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ✅ RUTA ABSOLUTA CORRECTA PARA UPLOADS
-const projectRoot = path.resolve(__dirname, '..');
-const uploadsDir = path.join(projectRoot, 'uploads');
+// ✅ RUTA CORRECTA - igual que tu versión antigua
+const uploadsDir = path.join(process.cwd(), "uploads");
 
 console.log('🚀 Configurando servidor...');
-console.log('📍 Directorio del proyecto:', projectRoot);
+console.log('📍 Directorio del proyecto:', process.cwd());
 console.log('📍 Directorio de uploads:', uploadsDir);
 
 // ✅ VERIFICAR QUE LA CARPETA UPLOADS EXISTE
@@ -30,19 +29,6 @@ const ensureUploadsDir = () => {
     console.log('✅ Carpeta uploads creada:', uploadsDir);
   } else {
     console.log('📁 Carpeta uploads ya existe:', uploadsDir);
-    
-    // Listar contenido para debug
-    try {
-      const items = fs.readdirSync(uploadsDir);
-      console.log(`📂 Contenido de uploads: ${items.length} items`);
-      items.forEach(item => {
-        const itemPath = path.join(uploadsDir, item);
-        const isDir = fs.statSync(itemPath).isDirectory();
-        console.log(`   ${isDir ? '📁' : '📄'} ${item}`);
-      });
-    } catch (error) {
-      console.log('❌ Error leyendo directorio uploads:', error.message);
-    }
   }
 };
 
@@ -55,13 +41,8 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// ✅ SERVIR ARCHIVOS ESTÁTICOS DESDE LA RUTA CORRECTA
-app.use("/uploads", express.static(uploadsDir, {
-  setHeaders: (res, path) => {
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-  }
-}));
-
+// ✅ SERVIR ARCHIVOS ESTÁTICOS - VERSIÓN SIMPLE QUE FUNCIONA
+app.use("/uploads", express.static(uploadsDir));
 // ✅ RUTA ESPECÍFICA PARA VERIFICAR IMÁGENES DE USUARIOS
 app.get("/uploads/users/:filename", (req, res) => {
   const filename = req.params.filename;
