@@ -163,6 +163,7 @@ export default function PlacesMapScreen() {
   const webViewRef = useRef<WebView>(null);
   const isAdmin = userRole === 2;
   const isUser = userRole === 3;
+  const isVisitor = userRole === 0;
 
   const screenWidth = Dimensions.get('window').width;
 
@@ -233,6 +234,7 @@ export default function PlacesMapScreen() {
     }
   };
 
+  // En la función fetchPlaces, agregar logs para debug
   const fetchPlaces = async () => {
     setLoading(true);
     setMapLoaded(false);
@@ -248,6 +250,9 @@ export default function PlacesMapScreen() {
       let url = `${process.env.EXPO_PUBLIC_API_URL}/api/places`;
       if (numericRouteId) url = `${process.env.EXPO_PUBLIC_API_URL}/api/places/route/${numericRouteId}`;
 
+      console.log(`🌐 Fetching places from: ${url}`);
+      console.log(`👤 User role: ${userRole}, User ID: ${userId}`);
+
       const response = await fetch(url, { method: 'GET', headers });
       if (!response.ok) {
         const errorText = await response.text();
@@ -255,14 +260,19 @@ export default function PlacesMapScreen() {
       }
       const data = await response.json();
 
-      console.log('📱 Datos de lugares recibidos:', data.map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        image_url: p.image_url,
-        additional_images_count: p.additional_images?.length || 0,
-        status: p.status,
-        rejectionComment: p.rejectionComment
-      })));
+      console.log('📱 Datos de lugares recibidos:', {
+        total: data.length,
+        aprobados: data.filter((p: any) => p.status === 'aprobada').length,
+        pendientes: data.filter((p: any) => p.status === 'pendiente').length,
+        rechazados: data.filter((p: any) => p.status === 'rechazada').length,
+        lugares: data.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          status: p.status,
+          createdBy: p.createdBy,
+          esMio: p.createdBy === userId
+        }))
+      });
 
       const normalized = data
         .map((p: any) => ({
@@ -407,61 +417,62 @@ export default function PlacesMapScreen() {
     setImagesModalOpen(true);
   };
 
- // 🎯 NUEVA LÓGICA DE FILTROS PARA TÉCNICOS - CORREGIDA
-const visiblePlaces = useMemo(() => {
-  let filtered = [...places];
-  
-  // 🔥 CRÍTICO: Si es visitante (role = 0), solo mostrar lugares aprobados
-  if (userRole === 0) {
-    return places.filter(p => p.status === 'aprobada');
-  }
-
-  if (userRole === 2) { // Técnico
-    switch (activeFilter) {
-      case 'mis-lugares':
-        // Solo sus lugares (en cualquier estado)
-        filtered = places.filter(p => p.createdBy === userId);
-        break;
-      case 'aprobadas':
-        // Solo sus lugares aprobados
-        filtered = places.filter(p => p.status === 'aprobada' && p.createdBy === userId);
-        break;
-      case 'pendientes':
-        // Solo sus lugares pendientes
-        filtered = places.filter(p => p.status === 'pendiente' && p.createdBy === userId);
-        break;
-      case 'rechazadas':
-        // Solo sus lugares rechazados
-        filtered = places.filter(p => p.status === 'rechazada' && p.createdBy === userId);
-        break;
-      case 'todas':
-      default:
-        // ✅ CORREGIDO: Todos los lugares aprobados de ESTA RUTA (incluyendo otros técnicos)
-        // Esto permite que los técnicos vean lugares aprobados de otros técnicos en la misma ruta
-        filtered = places.filter(p => p.status === 'aprobada');
-        break;
+  // 🎯 LÓGICA DE FILTROS CORREGIDA - TÉCNICOS VEN TODOS LOS LUGARES APROBADOS
+  const visiblePlaces = useMemo(() => {
+    let filtered = [...places];
+    
+    // 🔥 CRÍTICO: Si es visitante (role = 0) o usuario normal (role = 3), solo mostrar lugares aprobados
+    if (userRole === 0 || userRole === 3) {
+      return places.filter(p => p.status === 'aprobada');
     }
-  } else if (userRole === 3 || userRole === 0) {
-    // Usuarios normales y visitantes: solo lugares aprobados
-    filtered = places.filter(p => p.status === 'aprobada');
-  } else if (userRole === 1) {
-    // Admin ve todos los lugares sin filtro
-    // (mantener lógica actual del admin si es necesario)
-  }
 
-  return filtered;
-}, [places, userRole, userId, activeFilter]);
+    if (userRole === 2) { // Técnico
+      switch (activeFilter) {
+        case 'mis-lugares':
+          // Solo sus lugares (en cualquier estado)
+          filtered = places.filter(p => p.createdBy === userId);
+          break;
+        case 'aprobadas':
+          // Solo sus lugares aprobados
+          filtered = places.filter(p => p.status === 'aprobada' && p.createdBy === userId);
+          break;
+        case 'pendientes':
+          // Solo sus lugares pendientes
+          filtered = places.filter(p => p.status === 'pendiente' && p.createdBy === userId);
+          break;
+        case 'rechazadas':
+          // Solo sus lugares rechazados
+          filtered = places.filter(p => p.status === 'rechazada' && p.createdBy === userId);
+          break;
+        case 'todas':
+        default:
+          // ✅ CORREGIDO: Técnicos ven TODOS los lugares aprobados (de todos los técnicos)
+          filtered = places.filter(p => p.status === 'aprobada');
+          break;
+      }
+    } else if (userRole === 1) {
+      // Admin ve todos los lugares sin filtro
+      // (mantener lógica actual del admin si es necesario)
+    }
+
+    return filtered;
+  }, [places, userRole, userId, activeFilter]);
 
   // 🎯 FUNCIONES DE FILTRO PARA TÉCNICOS
   const getFilterText = (filter: FilterType) => {
     switch (filter) {
-      case 'todas': return 'Todas';
+      case 'todas': return 'Todos Aprobados';
       case 'mis-lugares': return 'Mis Lugares';
-      case 'aprobadas': return 'Aprobadas';
-      case 'pendientes': return 'Pendientes';
-      case 'rechazadas': return 'Rechazadas';
-      default: return 'Todas';
+      case 'aprobadas': return 'Mis Aprobados';
+      case 'pendientes': return 'Mis Pendientes';
+      case 'rechazadas': return 'Mis Rechazados';
+      default: return 'Todos Aprobados';
     }
+  };
+
+  // 🔥 NUEVO: Verificar si el lugar pertenece al usuario técnico actual
+  const isMyPlace = (place: Place) => {
+    return userRole === 2 && place.createdBy === userId;
   };
 
   const resolvedRouteName =
@@ -663,6 +674,15 @@ const visiblePlaces = useMemo(() => {
     };
   };
 
+  // 🔥 NUEVO: Botón de volver
+  const handleGoBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/advertisement');
+    }
+  };
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: themed.background }}>
@@ -674,7 +694,7 @@ const visiblePlaces = useMemo(() => {
 
   return (
     <View style={{ flex: 1, backgroundColor: themed.background }}>
-      {/* Header */}
+      {/* Header con botón de volver */}
       <View
         style={{ 
           backgroundColor: themed.accent as string,
@@ -688,6 +708,20 @@ const visiblePlaces = useMemo(() => {
           shadowOffset: { width: 0, height: 2 }
         }}
       >
+        {/* Botón de volver */}
+        <TouchableOpacity 
+          onPress={handleGoBack}
+          style={{
+            position: 'absolute',
+            left: 16,
+            top: 16,
+            zIndex: 10,
+            padding: 8
+          }}
+        >
+          <Ionicons name="arrow-back" size={24} color="#fff" />
+        </TouchableOpacity>
+
         <Text style={{ color: '#fff', fontSize: 20, fontWeight: '800', textAlign: 'center' }}>
           {numericRouteId ? 'Sitios de la Ruta' : 'Mapa de Sitios'}
         </Text>
@@ -941,6 +975,7 @@ const visiblePlaces = useMemo(() => {
               const images = normalizeImages(place);
               const imageInfo = getPlaceImageInfo(place);
               const statusColors = getStatusColor(place.status);
+              const placeBelongsToMe = isMyPlace(place);
               
               return (
                 <View
@@ -1084,8 +1119,8 @@ const visiblePlaces = useMemo(() => {
                   </View>
 
                   {/* Acciones */}
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-                    {/* Ver detalles - SIEMPRE disponible */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                    {/* Ver detalles - SIEMPRE disponible para todos */}
                     <TouchableOpacity
                       onPress={() => router.push(`/Place/details?id=${place.id}`)}
                       style={{
@@ -1099,12 +1134,13 @@ const visiblePlaces = useMemo(() => {
                         justifyContent: 'center'
                       }}
                     >
-                      <Text style={{ color: themed.text, fontWeight: '700' }}>Ver detalles</Text>
+                      <Text style={{ color: themed.text, fontWeight: '500', fontSize: 12, textAlign: 'center'}}>Ver detalles</Text>
                     </TouchableOpacity>
 
-                    {isAdmin && (
+                    {/* 🔥 CORREGIDO: Solo mostrar editar/eliminar si el lugar pertenece al técnico logueado */}
+                    {isAdmin && placeBelongsToMe && (
                       <>
-                        {/* Editar */}
+                        {/* Editar - SOLO si el lugar es del técnico */}
                         <TouchableOpacity
                           onPress={() => router.push(`/Place/edit?id=${place.id}`)}
                           style={{
@@ -1120,13 +1156,11 @@ const visiblePlaces = useMemo(() => {
                           }}
                         >
                           <Ionicons name="create-outline" size={18} color="#3b82f6" />
-                          <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>
-                            Editar
-                          </Text>
+                          <Text style={{ color: themed.text, fontWeight: '700', fontSize: 12, marginLeft: 4 }}>Editar</Text>
                         </TouchableOpacity>
 
-                        {/* Eliminar - OCULTO cuando el lugar está aprobado para técnicos */}
-                        {place.status !== 'aprobada' && (
+                        {/* Eliminar - SOLO si el lugar es del técnico y no está aprobado */}
+                        {placeBelongsToMe  && (
                           <TouchableOpacity
                             onPress={() => deletePlace(place)}
                             style={{
@@ -1141,8 +1175,8 @@ const visiblePlaces = useMemo(() => {
                               justifyContent: 'center'
                             }}
                           >
-                            <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                            <Text style={{ color: themed.text, fontWeight: '700', marginLeft: 8 }}>Eliminar</Text>
+                            <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                            <Text style={{ color: themed.text, fontWeight: '700', fontSize: 12 }}>Eliminar</Text>
                           </TouchableOpacity>
                         )}
                       </>
@@ -1189,7 +1223,8 @@ const visiblePlaces = useMemo(() => {
                             justifyContent: 'center'
                           }}
                         >
-                          <Text style={{ color: themed.successText as string, fontWeight: '700' }}>
+                          <Text style={{ color: themed.successText as string, fontWeight: '700', fontSize: 10, textAlign: 'center'
+ }}>
                             Comentarios
                           </Text>
                         </TouchableOpacity>
@@ -1209,7 +1244,7 @@ const visiblePlaces = useMemo(() => {
                           justifyContent: 'center'
                         }}
                       >
-                        <Text style={{ color: themed.successText as string, fontWeight: '700' }}>
+                        <Text style={{ color: themed.successText as string, fontWeight: '700', fontSize: 10, textAlign: 'center' }}>
                           Comentarios
                         </Text>
                       </TouchableOpacity>

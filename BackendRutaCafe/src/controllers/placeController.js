@@ -3,6 +3,7 @@ import {
   getAllPlaces,
   getPlaceById,
   getPlacesByRoute,
+  getPlacesByTechnician,
   updatePlace,
   deletePlace,
   createPlaceSchedules,
@@ -234,11 +235,20 @@ export const createPlaceController = async (req, res) => {
 export const getPlacesController = async (req, res) => {
   try {
     const userId = req.user?.id || null;
-    console.log("➡️ getPlacesController user=", req.user);
-
-    console.log(`📊 Cargando lugares para usuario: ${userId || 'visitante'}`);
+    const userRole = req.user?.role || 0;
     
-    const places = await getAllPlaces(req.user || { id: null, role: 0 });
+    console.log(`📊 Cargando lugares para usuario: ${userId || 'visitante'}, rol: ${userRole}`);
+
+    let places;
+    
+    // ✅ CORREGIDO: Si es técnico, obtener todos los lugares aprobados
+    if (userRole === 2 && userId) {
+      // Técnico: obtener todos los lugares aprobados
+      places = await getAllPlaces({ id: userId, role: userRole });
+    } else {
+      // Otros roles: comportamiento normal
+      places = await getAllPlaces(req.user || { id: null, role: 0 });
+    }
     
     // Obtener horarios e imágenes para cada lugar
     const placesWithDetails = await Promise.all(
@@ -268,10 +278,18 @@ export const getPlacesByRouteController = async (req, res) => {
   try {
     const { routeId } = req.params;
     const userId = req.user?.id || null;
+    const userRole = req.user?.role || 0;
     
-    console.log(`📊 Cargando lugares de ruta ${routeId} para usuario: ${userId || 'visitante'}`);
+    console.log(`📊 Cargando lugares de ruta ${routeId} para usuario: ${userId || 'visitante'}, rol: ${userRole}`);
     
-    const places = await getPlacesByRoute(routeId, req.user || { id: null, role: 0 });
+    let places;
+    
+    // ✅ CORREGIDO: Si es técnico, obtener todos los lugares aprobados de la ruta
+    if (userRole === 2 && userId) {
+      places = await getPlacesByRoute(routeId, { id: userId, role: userRole });
+    } else {
+      places = await getPlacesByRoute(routeId, req.user || { id: null, role: 0 });
+    }
     
     const placesWithDetails = await Promise.all(
       places.map(async (place) => {
@@ -761,5 +779,42 @@ export const checkPendingPlaces = async (req, res) => {
   } catch (error) {
     console.error('Error checking pending places:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+
+// Nueva función para obtener lugares del técnico (para filtros)
+export const getTechnicianPlaces = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    
+    if (userRole !== 2) {
+      return res.status(403).json({ message: "Solo disponible para técnicos" });
+    }
+    
+    console.log(`📊 Cargando lugares del técnico: ${userId}`);
+    
+    const places = await getPlacesByTechnician(userId);
+    
+    const placesWithDetails = await Promise.all(
+      places.map(async (place) => {
+        const schedules = await getSchedulesByPlaceId(place.id);
+        const images = await getImagesByPlaceId(place.id);
+        return {
+          ...place,
+          image_url: place.image_url ? toPublicUrl(req, place.image_url) : null,
+          additional_images: images.map(img => ({
+            ...img,
+            image_url: toPublicUrl(req, img.image_url)
+          })),
+          schedules
+        };
+      })
+    );
+    
+    res.json(placesWithDetails);
+  } catch (error) {
+    console.error("Error al obtener lugares del técnico:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
   }
 };

@@ -21,8 +21,8 @@ import {
 import type { ViewStyle, TextStyle } from "react-native";
 import * as Animatable from "react-native-animatable";
 
-import { useThemedStyles } from "../hooks/useThemedStyles"; // 👈 usa tu hook
-import { useTheme } from "../hooks/theme-context";          // (para saber si es dark)
+import { useThemedStyles } from "../hooks/useThemedStyles";
+import { useTheme } from "../hooks/theme-context";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -47,8 +47,15 @@ export default function LoginScreen() {
   const [storedFingerprintId, setStoredFingerprintId] = useState<string | null>(null);
   const [emailFocused, setEmailFocused] = useState(false);
 
+  // Estados para el modal de error mejorado
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorModalTitle, setErrorModalTitle] = useState("");
+  const [errorModalMessage, setErrorModalMessage] = useState("");
+  const [progressWidth, setProgressWidth] = useState("100%");
+  const [countdown, setCountdown] = useState(5);
+
   // =======================
-  // ESTILOS TIPADOS (fix TS)
+  // ESTILOS TIPADOS
   // =======================
   const cardStyle: ViewStyle = {
     backgroundColor: themed.card,
@@ -63,7 +70,7 @@ export default function LoginScreen() {
     borderWidth: 1,
     borderRadius: 12,
     flexDirection: "row",
-    alignItems: "center", // <- importante para el error de TS
+    alignItems: "center",
   };
 
   const inputText: TextStyle = {
@@ -75,7 +82,7 @@ export default function LoginScreen() {
   };
 
   // =======================
-  // Efectos originales
+  // Efectos
   // =======================
   useEffect(() => {
     checkBiometricAvailability();
@@ -87,6 +94,37 @@ export default function LoginScreen() {
       checkFingerprintStatusForEmail(email);
     }
   }, [email]);
+
+  // Efecto para manejar el modal de error
+  useEffect(() => {
+    if (showErrorModal) {
+      try {
+        let currentCountdown = 5;
+        setCountdown(5);
+        
+        const interval = setInterval(() => {
+          currentCountdown -= 1;
+          setCountdown(currentCountdown);
+          setProgressWidth(`${(currentCountdown / 5) * 100}%`);
+          
+          if (currentCountdown <= 0) {
+            clearInterval(interval);
+            setShowErrorModal(false);
+          }
+        }, 1000);
+
+        return () => {
+          clearInterval(interval);
+        };
+      } catch (error) {
+        console.error("Error in error modal:", error);
+        setShowErrorModal(false);
+      }
+    } else {
+      setProgressWidth("100%");
+      setCountdown(5);
+    }
+  }, [showErrorModal]);
 
   const checkBiometricAvailability = async () => {
     try {
@@ -151,6 +189,13 @@ export default function LoginScreen() {
       console.error("❌ Error verificando estado de huella:", error);
       setUserHasFingerprint(false);
     }
+  };
+
+  // Función mejorada para mostrar errores con modal
+  const showErrorModalWithDetails = (title: string, message: string) => {
+    setErrorModalTitle(title);
+    setErrorModalMessage(message);
+    setShowErrorModal(true);
   };
 
   const showAlert = (
@@ -294,7 +339,15 @@ export default function LoginScreen() {
       }
 
       if (!response.ok) {
-        showAlert("error", data.message || "Huella no registrada para este email");
+        // Usar modal mejorado para errores de huella
+        if (data.message?.toLowerCase().includes("huella") || data.message?.toLowerCase().includes("fingerprint")) {
+          showErrorModalWithDetails(
+            "Huella No Registrada",
+            "No se encontró una huella registrada para este email. Por favor, inicia sesión con tu contraseña."
+          );
+        } else {
+          showAlert("error", data.message || "Huella no registrada para este email");
+        }
         return;
       }
 
@@ -330,7 +383,10 @@ export default function LoginScreen() {
       }
 
       if (!response.ok) {
-        showAlert("error", data.message || "Huella no registrada");
+        showErrorModalWithDetails(
+          "Huella No Válida",
+          "La huella no coincide con ningún usuario registrado. Por favor, intenta con tu email y contraseña."
+        );
         return;
       }
 
@@ -402,6 +458,7 @@ export default function LoginScreen() {
     }
   };
 
+  // Función mejorada para manejar login tradicional
   const handleLogin = async () => {
     if (!email || !password) {
       showAlert("error", "Por favor ingresa email y contraseña");
@@ -435,7 +492,27 @@ export default function LoginScreen() {
       }
 
       if (!response.ok) {
-        showAlert("error", data.message || `Error (${response.status})`);
+        // Detectar tipo de error y mostrar modal apropiado
+        const errorMessage = data.message?.toLowerCase() || '';
+        
+        if (errorMessage.includes("usuario") || errorMessage.includes("user") || errorMessage.includes("not found") || errorMessage.includes("no encontrado")) {
+          showErrorModalWithDetails(
+            "Usuario No Encontrado",
+            "No existe una cuenta asociada a este correo electrónico. Verifica tu email o regístrate para crear una nueva cuenta."
+          );
+        } else if (errorMessage.includes("contraseña") || errorMessage.includes("password") || errorMessage.includes("incorrect") || errorMessage.includes("inválid")) {
+          showErrorModalWithDetails(
+            "Contraseña Incorrecta",
+            "La contraseña que ingresaste no es válida. Verifica tus credenciales o utiliza la opción '¿Olvidaste tu contraseña?' para restablecerla."
+          );
+        } else if (response.status === 401) {
+          showErrorModalWithDetails(
+            "Credenciales Inválidas",
+            "El email o la contraseña son incorrectos. Por favor, verifica tus datos e intenta nuevamente."
+          );
+        } else {
+          showAlert("error", data.message || `Error (${response.status})`);
+        }
         return;
       }
 
@@ -462,7 +539,10 @@ export default function LoginScreen() {
       }
     } catch (err) {
       console.error("🔥 Error en login:", err);
-      showAlert("error", "Error de conexión. Verifica tu internet.");
+      showErrorModalWithDetails(
+        "Error de Conexión",
+        "No se pudo conectar con el servidor. Verifica tu conexión a internet e intenta nuevamente."
+      );
     } finally {
       setLoading(false);
     }
@@ -483,7 +563,7 @@ export default function LoginScreen() {
     };
   }, [timeoutId]);
 
-  // Determinar texto/estilo del botón biométrico (mantengo tu lógica)
+  // Determinar texto/estilo del botón biométrico
   const fingerprintButtonConfig = (() => {
     if (!biometricAvailable || !email || !email.includes("@")) return null;
 
@@ -633,6 +713,144 @@ export default function LoginScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
+              </View>
+            </Modal>
+
+            {/* Modal de Error Mejorado */}
+            <Modal
+              visible={showErrorModal}
+              transparent={true}
+              animationType="fade"
+              statusBarTranslucent={true}
+              onRequestClose={() => setShowErrorModal(false)}
+            >
+              <View style={{
+                flex: 1,
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: 20,
+              }}>
+                <Animatable.View 
+                  animation="bounceIn"
+                  duration={800}
+                  style={{
+                    backgroundColor: themed.card,
+                    borderRadius: 20,
+                    padding: 30,
+                    width: '90%',
+                    maxWidth: 340,
+                    alignItems: 'center',
+                    shadowColor: '#000',
+                    shadowOffset: {
+                      width: 0,
+                      height: 4,
+                    },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 8,
+                    elevation: 10,
+                  }}
+                >
+                  {/* Icono de error */}
+                  <View style={{
+                    width: 100,
+                    height: 100,
+                    borderRadius: 50,
+                    backgroundColor: '#ef4444',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    marginBottom: 24,
+                    shadowColor: '#000',
+                    shadowOffset: {
+                      width: 0,
+                      height: 4,
+                    },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 8,
+                    elevation: 6,
+                  }}>
+                    <Ionicons name="close" size={50} color="white" />
+                  </View>
+
+                  {/* Título */}
+                  <Text style={{
+                    fontSize: 24,
+                    fontWeight: 'bold',
+                    color: '#ef4444',
+                    textAlign: 'center',
+                    marginBottom: 16
+                  }}>
+                    {errorModalTitle}
+                  </Text>
+
+                  {/* Mensaje */}
+                  <Text style={{
+                    fontSize: 16,
+                    color: themed.muted,
+                    textAlign: 'center',
+                    marginBottom: 30,
+                    lineHeight: 24
+                  }}>
+                    {errorModalMessage}
+                  </Text>
+
+                  {/* Barra de progreso con animación suave */}
+                  <View style={{
+                    width: '100%',
+                    height: 8,
+                    backgroundColor: themed.border,
+                    borderRadius: 4,
+                    overflow: 'hidden',
+                    marginBottom: 12,
+                  }}>
+                    <Animatable.View 
+                      animation={{
+                        from: { width: '100%' },
+                        to: { width: '0%' },
+                      }}
+                      duration={5000}
+                      easing="linear"
+                      style={{
+                        height: '100%',
+                        backgroundColor: '#ef4444',
+                        borderRadius: 4,
+                        width: Platform.select({
+                          ios: progressWidth,
+                          android: progressWidth,
+                          default: progressWidth
+                        }) as any,
+                      }}
+                    />
+                  </View>
+
+                  {/* Texto de cierre automático */}
+                  <Text style={{
+                    fontSize: 14,
+                    color: themed.muted,
+                    textAlign: 'center',
+                    fontStyle: 'italic',
+                  }}>
+                    Cerrando en {countdown} segundo{countdown !== 1 ? 's' : ''}...
+                  </Text>
+
+                  {/* Botón de cierre manual */}
+                  <TouchableOpacity
+                    onPress={() => setShowErrorModal(false)}
+                    style={{
+                      marginTop: 20,
+                      paddingVertical: 12,
+                      paddingHorizontal: 24,
+                      borderRadius: 12,
+                      backgroundColor: '#ef4444',
+                      borderWidth: 1,
+                      borderColor: '#ef4444',
+                    }}
+                  >
+                    <Text style={{ color: 'white', fontWeight: '600', fontSize: 16 }}>
+                      Entendido
+                    </Text>
+                  </TouchableOpacity>
+                </Animatable.View>
               </View>
             </Modal>
 

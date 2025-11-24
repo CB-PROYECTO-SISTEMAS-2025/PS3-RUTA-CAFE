@@ -11,6 +11,7 @@ import {
   getPlacesByAdminCity,
   getPlacesBySpecificCity,
   getPendingPlacesController,
+  getTechnicianPlaces,
   approveRejectPlace,
   checkPendingPlaces,
 } from "../controllers/placeController.js";
@@ -194,7 +195,7 @@ router.delete("/:id", verifyToken, deletePlaceController);
 
 // ✅ Usuario consulta si tiene pendientes (para bloquear en cliente)
 router.get("/check/pending", verifyToken, checkPendingPlaces);
-
+router.get("/technician/my-places", verifyToken, getTechnicianPlaces);
 // Rutas de administración para lugares pendientes
 router.get("/admin/pending", verifyAdmin, getPendingPlacesController);
 router.get("/admin/city", verifyAdmin, getPlacesByAdminCity);

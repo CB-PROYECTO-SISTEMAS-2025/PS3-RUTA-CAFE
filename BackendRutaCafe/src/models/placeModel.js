@@ -22,6 +22,34 @@ export const createPlace = async ({
   return result.insertId;
 };
 
+// Obtener solo los lugares del técnico logeado (para filtros)
+export const getPlacesByTechnician = async (userId) => {
+  const query = `
+    SELECT 
+      p.*,
+      r.name AS route_name,
+      COUNT(DISTINCT l.id) AS likes_count,
+      COUNT(DISTINCT c.id) AS comments_count,
+      EXISTS(
+        SELECT 1 FROM \`${SCHEMA}\`.likes l2 
+        WHERE l2.place_id = p.id AND l2.user_id = ?
+      ) AS user_liked
+    FROM \`${SCHEMA}\`.place p
+    LEFT JOIN \`${SCHEMA}\`.route r ON p.route_id = r.id
+    LEFT JOIN \`${SCHEMA}\`.likes l ON p.id = l.place_id
+    LEFT JOIN \`${SCHEMA}\`.comment c ON p.id = c.place_id
+    WHERE p.createdBy = ?
+    GROUP BY p.id
+    ORDER BY p.createdAt DESC
+  `;
+
+  const [rows] = await pool.query(query, [userId, userId]);
+  console.log(`📊 getPlacesByTechnician - UserId: ${userId}, Lugares encontrados: ${rows.length}`);
+  return rows;
+};
+
+
+
 // Crear imágenes adicionales para un lugar
 export const createPlaceImages = async (placeId, imageUrls) => {
   const createdImages = [];
@@ -120,18 +148,18 @@ export const getAllPlaces = async (user = null) => {
     userId = Number(user) || null;
   }
 
-  // WHERE dinámico
-  let where = '1=1';
+  // ✅ CORREGIDO: Técnicos ven TODOS los lugares aprobados, no solo los suyos
+  let where = "1=1";
   const whereParams = [];
 
-  if (role === 2 && userId) {
-    // Técnico / creador: ve solo lo suyo
-    where = 'p.createdBy = ?';
-    whereParams.push(userId);
-  } else {
-    // Público / otros roles: solo aprobadas
+  if (role === 2) {
+    // Técnico: ve TODOS los lugares aprobados (de todos los técnicos)
+    where = "p.status = 'aprobada'";
+  } else if (role === 0 || role === 3) {
+    // Visitante o usuario normal: solo lugares aprobados
     where = "p.status = 'aprobada'";
   }
+  // Admin (role = 1) ve todo sin filtro
 
   // SELECT con user_liked opcional
   const query = `
@@ -161,6 +189,8 @@ export const getAllPlaces = async (user = null) => {
   const params = userId ? [userId, ...whereParams] : whereParams;
 
   const [rows] = await pool.query(query, params);
+  
+  console.log(`📊 getAllPlaces - Rol: ${role}, UserId: ${userId}, Lugares encontrados: ${rows.length}`);
   return rows;
 };
 
@@ -176,18 +206,18 @@ export const getPlacesByRoute = async (routeId, user = null) => {
     userId = Number(user) || null;
   }
 
-  // WHERE dinámico
+  // ✅ CORREGIDO: Técnicos ven TODOS los lugares aprobados de la ruta
   let extraWhere = '';
   const whereParams = [routeId];
 
-  if (role === 2 && userId) {
-    // técnico/creador: solo lo suyo
-    extraWhere = 'AND p.createdBy = ?';
-    whereParams.push(userId);
-  } else {
-    // público u otros roles: solo aprobadas
+  if (role === 2) {
+    // Técnico: ve TODOS los lugares aprobados de esta ruta
+    extraWhere = "AND p.status = 'aprobada'";
+  } else if (role === 0 || role === 3) {
+    // Visitante o usuario normal: solo lugares aprobados
     extraWhere = "AND p.status = 'aprobada'";
   }
+  // Admin (role = 1) ve todo sin filtro
 
   const query = `
     SELECT 
@@ -213,10 +243,12 @@ export const getPlacesByRoute = async (routeId, user = null) => {
     ORDER BY p.createdAt DESC
   `;
 
-  // Si hay userId: primero para EXISTS, luego routeId y posible createdBy
+  // Si hay userId: primero para EXISTS, luego routeId
   const params = userId ? [userId, ...whereParams] : whereParams;
 
   const [rows] = await pool.query(query, params);
+  
+  console.log(`📊 getPlacesByRoute - Ruta: ${routeId}, Rol: ${role}, UserId: ${userId}, Lugares encontrados: ${rows.length}`);
   return rows;
 };
 
