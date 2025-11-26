@@ -1,0 +1,70 @@
+# ───────── FRONTEND (React Native / Expo) ─────────
+AppMovil_RutaDelCafe/node_modules/
+AppMovil_RutaDelCafe/.expo/
+AppMovil_RutaDelCafe/.expo-shared/
+AppMovil_RutaDelCafe/dist/
+AppMovil_RutaDelCafe/web-build/
+AppMovil_RutaDelCafe/expo-env.d.ts
+AppMovil_RutaDelCafe/.ios/
+AppMovil_RutaDelCafe/.android/
+AppMovil_RutaDelCafe/.cache/
+AppMovil_RutaDelCafe/coverage/
+
+# ───────── BACKEND (Node + Express + MySQL) ─────────
+BackendRutaCafe/node_modules/
+BackendRutaCafe/.env
+BackendRutaCafe/coverage/
+# Subidas locales (mantén .gitkeep si usas uno)
+BackendRutaCafe/uploads/**
+!BackendRutaCafe/uploads/.gitkeep
+
+# ───────── GENERALES ─────────
+# Node / package managers
+node_modules/
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+pnpm-debug.log*
+*.log
+
+# Ambiente / secretos (IGNORAR TODOS los .env en todo el repo)
+**/.env
+.env
+.env.*        # .env.local, .env.production, etc.
+.env*.local
+# PERMITIR solo los ejemplos
+!**/.env.example
+!**/.env.sample
+
+# Sistemas operativos
+.DS_Store
+Thumbs.db
+
+# Certs / llaves
+*.pem
+*.key
+*.crt
+*.p12
+
+# Herramientas / editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# TypeScript / build info
+*.tsbuildinfo
+
+# Lint / cache / bundlers
+.eslintcache
+.stylelintcache
+.parcel-cache
+.npm/
+.cache/
+
+# Testing
+.nyc_output/
+jest-html-reporters-*
+
+# Misc
+*.tgz
