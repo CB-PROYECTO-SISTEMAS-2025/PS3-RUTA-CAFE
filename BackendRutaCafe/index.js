@@ -41,51 +41,8 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// ✅ SERVIR ARCHIVOS ESTÁTICOS - VERSIÓN SIMPLE QUE FUNCIONA
+// ✅ SERVIR ARCHIVOS ESTÁTICOS - SOLO ESTA LÍNEA (ELIMINADO EL BLOQUE CONFLICTIVO)
 app.use("/uploads", express.static(uploadsDir));
-// ✅ RUTA ESPECÍFICA PARA VERIFICAR IMÁGENES DE USUARIOS
-app.get("/uploads/users/:filename", (req, res) => {
-  const filename = req.params.filename;
-  const imagePath = path.join(__dirname, "uploads", "users", filename);
-  
-  console.log(`🔍 Solicitando imagen de usuario: ${filename}`);
-  console.log(`📁 Ruta: ${imagePath}`);
-  
-  // Verificar que el archivo existe
-  if (!fs.existsSync(imagePath)) {
-    console.log(`❌ Imagen no encontrada: ${filename}`);
-    return res.status(404).json({ 
-      error: "Imagen no encontrada",
-      message: `La imagen ${filename} no existe en el servidor`,
-      path: imagePath
-    });
-  }
-  
-  // Verificar que es una imagen
-  const ext = path.extname(filename).toLowerCase();
-  const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
-  
-  if (!allowedExtensions.includes(ext)) {
-    console.log(`❌ Extensión no permitida: ${ext}`);
-    return res.status(400).json({ 
-      error: "Tipo de archivo no permitido",
-      message: "Solo se permiten archivos de imagen"
-    });
-  }
-  
-  // Enviar la imagen
-  res.sendFile(imagePath, (err) => {
-    if (err) {
-      console.log(`❌ Error enviando imagen: ${err.message}`);
-      res.status(500).json({ 
-        error: "Error al servir la imagen",
-        message: err.message 
-      });
-    } else {
-      console.log(`✅ Imagen enviada correctamente: ${filename}`);
-    }
-  });
-});
 
 // Middleware para log de requests
 app.use((req, res, next) => {
