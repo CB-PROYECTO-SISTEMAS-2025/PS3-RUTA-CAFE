@@ -1,50 +1,116 @@
-# Welcome to your Expo app 👋
+# 🍽️ Ruta del Sabor - Plataforma Gastronómica
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+## Descripción
+Plataforma web y móvil para la gestión y exploración de rutas gastronómicas. Permite descubrir sitios culinarios, comentar, dar likes y guardar favoritos.
 
-## Get started
+## 🚀 Características Principales
 
-1. Install dependencies
+### Para Usuarios
+- 📍 Explorar rutas y sitios gastronómicos
+- 💬 Comentar y calificar experiencias
+- ❤️ Dar like y guardar favoritos
+- 🗺️ Navegación intuitiva por regiones
 
-   ```bash
-   npm install
-   ```
+### Para Técnicos  
+- ➕ Crear nuevas rutas y sitios
+- 📋 Gestión de contenido pendiente de aprobación
 
-2. Start the app
+### Para Administradores
+- ✅ Aprobar/rechazar rutas y sitios
+- 👥 Gestión de usuarios y roles
+- 📊 Dashboard con métricas
+- 📢 Gestión de publicidades
 
-   ```bash
-   npx expo start
-   ```
+## 🛠️ Tecnologías
 
-In the output, you'll find options to open the app in a
+### Backend
+- Node.js + Express.js
+- MySQL 8.0
+- JWT Authentication
+- Bcrypt para hashing
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+### Frontend Web (Admin)
+- React 18 + Vite
+- Tailwind CSS
+- Axios para API calls
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+### App Móvil
+- React Native + Expo
+- React Navigation
+- Context API
 
-## Get a fresh project
+## 📦 Instalación Rápida
 
-When you're ready, run:
-
+### Con Docker (Recomendado)
 ```bash
-npm run reset-project
-```
+git clone https://github.com/CB-PROYECTO-SISTEMAS-2025/PS3-RUTA-CAFE.git
+cd PS3-RUTA-CAFE
+docker-compose up --build
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Instalación Manual
 
-## Learn more
+# Backend
+cd backend && npm install
+cp .env.example .env
+npm run dev
 
-To learn more about developing your project with Expo, look at the following resources:
+# Frontend Web  
+cd frontend-web && npm install
+npm run dev
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+# App Móvil
+cd app-movil && npm install
+npx expo start
 
-## Join the community
+🔑 Acceso de Prueba
+Usuarios Demo:
+Administrador: admin@rutadelsabor.com / 123456
 
-Join our community of developers creating universal apps.
+Técnico: tecnico@rutadelsabor.com / 123456
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Usuario: usuario@ejemplo.com / 123456
+
+URLs:
+API: http://localhost:3000/api
+
+Admin Web: http://localhost:5173
+
+phpMyAdmin: http://localhost:8080
+
+📁 Estructura del Proyecto
+PS3-RUTA-CAFE/
+├── backend/          # API REST Node.js
+├── frontend-web/     # Panel Admin React
+├── app-movil/        # App React Native
+├── database/         # Scripts BD
+├── docs/            # Documentación
+└── README.md        # Este archivo
+
+📄 Documentación Completa
+Para la documentación técnica completa, consulta el Manual Técnico que incluye:
+
+Arquitectura del sistema
+
+Configuración de base de datos
+
+Guías de instalación
+
+Procedimientos de deployment
+
+Solución de problemas
+
+Consideraciones de seguridad
+
+🐛 Reportar Problemas
+Si encuentras algún bug o tienes sugerencias, por favor crea un issue.
+
+📄 Licencia
+Este proyecto es desarrollado para fines académicos.
+
+👥 Desarrolladores
+Luis Mario Garcia Chambilla (Team Leader)
+
+Rolando Valdivia Rodriguez (Git Master)
+
+Manuel Ovando Crespo (DBA)
+
